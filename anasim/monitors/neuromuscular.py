@@ -65,6 +65,8 @@ class NeuromuscularMonitor:
             self.baseline = t1
 
     def set_mode(self, mode: str, time: float) -> None:
+        if isinstance(mode, str):
+            mode = mode.strip().lower()
         if mode not in DEFAULT_REPEAT_S:
             raise ValueError("Choose TOF, single twitch, or PTC")
         if self._started is not None:

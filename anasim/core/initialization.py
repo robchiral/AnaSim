@@ -288,12 +288,12 @@ def _seed_steady_state_subsystems(
         _seed_volatile_history(engine, targets.mac, profile.history_minutes)
         # Start at the untreated anesthetic steady state so the hidden settle
         # handles only circuit and monitor transients.
-        mac_sevo_alv = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
+        mac_sevo_art = engine.pk_sevo.state.p_art * 100.0 / engine.pk_sevo.mac_age
         engine.hemo.initialize_steady_state(
             prop_cp,
             remi_cp,
             engine.pk_nore.state.ce,
-            mac_sevo=mac_sevo_alv,
+            mac_sevo=mac_sevo_art,
             remifentanil_cp=remi_cp,
             pit=pit_init,
             peep_cmH2O=peep_init,

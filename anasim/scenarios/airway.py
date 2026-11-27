@@ -1,6 +1,6 @@
 """Difficult laryngoscopy (ASA 2022 US OR pathway) and esophageal intubation scenarios."""
 
-from anasim.core.action_log import ACTION_DRUG_BOLUS
+from anasim.core.action_log import ACTION_AIRWAY_TOOL, ACTION_DRUG_BOLUS
 from anasim.core.state import AirwayType
 
 from .base import (
@@ -205,7 +205,11 @@ def create_failed_laryngoscopy() -> Scenario:
             CaseOutcome(
                 id="mask_adjuncts",
                 label="Optimized mask oxygenation with OPA or two-hand jaw thrust",
-                check=lambda e: e.airway_crisis.oral_airway or e.airway_crisis.two_hand_mask,
+                check=lambda e: (
+                    e.airway_crisis.oral_airway
+                    or e.airway_crisis.two_hand_mask
+                    or bool(e.actions.since_case(ACTION_AIRWAY_TOOL, labels=("opa_on", "two_hand_on")))
+                ),
                 review="Use an oral airway and two-handed jaw thrust to preserve oxygenation between attempts (Joffe 2010).",
                 milestone=True,
             ),
@@ -261,8 +265,8 @@ def _setup_esophageal_intubation(engine) -> None:
 
 
 def _check_esoph_removed(engine) -> tuple[bool, str]:
-    met = not engine.airway_crisis.esophageal_intubation and engine.state.airway_mode != AirwayType.ETT
-    return met, "" if met else "Remove the misplaced tube immediately (select Facemask or SGA)"
+    met = not engine.airway_crisis.esophageal_intubation
+    return met, "" if met else "Remove the misplaced tube immediately (select Facemask, SGA, or re-intubate with VL)"
 
 
 def _check_esoph_reox(engine) -> tuple[bool, str]:

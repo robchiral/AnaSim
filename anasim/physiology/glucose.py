@@ -623,10 +623,15 @@ class GlucoseModel:
             self._arterial_glucose_mg_dl += (g_final - self._arterial_glucose_mg_dl) * alpha
             self._arterial_insulin_mu_l += (total_ins_final - self._arterial_insulin_mu_l) * alpha
 
-        # Insulin-mediated transcellular potassium uptake (Alvestrand 1984; Allon and Copkney 1990).
-        # Independent of uremic/diabetic glucose resistance so K+ lowering is preserved in ESRD/T2D.
+        # Insulin-mediated transcellular potassium uptake (mmol/L equilibrium shift;
+        # DeFronzo 1980; Alvestrand 1984; Allon and Copkney 1990; Chothia 2014).
+        # Independent of uremic/diabetic glucose resistance and baseline K+.
         excess_k_ins = max(0.0, self._k_insulin - self.basal_insulin_mu_l)
-        insulin_k_uptake = 0.52 * excess_k_ins / (excess_k_ins + 55.0) if excess_k_ins > 0.0 else 0.0
+        if excess_k_ins > 0.0:
+            e_pow = excess_k_ins ** 1.75
+            insulin_k_uptake = 1.14 * e_pow / (e_pow + 52.0 ** 1.75)
+        else:
+            insulin_k_uptake = 0.0
 
         osmotic_diuresis = self._osmotic_diuresis_ml_min(uge_mg_min)
 

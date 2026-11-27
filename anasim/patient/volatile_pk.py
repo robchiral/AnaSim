@@ -2,7 +2,7 @@ import math
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from anasim.core.utils import clamp01
+from anasim.core.utils import clamp, clamp01
 
 from .patient import Patient
 from .pk_models import janmahasatian_ffm
@@ -98,9 +98,14 @@ class VolatilePK:
         return 1.0 - f_mus - f_fat, f_mus, f_fat
 
     def mac_at_temp(self, temp_c: float = 37.0) -> float:
-        """Age-, pregnancy-, and temperature-adjusted MAC (% atm); changes 5% per °C around 37 °C (0.5x floor)."""
-        temp_factor = max(0.5, 1.0 - 0.05 * (37.0 - temp_c))
-        return self.mac_age * temp_factor
+        """Age-, pregnancy-, and temperature-adjusted MAC (% atm).
+
+        Falls exponentially with cooling (~6%/°C, calibrated to rat halothane/isoflurane
+        MAC data in Vitez 1974), remaining strictly monotonic with blood:gas solubility
+        down to deep hypothermic CPB (18 °C).
+        """
+        clamped_t = clamp(temp_c, 18.0, 42.0)
+        return self.mac_age * math.exp(-0.060 * (37.0 - clamped_t))
 
     def lambda_b_g_at_temp(self, temp_c: float = 37.0) -> float:
         """Blood:gas partition coefficient at core temperature (Lockwood 1997)."""
@@ -156,6 +161,7 @@ class VolatilePK:
         )
         washout_outflow = max(0.0, -companion_uptake_l_min)
         p_alv = self.state.p_alv
+        p_art = self.state.p_art
         p_vrg = self.state.p_vrg
         p_brain = self.state.p_brain
         p_mus = self.state.p_mus
@@ -165,6 +171,7 @@ class VolatilePK:
         lambda_bg_now = self.lambda_b_g_at_temp(temp_c)
         if temp_c != self._temp_c and lambda_bg_now > 0.0:
             sol_scale = self.lambda_b_g_at_temp(self._temp_c) / lambda_bg_now
+            p_art = clamp01(p_art * sol_scale)
             p_vrg = clamp01(p_vrg * sol_scale)
             p_brain = clamp01(p_brain * sol_scale)
             p_mus = clamp01(p_mus * sol_scale)
@@ -248,7 +255,11 @@ class VolatilePK:
             p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
             if standard_path:
                 if v_frc > 0.0:
-                    p_art = one_minus_shunt * p_alv + shunt_fraction * p_ven
+                    p_art_target = one_minus_shunt * p_alv + shunt_fraction * p_ven
+                    if q_pulm >= 0.25:
+                        p_art = p_art_target
+                    elif q_pulm > 0.0:
+                        p_art += (p_art_target - p_art) * -math.expm1(-interval * q_pulm / 0.5)
                     airway_flux = (
                         alveolar_vent * (fi_agent - p_alv)
                         + concentrating_inflow * fi_agent
@@ -266,8 +277,10 @@ class VolatilePK:
                             - washout_outflow * p_alv
                         )
                     p_alv = next_p_alv
-                else:
+                elif q_co >= 0.25:
                     p_art = p_ven
+                elif q_co > 0.0:
+                    p_art += (p_ven - p_art) * -math.expm1(-interval * q_co / 0.5)
             else:
                 p_post_oxy = (p_ven + ecmo_equil * (ecmo_fi_agent - p_ven)) if ecmo_active else p_ven
                 if ecmo_is_arterial:
@@ -297,31 +310,32 @@ class VolatilePK:
                 else:
                     p_lv = p_pa
                 if ecmo_is_arterial:
-                    p_art = (
-                        (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
-                        if q_co > 1e-6
-                        else p_ven
-                    )
+                    if q_co >= 0.25:
+                        p_art = (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
+                    elif q_co > 0.0:
+                        p_art_target = (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
+                        p_art += (p_art_target - p_art) * -math.expm1(-interval * q_co / 0.5)
                 else:
-                    p_art = p_lv
+                    if q_pulm >= 0.25:
+                        p_art = p_lv
+                    elif q_pulm > 0.0:
+                        p_art += (p_lv - p_art) * -math.expm1(-interval * q_pulm / 0.5)
             p_vrg += k_vrg_dt * (p_art - p_vrg)
             p_brain += k_brain_dt * (p_art - p_brain)
             p_mus += k_mus_dt * (p_art - p_mus)
             p_fat += k_fat_dt * (p_art - p_fat)
         p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
         if standard_path:
-            p_art = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
+            if q_pulm >= 0.25:
+                p_art = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
         else:
             p_post_oxy = (p_ven + ecmo_equil * (ecmo_fi_agent - p_ven)) if ecmo_active else p_ven
             exhaust_frac = clamp01(ecmo_fi_agent + exhaust_gain * (p_ven - ecmo_fi_agent)) if ecmo_active else 0.0
             if ecmo_is_arterial:
-                p_lv = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
-                p_art = (
-                    (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
-                    if q_co > 1e-6
-                    else p_ven
-                )
-            else:
+                if q_co >= 0.25:
+                    p_lv = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
+                    p_art = (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
+            elif q_pulm >= 0.25:
                 f_ecmo = clamp01(q_ecmo / q_co) if (ecmo_active and q_co > 1e-6) else 0.0
                 p_pa = (1.0 - f_ecmo) * p_ven + f_ecmo * p_post_oxy
                 p_art = (one_minus_shunt * p_alv + shunt_fraction * p_pa) if v_frc > 0.0 else p_pa

@@ -377,7 +377,9 @@ def measured_ventilation(
     return engine.resp.state.effort_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
 
 
-def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> float:
+def loss_of_response(
+    engine: SimulationEngine, *, ketamine: bool = True, include_non_drug: bool = True,
+) -> float:
     """Probability of no response to shaking or shouting at the current effect sites.
 
     Airway tone excludes ketamine, which preserves it.
@@ -398,7 +400,7 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
         mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce if ketamine else 0.0,
     )
-    return _combine_coma_tolerance(engine, drug_response)
+    return _combine_coma_tolerance(engine, drug_response) if include_non_drug else clamp01(drug_response)
 
 
 def _combine_coma_tolerance(engine: SimulationEngine, drug_tolerance: float) -> float:
@@ -414,7 +416,9 @@ def _combine_coma_tolerance(engine: SimulationEngine, drug_tolerance: float) -> 
     )
 
 
-def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY) -> float:
+def stimulus_tolerance(
+    engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY, *, include_non_drug: bool = True,
+) -> float:
     """Probability of no response to a noxious stimulus of the given Bouillon 2004a intensity; laryngoscopy by default."""
     state = engine.state
     drug_tol = engine.response.tolerance(
@@ -426,7 +430,7 @@ def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY
         ce_lidocaine=state.lidocaine_ce,
         intensity=intensity,
     )
-    return _combine_coma_tolerance(engine, drug_tol)
+    return _combine_coma_tolerance(engine, drug_tol) if include_non_drug else clamp01(drug_tol)
 
 
 def extubation_tolerance(engine: SimulationEngine) -> float:
@@ -692,7 +696,7 @@ def project_arterial(
     if state.co > 0.0 and state.rhythm_type not in PULSELESS_RHYTHMS and not (state.pump_flow > 0.0 and state.sbp == state.dbp):
         if state.map < state.dbp or state.map > state.sbp:
             state.map = float(arterial_sample.mean)
-    elif not state.chest_compressions and state.sbp == state.dbp and (state.co <= 0.0 or state.pump_flow > 0.0):
+    elif (not state.chest_compressions or state.pump_flow > 0.0) and state.sbp == state.dbp and (state.co <= 0.0 or state.pump_flow > 0.0):
         # Non-pulsatile Windkessel runoff or nonpulsatile pump flow: keep SBP == DBP == MAP.
         state.map = float(arterial_sample.mean)
         state.sbp = state.dbp = state.map
@@ -1111,12 +1115,11 @@ def build_snapshot_from_models(
     engine: SimulationEngine, hemo_state: HemoState, resp_state: RespState, *, pit_estimate: float,
 ) -> PhysiologyStepState:
     """Build the respiratory projection shared by initialization and runtime."""
-    connected = engine.state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
     assisted = sealed and (engine.vent.is_on or assisted_positive_pressure(engine))
     kept = delivered_fraction(engine) if sealed else 0.0
     rr_display, vt_display_ml, mv_display_l_min = measured_ventilation(
-        engine, connected, resp_state.rr, resp_state.vt / 1000.0, kept=kept if sealed else None,
+        engine, sealed, resp_state.rr, resp_state.vt / 1000.0, kept=kept if sealed else None,
     )
     vent = engine.vent
     spirometry = vent.monitors
@@ -1199,7 +1202,11 @@ def compute_pit_estimates(engine: SimulationEngine, dt: float) -> tuple[float, f
 
 def reference_arterial_pressures(engine: SimulationEngine, hemo_state: HemoState) -> tuple[float, float]:
     """Return reference (SBP, DBP) mmHg including CPR envelope or pulseless stasis."""
-    if hemo_state.compressions:
+    ecmo = engine.extracorporeal
+    pump_override = hemo_state.pump_flow > 0.0 or (
+        ecmo.is_arterial_support and (ecmo.state.aortic_cross_clamp or ecmo.state.cardioplegia_arrest)
+    )
+    if hemo_state.compressions and not pump_override:
         cpr_sbp, cpr_dbp = compression_pressures(
             hemo_state.cpr_perfusion_map,
             hemo_state.venous_pressure,
@@ -1281,7 +1288,8 @@ def step_coronary_from_state(
             nonpulsatile_perfusion = True
             coronary_sbp = max(coronary_sbp, hemo_state.map)
             coronary_dbp = max(coronary_dbp, hemo_state.nonpulsatile_map if hemo_state.sv <= 0.0 else coronary_dbp)
-    if hemo.compressions:
+    cpr_driving = hemo.compressions and not nonpulsatile_perfusion and not aortic_cross_clamp and not cardioplegia_arrest
+    if cpr_driving:
         if hemo_state.cpr_perfusion_map <= 0.0:
             hemo_state = hemo.evaluate_state(include_stim=False)
         cpr_sbp, cpr_dbp = compression_pressures(
@@ -1295,14 +1303,14 @@ def step_coronary_from_state(
     intrinsic_sbp = (
         0.0
         if hemo_state.intrinsic_co <= 0.05
-        else state.sbp * (clamp01(hemo_state.intrinsic_map / max(1.0, state.map)) if hemo.compressions else 1.0)
+        else state.sbp * (clamp01(hemo_state.intrinsic_map / max(1.0, state.map)) if cpr_driving else 1.0)
     )
     coronary = hemo.coronary
     before = (coronary.ischemia, coronary.shock_stunning, coronary.injury, coronary.energy_failure)
     coronary.step(
         dt, state.hr, coronary_sbp, coronary_dbp, max(state.lap, hemo_state.venous_pressure), hemo.hb_conc,
         coronary_sao2, hemo.myocardial_hypoxia,
-        fibrillating=hemo_state.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
+        fibrillating=hemo_state.rhythm_type == RhythmType.VFIB, compressions=cpr_driving,
         venous_pressure=hemo_state.venous_pressure,
         intrinsic_sbp=intrinsic_sbp,
         nonpulsatile_perfusion=nonpulsatile_perfusion,
@@ -1317,6 +1325,10 @@ def step_coronary_from_state(
 
 def sync_monitor_baselines(engine: SimulationEngine) -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
+    from anasim.core.constants import ARREST_CO_L_MIN
+    from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG
+
+    from . import monitors as monitor_core
     from . import runtime as runtime_core
 
     state = engine.state
@@ -1354,6 +1366,21 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     if not engine.etco2_readout.gas_valid:
         state.et_o2 = state.et_sevo = state.et_n2o = state.et_mac = 0.0
     state.display_etco2 = float(state.etco2)
+    base_co = engine.hemo.base_co_l_min
+    base_svr = max(1.0, engine.hemo.base_tpr * 1000.0)
+    temp_factor = clamp(1.0 - 0.14 * max(0.0, 36.0 - state.temp_c), 0.12, 1.0)
+    perf_init, _ = monitor_core._peripheral_perfusion(hemo_state, base_co, base_svr, temp_factor)
+    pp_init = state.sbp - state.dbp
+    pp_gate = clamp01((pp_init - MIN_PULSE_PRESSURE_MMHG) / 4.0) if math.isfinite(pp_init) else 0.0
+    eff_compressions = hemo_state.compressions and hemo_state.pump_flow <= 0.0
+    spo2_perf = (
+        0.0
+        if eff_compressions or hemo_state.intrinsic_co < ARREST_CO_L_MIN or pp_gate <= 0.0
+        else perf_init * pp_gate
+    )
+    spo2_usable = cardiac_sample.organized and spo2_perf >= 0.08 and not eff_compressions
+    engine.spo2_mon.signal_valid = spo2_usable
+    state.spo2_signal_valid = spo2_usable
     if state.spo2_signal_valid:
         state.display_spo2 = float(state.spo2)
         engine.spo2_mon.display_saturation = float(state.spo2)
@@ -1363,7 +1390,7 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     prop_bis, adjunct_bis = bis_hypnotic_components(engine)
     engine.bis.initialize(
         drug_bis,
-        cortical_function=cortical,
+        cortical_function=cortical * nx_scale,
         ce_prop=prop_bis,
         ce_adjunct=adjunct_bis,
         mac_sevo=state.mac_sevo,

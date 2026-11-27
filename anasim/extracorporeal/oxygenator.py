@@ -427,13 +427,10 @@ class MembraneOxygenator:
             )
             return result, recirc
 
-        co2_post = venous_co2_mmol_l
-        o2_post = venous_o2_l_l
-        pass_res: OxygenatorPassResult | None = None
-        for _ in range(40):
-            co2_pre = (1.0 - recirc) * venous_co2_mmol_l + recirc * co2_post
-            o2_pre = (1.0 - recirc) * venous_o2_l_l + recirc * o2_post
-            pass_res = self.solve_pass(
+        def _eval_post(co2_p: float, o2_p: float) -> OxygenatorPassResult:
+            co2_pre = (1.0 - recirc) * venous_co2_mmol_l + recirc * co2_p
+            o2_pre = (1.0 - recirc) * venous_o2_l_l + recirc * o2_p
+            return self.solve_pass(
                 blood_flow_l_min,
                 sweep_gas_l_min,
                 sweep_fio2,
@@ -449,13 +446,40 @@ class MembraneOxygenator:
                 ph_in_guess=ph_v_guess,
                 po2_in_guess=po2_v_guess,
             )
-            if (
-                abs(pass_res.co2_out_mmol_l - co2_post) < 1e-6
-                and abs(pass_res.o2_out_l_l - o2_post) < 1e-7
-            ):
+
+        co2_post = venous_co2_mmol_l
+        o2_post = venous_o2_l_l
+        max_o2 = max(venous_o2_l_l, 0.0134 * max(0.0, hb_g_dl) + 0.00004 * _ATM_DRY_MMHG) + 0.05
+        pass_res: OxygenatorPassResult | None = None
+        for _ in range(25):
+            r1 = _eval_post(co2_post, o2_post)
+            c1, o1 = r1.co2_out_mmol_l, r1.o2_out_l_l
+            if abs(c1 - co2_post) < 1e-7 and abs(o1 - o2_post) < 1e-8:
+                pass_res = r1
                 break
-            co2_post = pass_res.co2_out_mmol_l
-            o2_post = pass_res.o2_out_l_l
+            r2 = _eval_post(c1, o1)
+            c2, o2 = r2.co2_out_mmol_l, r2.o2_out_l_l
+            if abs(c2 - c1) < 1e-7 and abs(o2 - o1) < 1e-8:
+                pass_res = r2
+                break
+            # Aitken delta-squared acceleration maintains rapid convergence even as R -> 1.
+            dc1, dc2 = c1 - co2_post, c2 - c1
+            denom_c = dc2 - dc1
+            if abs(denom_c) > 1e-12:
+                co2_next = co2_post - (dc1 * dc1) / denom_c
+                co2_post = clamp(co2_next, 0.2, max(venous_co2_mmol_l, c2) + 5.0)
+            else:
+                co2_post = c2
+            do1, do2 = o1 - o2_post, o2 - o1
+            denom_o = do2 - do1
+            if abs(denom_o) > 1e-12:
+                o2_next = o2_post - (do1 * do1) / denom_o
+                o2_post = clamp(o2_next, 0.0, max_o2)
+            else:
+                o2_post = o2
+            pass_res = r2
+        else:
+            pass_res = _eval_post(co2_post, o2_post)
         assert pass_res is not None
         q_eff = blood_flow_l_min * (1.0 - recirc)
         return OxygenatorPassResult(

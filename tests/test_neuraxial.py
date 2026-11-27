@@ -178,3 +178,69 @@ def test_neuraxial_step_size_invariance():
         e.step(dt)
         assert e.neuraxial.last_mode == "high_spinal"
         assert e.event_active("high_spinal")
+
+
+def test_neuraxial_infusion_ramp_accumulation_overdose_airway_stimulus_and_scenario_credits():
+    """Continuous infusion ramps smoothly, repeated boluses accumulate, spinal overdose >35 mg
+    causes apnea/LOC without explicit flag, neuraxial block spares intubation stimulation, and
+    high-spinal scenario credits colloid and TCI vasopressor targets."""
+    from anasim.core.runtime import stimulus_effects
+    from anasim.scenarios.neuraxial import _fluid_given, _vasoactive_given
+
+    # 1. Continuous infusion builds gradually instead of teleporting on step 1.
+    inf = SimulationEngine(Patient(age=40), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
+    inf.set_epidural_infusion(10.0, drug="bupivacaine", concentration_pct=0.125)
+    inf.running = True
+    inf.step(1.0)
+    assert inf.neuraxial._epidural_depot < 0.08
+    assert inf.neuraxial.sensory_level < 0.02
+
+    # 2. Repeated spinal and epidural boluses accumulate rather than saturating at max().
+    sp = SimulationEngine(Patient(age=40), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
+    sp.give_spinal("bupivacaine", 12.5)
+    single_depot = sp.neuraxial._spinal_depot
+    sp.give_spinal("bupivacaine", 12.5)
+    assert sp.neuraxial._spinal_depot > single_depot + 4.0
+
+    ep = SimulationEngine(Patient(age=40), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
+    ep.give_epidural_bolus("bupivacaine", 10.0, 0.5)
+    single_ep = ep.neuraxial._epidural_depot
+    ep.give_epidural_bolus("bupivacaine", 10.0, 0.5)
+    assert ep.neuraxial._epidural_depot > single_ep + 4.0
+
+    # 3. Unflagged intrathecal overdose (50 mg) reaches phrenic apnea and total spinal LOC.
+    od = SimulationEngine(Patient(age=40), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
+    od.give_spinal("bupivacaine", 50.0)
+    _advance(od, 240.0, dt=1.0)
+    assert od.state.apnea is True
+    assert od.neuraxial.unconsciousness >= 0.85
+
+    # 4. Thoracic neuraxial block attenuates surgical stimulus but NOT laryngoscopy airway stimulus.
+    air = SimulationEngine(Patient(age=40, surgical_site="lower_abdominal"), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
+    air.start_disturbance("stim_intubation_pulse")
+    air.state.time += 40.0
+    eff_unblocked = stimulus_effects(air, 0.5)
+    air.give_spinal("bupivacaine", 15.0)
+    _advance(air, 400.0, dt=1.0)
+    air.start_disturbance("stim_intubation_pulse")
+    air.state.time += 40.0
+    eff_blocked = stimulus_effects(air, 0.5)
+    assert eff_blocked.hr == pytest.approx(eff_unblocked.hr, rel=0.05)
+
+    # 5. high_spinal scenario credits colloid fluid boluses and TCI pressor targets.
+    sc = SimulationEngine(Patient(age=35), SimulationConfig(mode="awake", tci_enabled=True, dt=1.0, rng_seed=1))
+    sc.trigger_high_spinal()
+    sc.give_albumin(500.0)
+    assert _fluid_given(sc)
+    sc.set_drug_target("nore", 2.0)
+    assert _vasoactive_given(sc)
+
+    # 6. Upgrading from a dilute bolus to a denser epidural infusion raises epidural density.
+    up = SimulationEngine(Patient(age=35), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
+    up.place_epidural(True)
+    up.give_epidural_bolus("bupivacaine", 15.0, 0.1)
+    _advance(up, 120.0, dt=1.0)
+    d_dilute = up.neuraxial._epidural_density
+    up.set_epidural_infusion(10.0, drug="bupivacaine", concentration_pct=0.5)
+    _advance(up, 1800.0, dt=2.0)
+    assert up.neuraxial._epidural_density > d_dilute + 0.05

@@ -197,7 +197,7 @@ class MammillaryPK:
         self.v1 = new_v1
         deficit = min(1.0, v_ratio)
         if temp_met is None or temp_dist is None:
-            clamped_t = clamp(temp_c, 25.0, 38.5)
+            clamped_t = clamp(temp_c, 18.0, 38.5)
             temp_met = 2.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
             temp_dist = 1.6 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
         self.temp_dist_scale = temp_dist
@@ -1191,7 +1191,7 @@ class RocuroniumPK(MammillaryPK):
     ) -> None:
         # Extrapolated from vecuronium in Caldwell 2000: clearance falls 11.3%/°C
         # during hypothermia (Q10 ~3.0), steeper than general hepatic Q10 = 2.0.
-        clamped_t = clamp(temp_c, 25.0, 38.5)
+        clamped_t = clamp(temp_c, 18.0, 38.5)
         nmba_temp_met = 3.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
         super().update_hemodynamics(
             v_ratio, co_ratio, renal_perfusion,
@@ -1234,12 +1234,28 @@ class NorepinephrinePK(MammillaryPK):
 
     def equilibrate_endogenous(self) -> None:
         """Seed secretion without an exogenous infusion at the current clearance."""
-        endogenous_conc = self.endogenous_ug_min / (self.cl1 * self.cl1_scale)
+        endogenous_conc = self.endogenous_ug_min / (self.cl1_base * self.cl1_scale)
         self.set_state_vector([endogenous_conc] * len(self.state_fields))
 
     def reset(self) -> None:
         super().reset()
+        self.basal_input_rate = self.endogenous_ug_min / 60.0
         self.equilibrate_endogenous()
+
+    def update_hemodynamics(
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
+        blood_volume_l: float | None = None, temp_c: float = 37.0,
+        *, temp_met: float | None = None, temp_dist: float | None = None,
+    ) -> None:
+        super().update_hemodynamics(
+            v_ratio, co_ratio, renal_perfusion,
+            blood_volume_l=blood_volume_l, temp_c=temp_c,
+            temp_met=temp_met, temp_dist=temp_dist,
+        )
+        # Keep resting endogenous NE invariant to hypothermic/hemodynamic clearance
+        # scaling while preserving Li 2024 propofol clearance attenuation (cl1_scale).
+        cl_ratio = self.cl1 / self.cl1_base if self.cl1_base > 0.0 else 1.0
+        self.basal_input_rate = (self.endogenous_ug_min / 60.0) * cl_ratio
 
     def update_propofol(self, propofol_conc_ug_ml: float) -> None:
         """Set the clearance covariate, capping bolus peaks at 8 µg/mL."""
@@ -1411,26 +1427,64 @@ class HeparinPK(MammillaryPK):
     def __init__(self, patient: Patient):
         lean_w = _lean_weight_kg(patient)
         lean_flow = (lean_w / 70.0) ** 0.75
-        self._cl_linear_base = 0.006 * lean_flow * organ_clearance_scaler(patient, renal_fraction=0.7)
+        lin_scale, self._lin_renal_frac = renal_capacity_scaling(patient, 0.7)
+        self._cl_linear_base = 0.006 * lean_flow * lin_scale
         self._vmax_sat_u_min = 30.0 * lean_flow
         self._cl_zero_base = self._cl_linear_base + self._vmax_sat_u_min / self.KM_SAT_U_L
-        _, renal_fraction = renal_capacity_scaling(patient, 0.25)
+        self._co_scale = 1.0
+        self._temp_met = 1.0
+        self._renal_perf = 1.0
+        self._deficit_scale = 1.0
         super().__init__(
             v1=_pregnancy_v1(patient, 0.062 * lean_w),
             cl1=self._cl_zero_base,
             v2=0.032 * lean_w,
             cl2=0.036 * lean_flow,
             ke0=1.2,
-            renal_fraction=renal_fraction,
+            renal_fraction=0.0,
             cl1_co_exponent=0.4,
             distribution_co_exponent=0.5,
         )
 
+    def reset(self) -> None:
+        super().reset()
+        self._co_scale = 1.0
+        self._temp_met = 1.0
+        self._renal_perf = 1.0
+        self._deficit_scale = 1.0
+        self.update_nonlinear_clearance()
+
+    def update_hemodynamics(
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
+        blood_volume_l: float | None = None, temp_c: float = 37.0,
+        *, temp_met: float | None = None, temp_dist: float | None = None,
+    ) -> None:
+        super().update_hemodynamics(
+            v_ratio, co_ratio, renal_perfusion,
+            blood_volume_l=blood_volume_l, temp_c=temp_c,
+            temp_met=temp_met, temp_dist=temp_dist,
+        )
+        clamped_t = clamp(temp_c, 18.0, 38.5)
+        self._temp_met = (
+            temp_met
+            if temp_met is not None
+            else (2.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0)
+        )
+        self._co_scale = _pow(co_ratio, self.cl1_co_exponent)
+        self._renal_perf = renal_perfusion
+        deficit = min(1.0, v_ratio)
+        self._deficit_scale = _pow(deficit, self.cl1_deficit_exponent) if deficit < 1.0 and self.cl1_deficit_exponent else 1.0
+        self.update_nonlinear_clearance()
+
     def update_nonlinear_clearance(self) -> None:
-        """Scale clearance with concentration for saturable heparin elimination (Bjornsson 1982)."""
+        """Apply saturable endothelial/RES clearance (Bjornsson 1982; Cohen 1977)
+        separately from linear predominantly renal elimination."""
         c1 = max(0.0, self.state.c1)
-        eff_cl = self._cl_linear_base + self._vmax_sat_u_min / (self.KM_SAT_U_L + c1)
-        self.cl1_scale = eff_cl / self._cl_zero_base if self._cl_zero_base > 0.0 else 1.0
+        sat_cl = (self._vmax_sat_u_min / (self.KM_SAT_U_L + c1)) * self._co_scale * self._temp_met
+        lin_nonrenal = (1.0 - self._lin_renal_frac) * self._co_scale * self._temp_met
+        lin_cl = self._cl_linear_base * (lin_nonrenal + self._lin_renal_frac * self._renal_perf)
+        self.cl1 = (sat_cl + lin_cl) * self._deficit_scale
+        self.cl1_scale = 1.0
 
 
 class ProtaminePK(MammillaryPK):

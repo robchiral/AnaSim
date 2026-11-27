@@ -41,7 +41,8 @@ def add_volume(
     retained_ml = 0.0
     if amount_ml < 0:
         loss_ml = -amount_ml
-        available = max(0.0, model.blood_volume - BLOOD_VOLUME_MIN)
+        min_bv = BLOOD_VOLUME_MIN + max(0.0, model.extracorporeal_volume_ml)
+        available = max(0.0, model.blood_volume - min_bv)
         actual_loss = min(loss_ml, available)
         if actual_loss > 0:
             model.fluids.bleed(actual_loss, model.red_cell_volume_ml / model.blood_volume)
@@ -54,6 +55,8 @@ def add_volume(
             if not suppress_tde:
                 model.tde_sv = max(0.0, model.tde_sv - actual_loss * gain)
     else:
+        if hematocrit == 0.0 and label == "blood":
+            raise ValueError("Blood administration requires hematocrit > 0")
         if hematocrit > 0:
             model.total_blood_in_ml += amount_ml
             retained_ml = amount_ml * cfg.blood_retention_fraction
@@ -108,7 +111,7 @@ def add_volume(
             reserve = 0.35 if model.patient.heart_failure == "hfpef" else 1.0
             model.tde_sv += retained_ml * gain * reserve
 
-    model.blood_volume = max(BLOOD_VOLUME_MIN, model.blood_volume)
+    model.blood_volume = max(BLOOD_VOLUME_MIN + max(0.0, model.extracorporeal_volume_ml), model.blood_volume)
     model._update_hb_conc()
 
 
@@ -154,10 +157,16 @@ def step_intravascular_volume(
     model.fluids.lose_urine(fluid_urine)
     model.total_urine_out_ml += fluid_urine
     model.total_third_space_ml += fluid_sequestration
+    # On open-reservoir CPB, drained blood in the venous reservoir remains part of
+    # the active systemic pool rather than hemorrhagic loss, while fixed circuit
+    # tubing prime sits outside patient circulating volume.
+    circ_ext_vol = (
+        max(0.0, ext_vol - model._cpb_reservoir_ml) if model._cpb_open_drainage else ext_vol
+    )
     if cfg.vol_clearance is not None:
         urine_ml_min = max(0.0, float(cfg.vol_clearance))
     else:
-        vol_excess_r = max(0.0, (model.blood_volume - ext_vol - model.blood_volume_0) / max(1.0, model.blood_volume_0))
+        vol_excess_r = max(0.0, (model.blood_volume - circ_ext_vol - model.blood_volume_0) / max(1.0, model.blood_volume_0))
         hypervol_diuresis = 1.0 + 1.8 * clamp01((vol_excess_r - 0.12) / 0.25)
         urine_ml_min = cfg.uop_ml_kg_hr * model.fluids.lean_mass_kg / 60.0 * hypervol_diuresis
     osmotic_ml_min = max(0.0, osmotic_diuresis_ml_min) if cfg.vol_clearance is None else 0.0
@@ -172,8 +181,9 @@ def step_intravascular_volume(
         model.crystalloid.central_ml *= max(0.0, 1.0 - urine_out_ml / plasma_volume)
         model.total_urine_out_ml += urine_out_ml
     if leak_rate_per_s > 0.0:
-        # Capillary leak loses plasma, not red cells.
-        leak_ml = blood_volume * -math.expm1(-leak_rate_per_s * sub_dt)
+        # Capillary leak occurs across patient microvasculature, not circuit tubing/reservoir.
+        patient_bv = max(0.0, blood_volume - ext_vol)
+        leak_ml = patient_bv * -math.expm1(-leak_rate_per_s * sub_dt)
         available = max(0.0, blood_volume - minimum_blood_volume)
         actual_leak = min(leak_ml, available)
         if actual_leak > 0:
@@ -183,7 +193,7 @@ def step_intravascular_volume(
             model.total_third_space_ml += actual_leak
             model._protein_third_space_ml += actual_leak
     if model.total_third_space_ml > 0 and cfg.third_space_refill_tau_hr > 0:
-        intravascular_excess = (blood_volume - ext_vol) - model.blood_volume_0
+        intravascular_excess = (blood_volume - circ_ext_vol) - model.blood_volume_0
         shortfall = cfg.interstitial_refill_fraction * (
             intravascular_excess + model.total_third_space_ml
         ) - intravascular_excess
@@ -196,17 +206,26 @@ def step_intravascular_volume(
             model.total_third_space_ml -= refill_ml
             blood_volume += refill_ml
 
-    vol_deficit_ml = model.blood_volume_0 - (blood_volume - ext_vol)
+    vol_deficit_ml = model.blood_volume_0 - (blood_volume - circ_ext_vol)
     if cfg.vol_clearance is None and leak_rate_per_s <= 0.0 and vol_deficit_ml > 50.0 and circulation > 0.0:
         # Falling capillary hydrostatic pressure recruits protein-free interstitial
-        # water (Starling transcapillary refill, ~200-270 mL/h peak) while perfusing.
+        # water (Starling transcapillary refill, ~200-270 mL/h peak) while perfusing;
+        # expanded interstitium (e.g. during osmotic diuresis) equilibrates across
+        # capillaries faster via raised interstitial pressure and plasma oncotic rise.
         interstitial_avail_ml = max(0.0, (model.fluids.interstitial_l - 6.0) * 1000.0)
         refill_drive = (
             clamp01((vol_deficit_ml - 50.0) / 950.0)
             * (0.45 + 0.55 * clamp01((85.0 - map_prev) / 35.0))
             * circulation
         )
-        autotransfusion_ml = min(interstitial_avail_ml, vol_deficit_ml * 0.65, 4.5 * refill_drive * dt_min)
+        initial_isf_l = model.fluids.initial_ecf_l - model.fluids.initial_plasma_l
+        isf_excess_ml = max(0.0, (model.fluids.interstitial_l - initial_isf_l) * 1000.0)
+        excess_rate_ml_min = 0.015 * isf_excess_ml * circulation
+        autotransfusion_ml = min(
+            interstitial_avail_ml,
+            vol_deficit_ml * 0.65,
+            (4.5 * refill_drive + excess_rate_ml_min) * dt_min,
+        )
         if autotransfusion_ml > 0.0:
             model.fluids.shift_water(autotransfusion_ml)
             blood_volume += autotransfusion_ml
@@ -242,5 +261,5 @@ def step_intravascular_volume(
     if filtration_ml > 0.0:
         model.crystalloid.central_ml *= max(0.0, 1.0 - filtration_ml / (blood_volume - model.red_cell_volume_ml))
     blood_volume += lung_clearance_ml - filtration_ml
-    model.blood_volume = max(BLOOD_VOLUME_MIN, blood_volume)
+    model.blood_volume = max(BLOOD_VOLUME_MIN + ext_vol, blood_volume)
     model._update_hb_conc()

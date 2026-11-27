@@ -50,6 +50,7 @@ from validation.vitaldb.vitaldb_replay import (  # noqa: E402
     hemo_period_line,
     hemo_subgroup_rows,
     hemo_summary_table_lines,
+    induction_only_mode,
     mean_ci,
     pre_induction,
     procedure,
@@ -59,6 +60,7 @@ from validation.vitaldb.vitaldb_replay import (  # noqa: E402
     run_hemo_cli,
     run_hemodynamic_replay,
     score_cuff_summary,
+    step_headless,
     treated,
     window_medians,
 )
@@ -119,10 +121,10 @@ def bis_latency(case: dict[str, str], patient) -> float:
     if amount(case, "intraop_ftn"):
         engine.give_drug_bolus("fentanyl", amount(case, "intraop_ftn"))
     for _ in range(120):
-        engine.step(1.0)
+        step_headless(engine, 1.0)
     for second in range(300):
         engine.infusion_rates["propofol"] = amount(case, "intraop_ppf") / 20.0 if second < 20 else 0.0
-        engine.step(1.0)
+        step_headless(engine, 1.0)
         if engine.state.bis < 60.0:
             return second + 1.0
     raise Excluded("model BIS does not fall below 60")
@@ -161,7 +163,8 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
         start = onset - 180.0
         covered(gases["Primus/INSP_SEVO"], onset, end, 30.0)
         remi_name = next((name for name in REMI_RATES if name in tracks), None)
-        grid = time_grid(start, max(incision, end), dt)
+        grid_end = incision if induction_only_mode() else max(incision, end)
+        grid = time_grid(start, grid_end, dt)
         step_dt = np.diff(grid)
         if remi_name:
             remi = load(tracks[remi_name])
@@ -205,7 +208,12 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
     )
     expired = load(tracks["Primus/EXP_SEVO"]) if "Primus/EXP_SEVO" in tracks else None
     summary["end_tidal"] = {}
-    for name, t0, t1 in (("before incision", incision - 600.0, incision), ("surgery", incision + 900.0, end)):
+    et_windows = (
+        (("before incision", incision - 600.0, incision),)
+        if induction_only_mode()
+        else (("before incision", incision - 600.0, incision), ("surgery", incision + 900.0, end))
+    )
+    for name, t0, t1 in et_windows:
         sample = np.arange(t0, t1, SAMPLE_SECONDS)
         if expired is None or len(sample) < 60:
             continue
@@ -227,7 +235,7 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
             if valid.sum() >= 12 else None
         )
     summary["maintenance"] = None
-    if end - (incision + 900.0) >= 600.0:
+    if not induction_only_mode() and end - (incision + 900.0) >= 600.0:
         maint = window_medians(tracks, grid, predicted, incision + 900.0, end, track_loader=load)
         if maint:
             summary["maintenance"] = {

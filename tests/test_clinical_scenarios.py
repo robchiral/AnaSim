@@ -310,6 +310,7 @@ class TestClinicalAcceptance:
         bv0 = model.blood_volume
         rbc0 = model.red_cell_volume_ml
         uop0 = model.total_urine_out_ml
+        osm0 = model.total_osmotic_plasma_shift_ml
         untreated.start_anaphylaxis()
         advance_time(untreated, 600.0, dt=2.0)
 
@@ -321,6 +322,7 @@ class TestClinicalAcceptance:
         assert (
             model.blood_volume + model.total_third_space_ml + model.lung_water_ml
             + model.crystalloid.interstitial_ml + (model.total_urine_out_ml - uop0)
+            - (model.total_osmotic_plasma_shift_ml - osm0)
         ) == pytest.approx(bv0, abs=1e-3)
 
         treated.fluid_infusion_rate_ml_min = 250.0

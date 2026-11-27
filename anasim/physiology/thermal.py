@@ -91,12 +91,19 @@ class ThermalModel:
     def target_shivering(
         self, temp_c: float, bis: float, opioid_effect: float, muscle_factor: float,
         unconscious: float = 0.0, *, perfusing: bool = True,
+        neuraxial_shiver_shift_c: float = 0.0,
+        neuraxial_muscle_keep: float = 1.0,
     ) -> float:
         """Equilibrium shivering intensity (0-1) from cold, emergence, opioids, muscle strength, and perfusion."""
         if not perfusing or temp_c <= 31.0:
             return 0.0
         depth_factor = clamp01(self.depth_index)
-        threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * opioid_effect
+        threshold = (
+            SHIVER_BASE_THRESHOLD
+            - SHIVER_DEPTH_DROP_MAX * depth_factor
+            - SHIVER_REMI_DROP_MAX * opioid_effect
+            - max(0.0, neuraxial_shiver_shift_c)
+        )
         temp_deficit = max(0.0, threshold - temp_c)
         cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
         if temp_c < 33.0:
@@ -108,7 +115,7 @@ class ThermalModel:
         # Anesthetics lower the shivering threshold above and attenuate gain rather than
         # imposing a hard zero gate when core temperature falls below the anesthetized threshold.
         anesthetic_gain = 0.35 + 0.65 * emergence
-        return clamp01(cold_drive * anesthetic_gain * muscle_factor)
+        return clamp01(cold_drive * anesthetic_gain * muscle_factor * clamp01(neuraxial_muscle_keep))
 
     def depth_and_metabolism(
         self, temp_c: float, prop_ce: float, mac: float, shiver_level: float = 0.0,
@@ -143,6 +150,8 @@ class ThermalModel:
     def step_shivering(
         self, dt: float, temp_c: float, bis: float, opioid_effect: float, muscle_factor: float,
         unconscious: float = 0.0, *, perfusing: bool = True,
+        neuraxial_shiver_shift_c: float = 0.0,
+        neuraxial_muscle_keep: float = 1.0,
     ) -> float:
         """Advance shivering intensity (0-1) from cold, emergence, opioid effect, and muscle strength."""
         if not perfusing:
@@ -150,6 +159,8 @@ class ThermalModel:
             return 0.0
         target = self.target_shivering(
             temp_c, bis, opioid_effect, muscle_factor, unconscious=unconscious, perfusing=perfusing,
+            neuraxial_shiver_shift_c=neuraxial_shiver_shift_c,
+            neuraxial_muscle_keep=neuraxial_muscle_keep,
         )
         if target != self.shiver_level:
             tau = SHIVER_TAU_ON if target > self.shiver_level else SHIVER_TAU_OFF
@@ -217,12 +228,20 @@ class ThermalModel:
                 )
 
         # Anesthetic vasodilation moves core heat to the periphery over the first
-        # hour (Matsukawa 1995). Vasoconstriction on lightening traps it peripherally,
+        # hour (Matsukawa 1995a; epidural redistribution in Matsukawa 1995b).
+        # Vasoconstriction on lightening traps it peripherally until normothermic awake recovery,
         # and zero-flow arrest halts convective redistribution.
         if perfusing:
             deficit_gap = self.redistribution_target_j(depth_factor) - self.redistributed_heat_j
-            redistribution_w = max(0.0, deficit_gap) / tuning.redistribution_tau_s
-            self.redistributed_heat_j += redistribution_w * dt
+            if deficit_gap > 0.0:
+                redistribution_w = deficit_gap / tuning.redistribution_tau_s
+                self.redistributed_heat_j += redistribution_w * dt
+            else:
+                redistribution_w = 0.0
+                if depth_factor < 0.1 and temp_c >= self.baseline_temp - 0.5 and self.redistributed_heat_j > 0.0:
+                    self.redistributed_heat_j *= math.exp(-dt / (2.0 * tuning.redistribution_tau_s))
+                    if self.redistributed_heat_j < 1.0:
+                        self.redistributed_heat_j = 0.0
         else:
             redistribution_w = 0.0
 
@@ -236,8 +255,11 @@ class ThermalModel:
             if surface_cooling
             else 0.0
         )
-        fluid_heat_j = self._pending_fluid_heat_j
-        self._pending_fluid_heat_j = 0.0
+        if perfusing:
+            fluid_heat_j = self._pending_fluid_heat_j
+            self._pending_fluid_heat_j = 0.0
+        else:
+            fluid_heat_j = 0.0
 
         if extracorporeal_active and not self._extracorporeal_thermal_engaged:
             # Initialize peripheral temperature slightly below core when anesthetized (~1 °C gradient).
@@ -254,14 +276,20 @@ class ThermalModel:
             self.peripheral_temp_c = new_temp
             return new_temp
 
-        # Two-compartment core (62%) and peripheral (38%) thermal balance during and after
+        # Two-compartment core (56%) and peripheral (44%) thermal balance during and after
         # extracorporeal heat exchange (model split informed by Rajek 1998 and Rajek 2000).
-        c_core = 0.62 * self.heat_capacity
-        c_periph = 0.38 * self.heat_capacity
-        # Core-to-periphery conductance (W/°C): moderate during rewarming/vasoconstriction,
-        # higher under warm anesthetic vasodilation, low during arrest.
+        c_core = 0.56 * self.heat_capacity
+        c_periph = 0.44 * self.heat_capacity
+        # Core-to-periphery conductance (W/°C): cold peripheral vasoconstriction limits
+        # heat transfer during hypothermic CPB rewarming, while warm post-bypass
+        # anesthetic vasodilation drives convective core-to-periphery afterdrop.
         if perfusing:
-            k_cp = (28.0 + 22.0 * depth_factor * (1.0 - 0.55 * vasoconst)) * self._bsa_scale
+            periph_cold_vc = clamp01((35.5 - self.peripheral_temp_c) / 4.5)
+            eff_vc = max(
+                vasoconst,
+                0.75 * periph_cold_vc if extracorporeal_active else 0.20 * periph_cold_vc,
+            )
+            k_cp = (24.0 + 28.0 * depth_factor * (1.0 - 0.65 * eff_vc)) * self._bsa_scale
         else:
             k_cp = 10.0 * self._bsa_scale
         min_temp = 18.0

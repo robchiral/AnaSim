@@ -679,9 +679,11 @@ def preroll_scenario(
             on_step(engine, elapsed)
         maybe_record(elapsed)
 
-    # Re-seed beat-synchronous monitors to the pre-rolled hemodynamics before the
-    # short 100 Hz settle that latches capnography, arterial line, SpO2, and alarms.
+    # Re-seed beat-synchronous and capnography monitors before the short 100 Hz
+    # settle so stale pre-roll slugs do not bias initial EtCO2 or alarms.
     seed_arterial_monitors(engine, engine.hemo.state)
+    engine.capno.reset()
+    engine.etco2_readout.reset()
     engine.alarms._violation_s.clear()
     engine.state.alarms = {}
 

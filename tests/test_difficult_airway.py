@@ -220,3 +220,51 @@ def test_failed_laryngoscopy_independent_accepts_sugammadex_wakeup():
     debrief = json.loads(session.command("case_finish"))["debrief"]
     unmet = [o["id"] for o in debrief["outcomes"] if not o["achieved"]]
     assert unmet == []
+
+
+def test_esophageal_volume_continuity_mask_adjunct_cleanup_mild_coma_block_and_direct_vl():
+    """Esophageal transitions preserve lung volume without phantom +500 mL jumps, Mask -> ETT
+    clears mask adjuncts, mild hypothermia does not bypass awake intubation block, and direct VL
+    re-intubation satisfies esophageal Step 1."""
+    from anasim.core.clinical_actions import check_intubation, check_sga_placement
+    from anasim.scenarios.airway import _check_esoph_removed
+
+    # 1. Esophageal entry/exit does not inject phantom lung volume into resp_mech.
+    eng = SimulationEngine(Patient(), SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1))
+    eng.start()
+    _advance(eng, 10.0)
+    eng.set_esophageal_intubation(True, gastric_co2_mmhg=18.0)
+    _advance(eng, 15.0)
+    vol_before_exit = eng.resp_mech.volume
+    eng.set_esophageal_intubation(False)
+    assert abs(eng.resp_mech.volume - vol_before_exit) < 0.05
+
+    # 2. Switching off Mask clears OPA and two-hand jaw thrust.
+    masked = _induce_paralyzed_mask()
+    masked.set_oral_airway(True)
+    masked.set_two_hand_mask(True)
+    masked.set_airway_mode("ETT")
+    assert not masked.airway_crisis.oral_airway and not masked.state.oral_airway
+    assert not masked.airway_crisis.two_hand_mask and not masked.state.two_hand_mask
+
+    # 3. Mild hypothermia (33.5 °C) in an awake unparalyzed patient still blocks intubation and SGA.
+    cold = SimulationEngine(Patient(), SimulationConfig(mode="awake", dt=0.5, rng_seed=1))
+    cold.state.temp_c = 33.5
+    fb_ett = check_intubation(cold)
+    fb_sga = check_sga_placement(cold)
+    assert fb_ett is not None and fb_ett.blocked and fb_ett.code == "awake_intubation"
+    assert fb_sga is not None and fb_sga.blocked and fb_sga.code == "awake_sga"
+
+    # 4. Direct VL re-intubation over an esophageal tube satisfies Step 1 without deadlock,
+    # and eFONA from an esophageal tube does not trigger tracheal extubation stimulus.
+    direct = _induce_paralyzed_mask()
+    direct.set_esophageal_intubation(True, gastric_co2_mmhg=18.0)
+    assert not _check_esoph_removed(direct)[0]
+    direct.attempt_intubation("vl")
+    assert _check_esoph_removed(direct)[0]
+
+    fona = _induce_paralyzed_mask()
+    fona.set_esophageal_intubation(True, gastric_co2_mmhg=18.0)
+    fona._extubation_stimulus_until = -1.0
+    fona.perform_fona()
+    assert fona._extubation_stimulus_until < 0.0

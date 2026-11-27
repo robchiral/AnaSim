@@ -54,25 +54,41 @@ def _in_arrest(engine: SimulationEngine) -> bool:
     )
 
 
+def _drug_responsiveness(engine: SimulationEngine) -> tuple[float, float]:
+    """Return drug-only (loss_of_response, stimulus_tolerance), excluding mild non-drug impairment."""
+    sync_pk_state(engine)
+    sync_inhaled_agents(engine)
+    return (
+        loss_of_response(engine, include_non_drug=False),
+        stimulus_tolerance(engine, include_non_drug=False),
+    )
+
+
+def _deep_non_drug_coma(engine: SimulationEngine) -> bool:
+    return (
+        engine.cerebral.unresponsiveness >= 0.8
+        or engine.toxicity.unresponsiveness >= 0.8
+        or engine.neuraxial.unconsciousness >= 0.8
+        or hypothermia_narcosis_fraction(engine.state.temp_c) >= 0.8
+    )
+
+
 def _has_sustained_hypnosis(engine: SimulationEngine, unconscious: float, tolerance: float) -> bool:
     s = engine.state
-    return _in_arrest(engine) or (
+    return _in_arrest(engine) or _deep_non_drug_coma(engine) or (
         unconscious >= 0.1
         and (
             cardiovascular_hypnotic_ce(engine) >= 1.65
             or s.mac >= 1.5
             or (s.mac >= 0.85 and tolerance >= 0.25)
             or s.ketamine_ce >= 0.8
-            or engine.cerebral.unresponsiveness >= 0.8
-            or engine.toxicity.unresponsiveness >= 0.8
-            or engine.neuraxial.unconsciousness >= 0.8
-            or hypothermia_narcosis_fraction(s.temp_c) >= 0.8
         )
     )
 
 
 def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
-    unconscious, tolerance = _responsiveness(engine)
+    unconscious, _ = _responsiveness(engine)
+    drug_unconscious, drug_tolerance = _drug_responsiveness(engine)
     strength = central_muscle_strength(engine)
     in_arrest = _in_arrest(engine)
     if engine.laryngospasm_severity >= 0.5 and strength > 0.5:
@@ -81,8 +97,8 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
             "Severe laryngospasm closes the vocal cords; tube not placed.",
             blocked=True,
         )
-    sustained_hypnosis = _has_sustained_hypnosis(engine, unconscious, tolerance)
-    if not sustained_hypnosis and (unconscious < 0.1 or tolerance < 0.1) and strength > 0.5:
+    sustained_hypnosis = _has_sustained_hypnosis(engine, drug_unconscious, drug_tolerance)
+    if not sustained_hypnosis and (drug_unconscious < 0.1 or drug_tolerance < 0.1) and strength > 0.5:
         return ActionFeedback(
             "awake_intubation",
             "Patient gags and resists; tube not placed.",
@@ -98,11 +114,12 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
 
 def check_sga_placement(engine: SimulationEngine) -> ActionFeedback | None:
     """Check responsiveness before placing a supraglottic airway."""
-    unconscious, tolerance = _responsiveness(engine)
+    unconscious, _ = _responsiveness(engine)
+    drug_unconscious, drug_tolerance = _drug_responsiveness(engine)
     strength = central_muscle_strength(engine)
     in_arrest = _in_arrest(engine)
-    sustained_hypnosis = _has_sustained_hypnosis(engine, unconscious, tolerance)
-    if not sustained_hypnosis and (unconscious < 0.1 or tolerance < 0.1) and strength > 0.5:
+    sustained_hypnosis = _has_sustained_hypnosis(engine, drug_unconscious, drug_tolerance)
+    if not sustained_hypnosis and (drug_unconscious < 0.1 or drug_tolerance < 0.1) and strength > 0.5:
         return ActionFeedback(
             "awake_sga",
             "Patient gags and resists; SGA not placed.",
@@ -137,6 +154,7 @@ def check_fona(engine: SimulationEngine) -> ActionFeedback | None:
         and crisis.laryngoscopy_attempts == 0
         and not crisis.esophageal_intubation
         and engine.state.airway_obstruction < 0.40
+        and engine.laryngospasm_severity < 0.50
         and engine.state.sao2 >= 90.0
     ):
         return ActionFeedback(
@@ -216,7 +234,12 @@ def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedb
                 "Insulin shifts potassium intracellularly and can worsen hypokalemia (K⁺ < 3.5 mmol/L).",
             )
     if key == "sodium_bicarbonate":
-        if engine.state.ph > 7.50:
+        ph_check = (
+            engine.resp.state.ph_37
+            if abs(engine.state.ph - engine.resp.state.ph) < 1e-4
+            else engine.state.ph
+        )
+        if ph_check > 7.50:
             return ActionFeedback(
                 "bicarbonate_in_alkalemia",
                 "Sodium bicarbonate given during alkalemia (pH > 7.50) worsens metabolic alkalosis and hypocalcemia.",

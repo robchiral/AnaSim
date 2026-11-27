@@ -581,7 +581,10 @@ class AnesthesiaVentilator:
             and self._measured.kind == "MANUAL"
             and not self._measured.inspiring
             and self._since_exhalation >= 2.0
-            and (lung.elastic_pressure < 0.2 if self._cpr_active else abs(lung.elastic_pressure) < 0.2)
+            and (
+                (lung.elastic_pressure < 0.2 if self._cpr_active else abs(lung.elastic_pressure) < 0.2)
+                or (self._since_exhalation >= 4.0 and abs(self.flow) < 0.05)
+            )
             and self._measured.expired >= MIN_EXPIRATION_L
         ):
             self._finish(lung)
@@ -650,17 +653,24 @@ class AnesthesiaVentilator:
     def _rebase(self, lung, peep: float) -> None:
         """Keep absolute lung volume continuous when the set PEEP changes."""
         eff_peep = lung._transmitted_peep(peep)
-        if self._eff_baseline is not None and eff_peep != self._eff_baseline:
-            shift = -lung.compliance * (eff_peep - self._eff_baseline)
+        prev_lung = getattr(self, "_lung", None)
+        if prev_lung is not None and prev_lung is not lung:
+            prev_eff: float | None = lung.peep
+            self._bag_ref_volume = lung.volume
+        else:
+            prev_eff = self._eff_baseline
+        if prev_eff is not None and eff_peep != prev_eff:
+            shift = -lung.compliance * (eff_peep - prev_eff)
             lung.volume += shift
             self._bag_ref_volume += shift
             lung.effort.shift_peep_reference(shift)
             self._current = self._valve = None
             self._expiration = None
-        elif self._eff_baseline is None:
+        elif prev_eff is None:
             if lung.aeration is not None:
                 lung.volume -= lung.compliance * eff_peep
             self._bag_ref_volume = lung.volume
+        self._lung = lung
         prev_baseline = self._baseline
         self._baseline = peep
         self._eff_baseline = eff_peep

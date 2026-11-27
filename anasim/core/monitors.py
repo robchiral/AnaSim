@@ -141,7 +141,7 @@ def compute_capno_value(
     state = engine.state
     readout = engine.etco2_readout
     esophageal = is_esophageal_intubation(engine)
-    et_gases = (0.0, 0.0, 0.0, 0.0) if esophageal else (state.et_o2, state.et_sevo, state.et_n2o, state.et_mac)
+    et_gases = None if esophageal else (state.et_o2, state.et_sevo, state.et_n2o, state.et_mac)
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
         readout.interrupt(
@@ -197,7 +197,7 @@ def compute_capno_value(
     state.display_etco2 = float(readout.value)
     state.etco2_signal_valid = readout.valid
     state.et_o2, state.et_sevo, state.et_n2o, state.et_mac = (
-        readout.et_gases if readout.gas_valid else (0.0, 0.0, 0.0, 0.0)
+        readout.et_gases if (readout.gas_valid and not esophageal) else (0.0, 0.0, 0.0, 0.0)
     )
     return waves
 
@@ -245,7 +245,11 @@ def step_cardiac_monitors(
     )
     st_depression = engine.hemo.coronary.st_depression_mv
     conduction_failure = engine.hemo.coronary.energy_failure
-    compressions = hemo_state.compressions
+    ecmo = engine.extracorporeal
+    pump_override = hemo_state.pump_flow > 0.0 or (
+        ecmo.is_arterial_support and (ecmo.state.aortic_cross_clamp or ecmo.state.cardioplegia_arrest)
+    )
+    compressions = hemo_state.compressions and not pump_override
     if compressions:
         compression_sbp, compression_dbp = compression_pressures(
             hemo_state.cpr_perfusion_map, hemo_state.venous_pressure, filling_factor=engine.hemo.cpr_filling_factor,
@@ -490,7 +494,7 @@ def step_monitors(
     else:
         maintaining = engine._bis_anesthetized and (
             engine.disturbance_active
-            or engine.vaporizer.state.is_on
+            or (engine.vaporizer.state.is_on and engine.circuit.fgf_total() > 0.0)
             or (engine.extracorporeal.is_active and engine.extracorporeal.state.sweep_sevo_percent > 0.0)
             or engine.circuit.fgf_n2o > 0.0
             or any(
@@ -546,7 +550,11 @@ def step_monitors(
         and ppeak_val >= ppeak_limit
     )
     ppeak_alarm = ppeak_limit + 1.0 if (vent_pressure_alarm or bag_pressure_alarm) else ppeak_val
-    bypass_silence = engine.extracorporeal.is_arterial_support and engine.extracorporeal.state.bypass_alarm_mode
+    bypass_silence = (
+        engine.extracorporeal.is_arterial_support
+        and engine.extracorporeal.state.bypass_alarm_mode
+        and engine.hemo.state.pump_flow > ARREST_CO_L_MIN
+    )
     state.alarms = engine.alarms.update(
         {
             "BIS": bis_alarm,
@@ -558,7 +566,7 @@ def step_monitors(
             "SpO2": None if bypass_silence else (display_int(state.display_spo2) if state.spo2_signal_valid else 0.0),
             "Ppeak": None if bypass_silence else ppeak_alarm,
             # The ventilator measures only gas returning through the circuit.
-            "MV": None if bypass_silence else ((round(state.mv, 1) if connected else 0.0) if vent.is_on else None),
+            "MV": None if bypass_silence else ((round(state.mv, 1) if sealed else 0.0) if vent.is_on else None),
             "VTe": None if bypass_silence else vte_percent,
             "FiO2": None if bypass_silence else (display_int(state.fio2 * 100.0) if sealed else None),
         },

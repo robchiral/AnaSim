@@ -226,7 +226,7 @@ class SimulationEngine(DrugControllerMixin):
         self._bis_noise = 0.0
         self.etco2_readout = EtCO2Readout()
         self._tol_current = 0.0
-        self._pk_hemo_scale_cache: tuple[float, float, float, float] | None = None
+        self._pk_hemo_scale_cache: tuple[float, float, float, float, bool] | None = None
         self._pk_blood_out_ml = 0.0
         self.current_mean_paw = 0.0
         self.current_mean_effort = 0.0
@@ -596,6 +596,7 @@ class SimulationEngine(DrugControllerMixin):
             self._last_succinylcholine_time = self.state.time
         if spec.key in ("heparin", "protamine"):
             circ = self.hemo.circulation_fraction()
+            was_prot_rxn = self.event_active("protamine_reaction")
             if spec.key == "protamine":
                 self.coagulation.record_protamine_bolus(dose, model.v1, circulation=circ)
             hep_pk = self.pk["heparin"]
@@ -610,6 +611,8 @@ class SimulationEngine(DrugControllerMixin):
                 baseline_hct=self.hemo.baseline_hct,
                 circulation=circ,
             )
+            if not was_prot_rxn and self.event_active("protamine_reaction"):
+                self.actions.record(self.state.time, ACTION_EVENT_START, label="protamine_reaction")
             projection_core.sync_pk_state(self)
         elif spec.key == "insulin":
             self.glucose.sync_exogenous_insulin(
@@ -685,9 +688,18 @@ class SimulationEngine(DrugControllerMixin):
     def stop_events(self):
         self.stop_hemorrhage()
         self.stop_anaphylaxis()
+        self.anaphylaxis.severity = 0.0
+        self.hemo.anaphylaxis_severity = 0.0
         self.stop_sepsis()
+        self.sepsis.severity = 0.0
+        self.hemo.sepsis_severity = 0.0
         self.stop_malignant_hyperthermia()
+        self.malignant_hyperthermia.severity = 0.0
+        self.aeration.chest_wall_stiffness = 1.0
         self.stop_protamine_reaction()
+        self.coagulation.reaction_severity = 0.0
+        self.coagulation.state.protamine_pvr_factor = 1.0
+        self.hemo._protamine_pvr_factor = 1.0
         self.stop_pneumothorax()
         self.pneumothorax.reset()
         self.state.pneumothorax_pressure = 0.0
@@ -695,8 +707,11 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_pulmonary_embolism()
         self.stop_venous_air_embolism()
         self.embolism.clear_vae()
+        self.hemo._embolic_pvr_factor = 1.0
+        self.hemo._cached_state = None
         self.state.vae_air_ml = 0.0
         self.set_difficult_airway("none")
+        self.airway_crisis.esophageal_armed = False
         self.set_esophageal_intubation(False)
         self.stop_neuraxial()
         self.neuraxial.place_epidural(False)
@@ -782,9 +797,10 @@ class SimulationEngine(DrugControllerMixin):
     ) -> None:
         """Administer a subarachnoid (spinal) local anesthetic bolus."""
         dose = bounded_number("spinal dose", dose_mg, 1.0, 150.0, unit="mg")
+        was_high = self.event_active("high_spinal")
         self.neuraxial.give_spinal(drug=drug, dose_mg=dose, baricity=baricity, high_spinal=high_spinal)
-        if self.neuraxial.last_mode == "high_spinal":
-            self._log_event("high_spinal", True)
+        if not was_high and self.event_active("high_spinal"):
+            self.actions.record(self.state.time, ACTION_EVENT_START, label="high_spinal")
         self._sync_neuraxial_state()
         self.actions.record(
             self.state.time,
@@ -1016,14 +1032,19 @@ class SimulationEngine(DrugControllerMixin):
         self.actions.record(
             self.state.time,
             ACTION_INTUBATION_ATTEMPT,
-            label="placed" if tech == "dl" else f"placed:{tech}",
+            label=(
+                ("esophageal" if tech == "dl" else f"esophageal:{tech}")
+                if result.esophageal
+                else ("placed" if tech == "dl" else f"placed:{tech}")
+            ),
         )
         if result.esophageal:
-            self._log_event("esophageal_intubation", True)
-            self._reset_esophageal_monitors()
+            if not was_esophageal:
+                self.actions.record(self.state.time, ACTION_EVENT_START, label="esophageal_intubation")
+            self._reset_esophageal_monitors(entering=True)
         elif was_esophageal:
-            self._log_event("esophageal_intubation", False)
-            self._reset_esophageal_monitors()
+            self.actions.record(self.state.time, ACTION_EVENT_STOP, label="esophageal_intubation")
+            self._reset_esophageal_monitors(entering=False)
         self.set_airway_mode("ETT")
         if self.bag_mask_active:
             self.set_bag_mask_ventilation(False)
@@ -1033,11 +1054,18 @@ class SimulationEngine(DrugControllerMixin):
             return ActionFeedback("intubation_note", result.message, blocked=False)
         return None
 
-    def _reset_esophageal_monitors(self) -> None:
+    def _reset_esophageal_monitors(self, *, entering: bool = False) -> None:
         """Clear latched capnography and ventilator breath phase on esophageal transitions."""
         self.capno.reset()
         self.etco2_readout.reset()
-        self.vent._switch(None, self.resp_mech)
+        esoph_mech = self.airway_crisis.esophageal_mech
+        esoph_mech.volume = 0.0
+        esoph_mech.peep = 0.0
+        if entering:
+            self.resp_mech.peep = 0.0
+            self.vent._switch(None, esoph_mech)
+        else:
+            self.vent._switch(None, self.resp_mech)
         self.state.display_etco2 = 0.0
         self.state.etco2_signal_valid = False
         self.state.vt = 0.0
@@ -1066,10 +1094,13 @@ class SimulationEngine(DrugControllerMixin):
             return None
         feedback = check_fona(self)
         self.airway_crisis.fona_performed = True
-        self.airway_crisis.clear_esophageal()
-        self.state.esophageal_intubation = False
         self.actions.record(self.state.time, ACTION_FONA, label="performed")
         self.set_airway_mode("FONA")
+        if self.airway_crisis.esophageal_intubation:
+            self._log_event("esophageal_intubation", False)
+            self.airway_crisis.clear_esophageal()
+            self.state.esophageal_intubation = False
+            self._reset_esophageal_monitors(entering=False)
         if self.bag_mask_active:
             self.set_bag_mask_ventilation(False)
         return feedback
@@ -1108,11 +1139,12 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_difficult_airway(self, profile: str) -> None:
         """Configure difficult airway anatomy ('none', 'anterior_dl', or 'severe_cico')."""
-        was_active = self.airway_crisis.difficult_profile != "none"
+        was_active = self.event_active("difficult_airway")
         self.airway_crisis.set_difficult_profile(profile)
-        will_be_active = self.airway_crisis.difficult_profile != "none"
+        will_be_active = self.event_active("difficult_airway")
         if was_active != will_be_active:
-            self._log_event("difficult_airway", will_be_active)
+            action = ACTION_EVENT_START if will_be_active else ACTION_EVENT_STOP
+            self.actions.record(self.state.time, action, label="difficult_airway")
         self.state.difficult_airway = self.airway_crisis.difficult_profile
         self.state.laryngoscopy_attempts = self.airway_crisis.laryngoscopy_attempts
         self.state.laryngoscopy_view = self.airway_crisis.last_view
@@ -1135,7 +1167,7 @@ class SimulationEngine(DrugControllerMixin):
             self.state.esophageal_intubation = True
             if self.state.airway_mode != AirwayType.ETT:
                 self.set_airway_mode("ETT")
-            self._reset_esophageal_monitors()
+            self._reset_esophageal_monitors(entering=True)
         else:
             was = self.airway_crisis.esophageal_intubation
             if was:
@@ -1143,7 +1175,7 @@ class SimulationEngine(DrugControllerMixin):
             self.airway_crisis.clear_esophageal()
             self.state.esophageal_intubation = False
             if was:
-                self._reset_esophageal_monitors()
+                self._reset_esophageal_monitors(entering=False)
 
     def set_airway_mode(self, mode_str: str):
         """Set the connection directly; learner tube placement uses attempt_intubation."""
@@ -1161,7 +1193,7 @@ class SimulationEngine(DrugControllerMixin):
                 self._log_event("esophageal_intubation", False)
                 self.airway_crisis.clear_esophageal()
                 self.state.esophageal_intubation = False
-                self._reset_esophageal_monitors()
+                self._reset_esophageal_monitors(entering=False)
             else:
                 projection_core.sync_inhaled_agents(self)
                 projection_core.sync_pk_state(self)
@@ -1170,6 +1202,11 @@ class SimulationEngine(DrugControllerMixin):
                     and projection_core.extubation_tolerance(self) < 0.65
                 ):
                     self._extubation_stimulus_until = self.state.time + 25.0
+        if previous_mode == AirwayType.MASK and self.state.airway_mode != AirwayType.MASK:
+            if self.airway_crisis.oral_airway:
+                self.set_oral_airway(False)
+            if self.airway_crisis.two_hand_mask:
+                self.set_two_hand_mask(False)
         self.actions.record(
             self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
         )
@@ -1200,14 +1237,29 @@ class SimulationEngine(DrugControllerMixin):
         self.aeration.extra_shunt = bounded_number("ARDS shunt", fraction, 0.0, 0.90)
 
     def _sync_extracorporeal_state(self) -> None:
-        self.hemo.extracorporeal_volume_ml = self.extracorporeal.total_circuit_mixing_volume_ml
-        if not self.extracorporeal.is_arterial_support:
+        ecmo = self.extracorporeal
+        st = ecmo.state
+        self.hemo.extracorporeal_volume_ml = ecmo.total_circuit_mixing_volume_ml
+        if ecmo.is_arterial_support:
+            self.hemo._ecmo_arterial_flow_l_min = max(0.0, float(st.blood_flow_l_min))
+            self.hemo._ecmo_venous_drain_l_min = (
+                max(0.0, float(st.venous_drainage_l_min))
+                if ecmo.is_cpb
+                else self.hemo._ecmo_arterial_flow_l_min
+            )
+            self.hemo._ecmo_lv_vent_l_min = max(0.0, float(st.lv_vent_l_min))
+            self.hemo._aortic_cross_clamp = bool(st.aortic_cross_clamp)
+            self.hemo._cardioplegia_arrest = bool(st.cardioplegia_arrest)
+            self.hemo._cpb_open_drainage = bool(ecmo.is_cpb)
+            self.hemo._cpb_reservoir_ml = max(0.0, float(st.reservoir_volume_ml)) if ecmo.is_cpb else 0.0
+        else:
             self.hemo._ecmo_arterial_flow_l_min = 0.0
             self.hemo._ecmo_venous_drain_l_min = 0.0
             self.hemo._ecmo_lv_vent_l_min = 0.0
             self.hemo._aortic_cross_clamp = False
             self.hemo._cardioplegia_arrest = False
             self.hemo._cpb_open_drainage = False
+            self.hemo._cpb_reservoir_ml = 0.0
         self.hemo.invalidate_state_cache()
         self._sync_cardiac_state()
         self.state.glucose = self.glucose.arterial_glucose_mg_dl
@@ -1221,6 +1273,18 @@ class SimulationEngine(DrugControllerMixin):
         if norm not in ("crystalloid", "saline", "colloid", "blood"):
             raise ValueError(f"Unknown circuit prime fluid: {label!r}")
         return norm
+
+    @classmethod
+    def _resolve_prime_fluid(cls, prime_label: str, prime_hematocrit: float | None) -> tuple[str, float]:
+        norm = cls._normalize_prime_label(prime_label)
+        if norm == "blood":
+            hct = 0.55 if prime_hematocrit is None else bounded_number(
+                "prime hematocrit", prime_hematocrit, 0.01, MAX_HEMATOCRIT,
+            )
+            return norm, hct
+        if prime_hematocrit is not None and prime_hematocrit > 0.0:
+            raise ValueError(f"prime_hematocrit > 0 requires prime_label='blood', got {prime_label!r}")
+        return norm, 0.0
 
     def _seed_extracorporeal_gases(self) -> None:
         """Seed pre/post/regional extracorporeal gases from current patient gases before stepping."""
@@ -1248,9 +1312,16 @@ class SimulationEngine(DrugControllerMixin):
                 prime_ml,
                 hematocrit=prime_hematocrit,
                 retention_fraction=1.0,
-                label=self._normalize_prime_label(prime_label),
+                label=prime_label,
                 suppress_tde=True,
             )
+            is_blood = prime_label == "blood" or prime_hematocrit > 0.0
+            st = self.extracorporeal.state
+            if st.heater_cooler_on:
+                prime_temp = 37.0
+            else:
+                prime_temp = 37.0 if self.state.fluid_warmer else (6.0 if is_blood else 21.0)
+            self.thermal.add_fluid_heat_j(prime_ml, prime_temp, self.state.temp_c, is_blood=is_blood)
         if self.extracorporeal._last_pass is None:
             self._seed_extracorporeal_gases()
         self._sync_extracorporeal_state()
@@ -1267,14 +1338,14 @@ class SimulationEngine(DrugControllerMixin):
         membrane_area_m2: float | None = None,
         prime_volume_ml: float | None = None,
         prime_label: str = "crystalloid",
-        prime_hematocrit: float = 0.0,
+        prime_hematocrit: float | None = None,
         heater_cooler_on: bool = True,
         water_target_c: float = 37.0,
     ) -> None:
         """Initiate venovenous ECMO with optional circuit prime hemodilution."""
-        self._normalize_prime_label(prime_label)
+        norm_label, hct = self._resolve_prime_fluid(prime_label, prime_hematocrit)
         if self.extracorporeal.is_active and not self.extracorporeal.is_vv:
-            self.stop_extracorporeal(reinfuse=False)
+            self.stop_extracorporeal(reinfuse=False, reinfuse_reservoir=True)
         prime_ml = self.extracorporeal.start_vv_ecmo(
             blood_flow_l_min=blood_flow_l_min,
             sweep_gas_l_min=sweep_gas_l_min,
@@ -1286,7 +1357,7 @@ class SimulationEngine(DrugControllerMixin):
             heater_cooler_on=heater_cooler_on,
             water_target_c=water_target_c,
         )
-        self._finish_extracorporeal_start("start_vv_ecmo", blood_flow_l_min, prime_ml, prime_label, prime_hematocrit)
+        self._finish_extracorporeal_start("start_vv_ecmo", blood_flow_l_min, prime_ml, norm_label, hct)
 
     def start_va_ecmo(
         self,
@@ -1299,15 +1370,16 @@ class SimulationEngine(DrugControllerMixin):
         membrane_area_m2: float | None = None,
         prime_volume_ml: float | None = None,
         prime_label: str = "crystalloid",
-        prime_hematocrit: float = 0.0,
+        prime_hematocrit: float | None = None,
         heater_cooler_on: bool = True,
         water_target_c: float = 37.0,
         lv_vent_l_min: float = 0.0,
+        bypass_alarm_mode: bool = False,
     ) -> None:
         """Initiate venoarterial ECMO (peripheral femoral or central)."""
-        self._normalize_prime_label(prime_label)
+        norm_label, hct = self._resolve_prime_fluid(prime_label, prime_hematocrit)
         if self.extracorporeal.is_active and not self.extracorporeal.is_va:
-            self.stop_extracorporeal(reinfuse=False)
+            self.stop_extracorporeal(reinfuse=False, reinfuse_reservoir=True)
         prime_ml = self.extracorporeal.start_va_ecmo(
             blood_flow_l_min=blood_flow_l_min,
             sweep_gas_l_min=sweep_gas_l_min,
@@ -1320,7 +1392,8 @@ class SimulationEngine(DrugControllerMixin):
             water_target_c=water_target_c,
             lv_vent_l_min=lv_vent_l_min,
         )
-        self._finish_extracorporeal_start("start_va_ecmo", blood_flow_l_min, prime_ml, prime_label, prime_hematocrit)
+        self.extracorporeal.set_bypass_alarm_mode(bool(bypass_alarm_mode))
+        self._finish_extracorporeal_start("start_va_ecmo", blood_flow_l_min, prime_ml, norm_label, hct)
 
     def start_cpb(
         self,
@@ -1335,7 +1408,7 @@ class SimulationEngine(DrugControllerMixin):
         prime_volume_ml: float | None = None,
         initial_reservoir_ml: float = 800.0,
         prime_label: str = "crystalloid",
-        prime_hematocrit: float = 0.0,
+        prime_hematocrit: float | None = None,
         blood_gas_strategy: BloodGasManagement | str = BloodGasManagement.ALPHA_STAT,
         heater_cooler_on: bool = True,
         water_target_c: float = 37.0,
@@ -1343,7 +1416,7 @@ class SimulationEngine(DrugControllerMixin):
         bypass_alarm_mode: bool = True,
     ) -> None:
         """Initiate cardiopulmonary bypass with an open venous reservoir."""
-        self._normalize_prime_label(prime_label)
+        norm_label, hct = self._resolve_prime_fluid(prime_label, prime_hematocrit)
         if self.extracorporeal.is_active and not self.extracorporeal.is_cpb:
             self.stop_extracorporeal(reinfuse=False)
         prime_ml = self.extracorporeal.start_cpb(
@@ -1362,16 +1435,23 @@ class SimulationEngine(DrugControllerMixin):
             venous_clamp_open=venous_clamp_open,
             bypass_alarm_mode=bypass_alarm_mode,
         )
-        self._finish_extracorporeal_start("start_cpb", blood_flow_l_min, prime_ml, prime_label, prime_hematocrit)
+        self._finish_extracorporeal_start("start_cpb", blood_flow_l_min, prime_ml, norm_label, hct)
 
-    def stop_extracorporeal(self, *, reinfuse: bool = False) -> None:
+    def stop_extracorporeal(self, *, reinfuse: bool = False, reinfuse_reservoir: bool = False) -> None:
         """Stop active ECMO or CPB support."""
         if not self.extracorporeal.is_active:
             return
-        discard_ml = self.hemo.extracorporeal_volume_ml
+        if reinfuse:
+            discard_ml = 0.0
+        elif reinfuse_reservoir and self.extracorporeal.is_cpb:
+            # Return drained patient blood from the open CPB venous reservoir while discarding fixed tubing prime.
+            discard_ml = max(0.0, float(self.extracorporeal.state.primed_volume_ml))
+        else:
+            discard_ml = self.hemo.extracorporeal_volume_ml
         self.extracorporeal.stop()
         self.hemo.extracorporeal_volume_ml = 0.0
-        if not reinfuse and discard_ml > 0.0:
+        self.hemo._cpb_reservoir_ml = 0.0
+        if discard_ml > 0.0:
             self.hemo.add_volume(-discard_ml, suppress_tde=True)
         self._sync_extracorporeal_state()
         self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="stop")
@@ -1469,6 +1549,10 @@ class SimulationEngine(DrugControllerMixin):
         # Fluid poured into the hard-shell reservoir stays 100% in the reservoir+circuit pool.
         self.hemo.add_volume(actual_vol, hematocrit=hct, retention_fraction=1.0, label=norm_kind, suppress_tde=True)
         added_bv = max(0.0, self.hemo.blood_volume - before_bv)
+        if added_bv > 0.0:
+            is_blood = norm_kind == "blood" or hct > 0.0
+            fluid_temp = 37.0 if self.state.fluid_warmer else (6.0 if is_blood else 21.0)
+            self.thermal.add_fluid_heat_j(added_bv, fluid_temp, self.state.temp_c, is_blood=is_blood)
         st.reservoir_volume_ml = min(cfg.cpb_reservoir_max_ml, st.reservoir_volume_ml + added_bv)
         st.reservoir_low_alarm = st.reservoir_volume_ml < cfg.cpb_reservoir_low_ml
         self._sync_extracorporeal_state()
@@ -1512,6 +1596,7 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(f"Unknown rhythm: {rhythm_name!r}")
         self.hemo.rhythm_type = rhythm
         self.arrhythmias.reset()
+        self.defibrillator.waiting_for_r = False
         self.cardiac_cycle.clear_rate_history()
         self.hemo.invalidate_state_cache()
         self._sync_cardiac_state()
@@ -1585,7 +1670,8 @@ class SimulationEngine(DrugControllerMixin):
         self.ecg.trigger_shock_artifact()
         self.actions.record(time, ACTION_SHOCK,
                             label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
-        self.hemo.coronary.apply_shock(SHOCK_ENERGY_J)
+        if not (self.extracorporeal.is_arterial_support and self.extracorporeal.state.cardioplegia_arrest):
+            self.hemo.coronary.apply_shock(SHOCK_ENERGY_J)
         # An electrically silent heart keeps its underlying rhythm.
         if not silent and prev_rhythm != RhythmType.ASYSTOLE:
             self.hemo.rhythm_type = self.arrhythmias.after_shock(
@@ -1705,11 +1791,14 @@ class SimulationEngine(DrugControllerMixin):
         st = ecmo.state
         abg_ph = float(self.resp.state.ph_37)
         abg_paco2 = float(self.resp.state.pa_co2_37)
-        abg_pao2 = self.resp.arterial_po2_at_37()
+        abg_pao2, abg_sao2 = self.resp.arterial_po2_and_sat_at_37()
         abg_hco3 = float(state.hco3)
         abg_be = float(state.base_excess)
-        abg_sao2 = float(state.sao2)
-        abg_fio2 = float(st.sweep_fio2) if (ecmo.is_cpb and not self.vent.is_on) else float(state.fio2)
+        abg_fio2 = (
+            float(st.sweep_fio2)
+            if (ecmo.is_arterial_support and not self.vent.is_on and st.cannulation is CannulationType.CENTRAL)
+            else float(state.fio2)
+        )
         hb_sample = float(self.hemo.hb_conc if fluids._circulation >= 0.99 else self.resp._arterial_hb)
         temp_c = float(state.temp_c)
 
@@ -1843,6 +1932,42 @@ class SimulationEngine(DrugControllerMixin):
         """Return an independent copy of the current state, including alarm flags."""
         return copy.deepcopy(self.state)
 
+    def _simulate_heparin_protamine_csht(self, key: str, max_seconds: int = 7200) -> float:
+        """Simulate coupled nonlinear heparin clearance and active protamine neutralization."""
+        hep = copy.deepcopy(self.pk["heparin"])
+        prot = copy.deepcopy(self.pk["protamine"])
+        assert isinstance(hep, HeparinPK)
+        target_model = hep if key == "heparin" else prot
+        ce0 = target_model.state.ce
+        if ce0 <= 0.0:
+            return 0.0
+        target = 0.5 * ce0
+        circ = self.hemo.circulation_fraction(self.hemo.state.co)
+        if circ <= 0.0 or max_seconds <= 0:
+            return max_seconds / 60.0
+        bind_rate = self.coagulation.BINDING_RATE_L_MG_MIN
+        u_per_mg = 100.0
+        dt_min = 1.0 / 60.0
+        for second in range(1, max_seconds + 1):
+            if hep.has_mass():
+                hep.update_nonlinear_clearance()
+                hep.step(1.0, 0.0)
+            if prot.has_mass():
+                prot.step(1.0, 0.0)
+            if hep.state.c1 > 0.0 and prot.state.c1 > 0.0:
+                v_hep = max(0.5, hep.v1)
+                v_prot = max(0.5, prot.v1)
+                m_hep_mg = (hep.state.c1 * v_hep) / u_per_mg
+                m_prot_mg = prot.state.c1 * v_prot
+                v_mix = 0.5 * (v_hep + v_prot)
+                d_mg = min(m_hep_mg, m_prot_mg, bind_rate * circ * (m_hep_mg * m_prot_mg / v_mix) * dt_min)
+                if d_mg > 0.0:
+                    hep.state.c1 = max(0.0, hep.state.c1 - (d_mg * u_per_mg) / v_hep)
+                    prot.state.c1 = max(0.0, prot.state.c1 - d_mg / v_prot)
+            if target_model.state.ce <= target:
+                return second / 60.0
+        return max_seconds / 60.0
+
     def get_predicted_csht(self, drug: str, max_seconds: int = 7200) -> float:
         """Minutes for a drug's effect site to halve (or fall halfway to endogenous baseline) if stopped now, up to max_seconds."""
         key = get_drug_spec(drug).key
@@ -1851,6 +1976,8 @@ class SimulationEngine(DrugControllerMixin):
                 self.pk["roc"], max_seconds=max_seconds,
                 mac_sevo=self.pk_sevo.state.mac,
             )
+        if key in ("heparin", "protamine"):
+            return self._simulate_heparin_protamine_csht(key, max_seconds=max_seconds)
         pump_model = (
             self.pump_pk.get(key)
             if self.config.tci_enabled and key not in self._pump_needs_reset

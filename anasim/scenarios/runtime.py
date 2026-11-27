@@ -319,6 +319,9 @@ def _describe(record: ActionRecord) -> str | None:
         if label.startswith("failed"):
             tech = label.split(":", 1)[1] if ":" in label else ""
             return f"Intubation unsuccessful ({tech_names[tech]})" if tech in tech_names else "Intubation unsuccessful"
+        if label.startswith("esophageal"):
+            tech = label.split(":", 1)[1] if ":" in label else ""
+            return f"Esophageal intubation ({tech_names[tech]})" if tech in tech_names else "Esophageal intubation"
         tech = label.split(":", 1)[1] if ":" in label else ""
         return f"Tracheal tube placed ({tech_names[tech]})" if tech in tech_names else "Tracheal tube placed"
     if action == ACTION_AIRWAY_TOOL:

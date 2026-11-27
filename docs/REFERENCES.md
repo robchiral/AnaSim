@@ -140,6 +140,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Yasuda et al. (1991). *Anesth Analg*. [Sevoflurane and isoflurane uptake and washout](https://pubmed.ncbi.nlm.nih.gov/1994760/).
 - Carpenter et al. (1986). *Anesth Analg*. [Inhaled anesthetic kinetics in humans](https://pubmed.ncbi.nlm.nih.gov/3706798/).
 - Lockwood et al. (1997). *Br J Anaesth*. [Effect of temperature on volatile anesthetic blood-gas solubility](https://pubmed.ncbi.nlm.nih.gov/9389273/).
+- Vitez et al. (1974). *Anesthesiology*. [Effects of hypothermia on halothane and isoflurane MAC in the rat](https://pubmed.ncbi.nlm.nih.gov/4151813/).
 - Goto et al. (2000). *Anesthesiology*. [Nitrous oxide MAC at awakening](https://pubmed.ncbi.nlm.nih.gov/11046204/).
 - Katoh et al. (1997). *Br J Anaesth*. [Sevoflurane-nitrous oxide interaction at awakening](https://pubmed.ncbi.nlm.nih.gov/9389264/).
 
@@ -161,6 +162,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Ozcan et al. (2010). *J Neurosurg Anesthesiol*. [Nitrous oxide effects on BIS and entropy](https://pubmed.ncbi.nlm.nih.gov/20844378/).
 - Hans et al. (2005). *Br J Anaesth*. [Ketamine effects on BIS and spectral entropy during sevoflurane anesthesia](https://pubmed.ncbi.nlm.nih.gov/15591328/).
 - Pilge et al. (2006). *Anesthesiology*. [Calculation time delay of BIS and EEG depth-of-anesthesia indices](https://pubmed.ncbi.nlm.nih.gov/16508396/).
+- Stecker et al. (2001). *Ann Thorac Surg*. [EEG and evoked potentials during deep hypothermic circulatory arrest](https://pubmed.ncbi.nlm.nih.gov/11216734/).
 
 ## Stimulation responses
 
@@ -180,6 +182,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 ## Neuromuscular block
 
 - Kleijn et al. (2011). *Br J Clin Pharmacol*. [Sugammadex PK/PD](https://pubmed.ncbi.nlm.nih.gov/21535448/).
+- Pühringer et al. (2008). *Anesthesiology*. [Sugammadex dose finding for immediate reversal of high-dose rocuronium](https://pubmed.ncbi.nlm.nih.gov/18648227/).
 - Lowry et al. (1998). *Anesth Analg*. [Rocuronium onset and recovery under sevoflurane, isoflurane, and propofol](https://pubmed.ncbi.nlm.nih.gov/9768798/).
 - Eleveld et al. (2007). *Anesth Analg*. [Temporary rebound of neuromuscular block after low-dose sugammadex](https://pubmed.ncbi.nlm.nih.gov/17312212/).
 - Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
@@ -301,6 +304,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Magnani et al. (1977). *J Int Med Res*. [Dobutamine dose response](https://pubmed.ncbi.nlm.nih.gov/838109/).
 - Hernández et al. (2013). *Intensive Care Med*. [Dobutamine hemodynamics and perfusion in septic shock](https://pubmed.ncbi.nlm.nih.gov/23740284/).
 - Baim et al. (1983). *N Engl J Med*. [Milrinone hemodynamics](https://pubmed.ncbi.nlm.nih.gov/6888453/).
+- Feneck (1992). *J Cardiothorac Vasc Anesth*. [Intravenous milrinone hemodynamics and pulmonary vascular resistance after cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/1421066/).
 - DailyMed (2026b). [Milrinone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=88f78780-399f-4780-be19-205739db1682).
 - Sum et al. (1983). *Clin Pharmacol Ther*. [Esmolol PK and beta blockade](https://pubmed.ncbi.nlm.nih.gov/6617063/).
 - Wiest and Haney (2012). *Clin Pharmacokinet*. [Esmolol pharmacology review](https://pubmed.ncbi.nlm.nih.gov/22515557/).
@@ -427,6 +431,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Letiexhe et al. (1993). *J Clin Endocrinol Metab*. [Insulin secretion, clearance, and action in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/8077319/).
 - Alvestrand et al. (1984). *Am J Physiol*. [Preserved insulin-mediated potassium uptake in chronic uremia](https://pubmed.ncbi.nlm.nih.gov/6364842/).
 - Allon and Copkney (1990). *Kidney Int*. [Albuterol and insulin with dextrose for hyperkalemia in hemodialysis patients](https://pubmed.ncbi.nlm.nih.gov/2266671/).
+- Chothia et al. (2014). *Nephron Physiol*. [Bolus glucose with or without insulin for hyperkalemia](https://pubmed.ncbi.nlm.nih.gov/24576893/).
 - Moore and Woollard (2005). *Emerg Med J*. [Randomized trial of 10% versus 50% dextrose for prehospital hypoglycemia](https://pubmed.ncbi.nlm.nih.gov/15983093/).
 - DeFronzo et al. (2013). *Diabetes Care*. [Renal glucose reabsorption and TmG in healthy and type 2 diabetic adults](https://pubmed.ncbi.nlm.nih.gov/23735727/).
 - Mitrakou et al. (1991). *Am J Physiol*. [Hierarchy of glycemic thresholds for counterregulation, symptoms, and cerebral dysfunction](https://pubmed.ncbi.nlm.nih.gov/1987794/).
@@ -537,7 +542,9 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 ## Temperature
 
 - Sessler (2000). *Anesthesiology*. [Perioperative heat balance](https://pubmed.ncbi.nlm.nih.gov/10691247/).
-- Matsukawa et al. (1995). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
+- Matsukawa et al. (1995a). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
+- Matsukawa et al. (1995b). *Anesthesiology*. [Heat flow and redistribution during epidural anesthesia](https://pubmed.ncbi.nlm.nih.gov/7486181/).
+- Ozaki et al. (1994). *Anesthesiology*. [Thermoregulatory thresholds during epidural and spinal anesthesia](https://pubmed.ncbi.nlm.nih.gov/8053576/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 - Kurz et al. (1995a). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
 - Kurz et al. (1995b). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
@@ -600,6 +607,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Gordon et al. (1975). *J Thorac Cardiovasc Surg*. [Arterial pressure, viscosity, and vascular resistance during CPB](https://pubmed.ncbi.nlm.nih.gov/1117744/).
 - Eckmann et al. (2000). *Anesth Analg*. [Hematocrit, diluent, temperature, and shear effects on blood viscosity](https://pubmed.ncbi.nlm.nih.gov/10960372/).
 - Rajek et al. (2000). *Anesthesiology*. [Methods for reducing postbypass core temperature afterdrop](https://pubmed.ncbi.nlm.nih.gov/10691232/).
+- Nissinen et al. (2009). *Perfusion*. [Safe aortic cross-clamp and cardiopulmonary bypass time limits in adult cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/20007817/).
+- Al-Sarraf et al. (2011). *Int J Surg*. [Aortic cross-clamp duration and postoperative low cardiac output in cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/20965288/).
 - Murkin et al. (1987). *Anesth Analg*. [Cerebral autoregulation and flow-metabolism coupling during CPB](https://pubmed.ncbi.nlm.nih.gov/3113288/).
 - Hiraoka et al. (2004). *Clin Pharmacol Ther*. [Unbound propofol concentrations during CPB hemodilution](https://pubmed.ncbi.nlm.nih.gov/15060510/).
 - Michelsen et al. (2001). *Anesth Analg*. [Remifentanil pharmacokinetics during hypothermic CPB](https://pubmed.ncbi.nlm.nih.gov/11682375/).
@@ -612,6 +621,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 - Bull et al. (1975). *J Thorac Cardiovasc Surg*. [Individualized heparin and protamine dose-response curve using ACT](https://pubmed.ncbi.nlm.nih.gov/1127967/).
 - Bjornsson et al. (1982). *Clin Pharmacol Ther*. [Dose-dependent heparin pharmacokinetics by three assay methods](https://pubmed.ncbi.nlm.nih.gov/7053298/).
+- Cohen et al. (1977). *Anesth Analg*. [Plasma heparin activity during hypothermic cardiopulmonary bypass](https://pubmed.ncbi.nlm.nih.gov/560145/).
 - Butterworth et al. (2002). *Ann Thorac Surg*. [Rapid disappearance of protamine in adults after CPB](https://pubmed.ncbi.nlm.nih.gov/12440613/).
 - Teoh et al. (2004). *J Thorac Cardiovasc Surg*. [Postoperative protamine infusion and heparin rebound after CPB](https://pubmed.ncbi.nlm.nih.gov/15282457/).
 - Mochizuki et al. (1998). *Anesth Analg*. [Excess protamine effects on platelet aggregation and ACT](https://pubmed.ncbi.nlm.nih.gov/9768770/).
@@ -631,6 +641,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Eger and Saidman (1965). *Anesthesiology*. [Nitrous oxide expansion of closed canine pneumothorax](https://pubmed.ncbi.nlm.nih.gov/14257336/).
 - McIntyre and Sasahara (1971). *Am J Cardiol*. [Hemodynamic response to acute pulmonary embolism without prior cardiopulmonary disease](https://pubmed.ncbi.nlm.nih.gov/5155756/).
 - Eriksson et al. (1989). *Chest*. [Alveolar dead space and arterial-to-end-tidal CO₂ gradient in pulmonary embolism](https://pubmed.ncbi.nlm.nih.gov/2752819/).
+- Marti et al. (2015). *Eur Heart J*. [Systemic thrombolytic therapy and major bleeding in acute pulmonary embolism](https://pubmed.ncbi.nlm.nih.gov/24917641/).
 - Mirski et al. (2007). *Anesthesiology*. [Diagnosis and treatment of vascular air embolism](https://pubmed.ncbi.nlm.nih.gov/17197859/).
 - Munson and Merrick (1966). *Anesthesiology*. [Nitrous oxide effect on lethal venous air embolism in rabbits](https://pubmed.ncbi.nlm.nih.gov/5924551/).
 
@@ -638,6 +649,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 - Veering et al. (1988). *Br J Anaesth*. [Age and spinal spread of hyperbaric bupivacaine](https://pubmed.ncbi.nlm.nih.gov/3345280/).
 - Freund et al. (1967). *Anesthesiology*. [Ventilatory reserve and sensory-motor dissociation during high spinal and epidural anesthesia](https://pubmed.ncbi.nlm.nih.gov/6035013/).
+- COMET Study Group UK (2001). *Lancet*. [Low-dose mobile versus traditional epidural analgesia and motor block](https://pubmed.ncbi.nlm.nih.gov/11454372/).
 - Ward et al. (1965). *JAMA*. [Hemodynamics of spinal, plain epidural, and epinephrine-containing epidural anesthesia](https://pubmed.ncbi.nlm.nih.gov/5899742/).
 - Rooke et al. (1997). *Anesth Analg*. [Spinal anesthesia hemodynamics and organ blood volume shifts in elderly men](https://pubmed.ncbi.nlm.nih.gov/9212130/).
 - Caplan et al. (1988). *Anesthesiology*. [Unexpected cardiac arrest during spinal anesthesia](https://pubmed.ncbi.nlm.nih.gov/3337390/).

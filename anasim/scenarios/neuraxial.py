@@ -5,7 +5,9 @@ from anasim.core.action_log import (
     ACTION_EVENT_START,
     ACTION_FLUID,
     ACTION_INFUSION_RATE,
+    ACTION_TCI_TARGET,
 )
+from anasim.core.projection import loss_of_response
 from anasim.core.state import AirwayType
 
 from .base import (
@@ -57,7 +59,12 @@ def _vasoactive_given(engine) -> bool:
         ACTION_INFUSION_RATE,
         labels=("nore", "epi", "phenyl", "vaso"),
     )
-    return any(r.amount > 0 for r in (*boluses, *infusions))
+    tci_targets = engine.actions.since_event(
+        "high_spinal",
+        ACTION_TCI_TARGET,
+        labels=("nore", "epi", "phenyl", "vaso"),
+    )
+    return any(r.amount > 0 for r in (*boluses, *infusions, *tci_targets))
 
 
 def _fluid_given(engine) -> bool:
@@ -65,7 +72,7 @@ def _fluid_given(engine) -> bool:
         sum(
             r.amount
             for r in engine.actions.since_event(
-                "high_spinal", ACTION_FLUID, labels=("crystalloid", "saline", "albumin", "blood"),
+                "high_spinal", ACTION_FLUID, labels=("crystalloid", "saline", "albumin", "colloid", "blood"),
             )
         )
         >= 500.0
@@ -128,7 +135,7 @@ def create_high_spinal() -> Scenario:
         missing = []
         if not (engine.bag_mask_active or engine.vent.is_on):
             missing.append("Start 100% O2 bag-mask ventilation")
-        if engine.neuraxial.unconsciousness < 0.8 and engine.state.loc < 0.5:
+        if engine.neuraxial.unconsciousness < 0.8 and loss_of_response(engine, include_non_drug=False) < 0.5:
             missing.append("Support ventilation until total spinal loss of consciousness (or induce gently)")
         return not missing, "; ".join(missing)
 

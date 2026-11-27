@@ -6,6 +6,7 @@ from anasim.core.action_log import (
     ACTION_EMBOLISM_TREAT,
     ACTION_EVENT_START,
     ACTION_INFUSION_RATE,
+    ACTION_TCI_TARGET,
 )
 from anasim.core.state import AirwayType
 
@@ -29,15 +30,29 @@ from .base import (
 
 def _setup_n2o_balanced(engine) -> None:
     """Seed 50% N2O / O2 balanced maintenance so N2O cavity/bubble expansion is active immediately."""
+    from anasim.core import projection as projection_core
+
     engine.set_fgf(1.5, 0.0, 1.5)
     engine.set_vaporizer(1.6)
-    engine.circuit.composition.fin2o = 0.50
-    engine.circuit.composition.fio2 = 0.48
-    engine.circuit.composition.fin2 = 0.02
-    engine.pk_n2o.state.p_alv = 0.46
-    engine.pk_n2o.state.p_vrg = 0.46
-    engine.state.fi_n2o = 50.0
-    engine.state.et_n2o = 46.0
+    comp = engine.circuit.composition
+    fi_agent = max(0.0, comp.fi_agent)
+    comp.fin2o = 0.50
+    comp.fio2 = max(0.21, 0.50 - fi_agent)
+    comp.fin2 = max(0.0, 1.0 - comp.fio2 - comp.fin2o - fi_agent)
+    p_n2o = 0.46
+    n2o_st = engine.pk_n2o.state
+    n2o_st.p_alv = n2o_st.p_art = n2o_st.p_vrg = n2o_st.p_brain = n2o_st.p_mus = n2o_st.p_fat = p_n2o
+    n2o_st.mac = p_n2o * 100.0 / engine.pk_n2o.mac_at_temp(engine.state.temp_c)
+    engine._tracheal_gas = projection_core.inspired_gas_mixture(engine)
+    projection_core.sync_inspired_gas(engine)
+    projection_core.sync_inhaled_agents(engine)
+    if engine.etco2_readout.gas_valid:
+        engine.etco2_readout.et_gases = (
+            engine.state.et_o2,
+            engine.state.et_sevo,
+            engine.state.et_n2o,
+            engine.state.et_mac,
+        )
 
 
 def _setup_pe_tiva(engine) -> None:
@@ -97,7 +112,10 @@ def _pressor_used(engine, event_name: str) -> bool:
     infusions = engine.actions.since_event(
         event_name, ACTION_INFUSION_RATE, labels=("nore", "epi", "phenyl", "vaso"),
     )
-    return any(r.amount > 0 for r in (*boluses, *infusions))
+    tci_targets = engine.actions.since_event(
+        event_name, ACTION_TCI_TARGET, labels=("nore", "epi", "phenyl", "vaso"),
+    )
+    return any(r.amount > 0 for r in (*boluses, *infusions, *tci_targets))
 
 
 def create_tension_pneumothorax() -> Scenario:
@@ -347,7 +365,7 @@ def create_venous_air_embolism() -> Scenario:
                     and _ventilated_airway(e)[0]
                     and _circulating(e)
                     and e.state.map >= 65.0
-                    and e.state.sao2 >= 92.0
+                    and (e.state.upper_sao2 if e.extracorporeal.is_va else e.state.sao2) >= 92.0
                 ),
                 review="Maintain perfusion and 100% O₂ ventilation until EtCO₂ and MAP normalize.",
             ),
@@ -401,9 +419,23 @@ def create_pulmonary_embolism() -> Scenario:
         map_ok, map_msg = _require_monitored_map_ecmo(engine, 65.0)
         if not map_ok:
             missing.append(map_msg)
-        spo2_ok, spo2_msg = require_oxygenation(92.0)(engine)
-        if not spo2_ok:
-            missing.append(spo2_msg)
+        if engine.extracorporeal.is_va and not engine.state.spo2_signal_valid:
+            pe_starts = engine.actions.since_case(ACTION_EVENT_START, labels=("pulmonary_embolism",))
+            pe_t0 = pe_starts[-1].time if pe_starts else 0.0
+            ready_abgs = [
+                g for g in engine.blood_gases
+                if g.site in ("arterial", "right_radial")
+                and g.drawn_at >= pe_t0
+                and g.ready_at <= engine.state.time
+            ]
+            if not ready_abgs:
+                missing.append("Confirm upper-body oxygenation with an arterial / right-radial ABG")
+            elif ready_abgs[-1].sao2 < 92.0:
+                missing.append(f"ABG SaO₂: {format_unmet_int(ready_abgs[-1].sao2, low=92.0)}/92%+")
+        else:
+            spo2_ok, spo2_msg = require_oxygenation(92.0)(engine)
+            if not spo2_ok:
+                missing.append(spo2_msg)
         if not engine.extracorporeal.is_va:
             if not engine.state.etco2_signal_valid:
                 missing.append("Awaiting exhaled CO₂")
@@ -411,7 +443,8 @@ def create_pulmonary_embolism() -> Scenario:
                 etco2 = monitor_value(engine, "etco2")
                 if etco2 < 24.0:
                     missing.append(f"EtCO₂: {format_unmet_int(etco2, low=24.0)}/24+ mmHg")
-        if not missing and not (_circulating(engine, allow_va_ecmo=True) and engine.state.sao2 >= 92.0 and engine.state.map >= 65.0):
+        eff_sao2 = engine.state.upper_sao2 if engine.extracorporeal.is_va else engine.state.sao2
+        if not missing and not (_circulating(engine, allow_va_ecmo=True) and eff_sao2 >= 92.0 and engine.state.map >= 65.0):
             missing.append("Reassess oxygenation and perfusion")
         return not missing, "; ".join(missing)
 
@@ -516,7 +549,7 @@ def create_pulmonary_embolism() -> Scenario:
                     and _ventilated_airway(e)[0]
                     and _circulating(e, allow_va_ecmo=True)
                     and e.state.map >= 65.0
-                    and e.state.sao2 >= 92.0
+                    and (e.state.upper_sao2 if e.extracorporeal.is_va else e.state.sao2) >= 92.0
                 ),
                 review="Monitor EtCO₂ recovery and MAP stabilization as pulmonary vascular resistance falls.",
             ),

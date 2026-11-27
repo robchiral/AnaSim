@@ -956,6 +956,12 @@ def test_arrest_svr_hypothermia_baroreflex_reversible_lv_and_septic_scaling():
         eph_b.step(1.0, 0, 0, 0, -2, 40, 95, ce_ephedrine=80.0, ce_labetalol=300.0)
     assert eph_a._ephedrine_tolerance_ce == pytest.approx(eph_b._ephedrine_tolerance_ce, rel=1e-9)
 
+    anaph_stim = _model()
+    anaph_stim.anaphylaxis_severity = 1.0
+    anaph_stim.step(1.0, 0, 0, 0, -2, 40, 95, dist_svr=4.0)
+    expected_dist = 4.0 * (1.0 - anaph_stim.config.anaphylaxis_pressor_resistance)
+    assert anaph_stim.dist_svr == pytest.approx(expected_dist, rel=1e-9)
+
 
 def test_venous_recruitment_floor_prevents_pressor_reversal_of_exsanguination(patient):
     """Severe >50% blood loss cannot be reversed to normotensive CO/MAP by pressors without volume."""

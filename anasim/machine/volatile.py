@@ -20,11 +20,15 @@ class Vaporizer:
 
     def set_concentration(self, conc: float):
         self.state.setting = clamp(conc, 0.0, 8.0)  # Sevoflurane dial maximum
-        self.state.is_on = self.state.setting > 0
+        self.state.is_on = self.state.setting > 0 and self.state.level > 0.0
 
     def refill(self, level_ml: float = CAPACITY_ML) -> None:
         """Refill the liquid sevoflurane reservoir up to CAPACITY_ML."""
         self.state.level = clamp(float(level_ml), 0.0, self.CAPACITY_ML)
+        if self.state.level > 0.0 and self.state.setting > 0.0:
+            self.state.is_on = True
+        elif self.state.level <= 0.0:
+            self.state.is_on = False
 
     def step(self, dt: float, fgf_l_min: float) -> float:
         """Consume liquid and return mean delivered vapor concentration (%)."""

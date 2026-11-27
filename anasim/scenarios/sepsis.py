@@ -90,8 +90,6 @@ def create_sepsis_response() -> Scenario:
         nonlocal hypotension_noted, observe_done
         hypotension_noted = True
         observe_done = True
-        if _source_control_requested(engine):
-            engine.sepsis.onset_rate = 0.0
 
     def request_source_control(engine) -> None:
         nonlocal observe_done
@@ -99,7 +97,7 @@ def create_sepsis_response() -> Scenario:
         # already underway still produces septic shock and ongoing vasoplegia.
         # Acting early on decompensation advances the observe step without aborting shock.
         observe_done = True
-        if hypotension_noted:
+        if hypotension_noted and engine.sepsis.severity >= 0.75:
             engine.sepsis.onset_rate = 0.0
 
     def require_source_control(engine) -> tuple[bool, str]:

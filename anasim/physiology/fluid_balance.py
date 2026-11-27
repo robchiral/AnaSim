@@ -146,6 +146,7 @@ class FluidBalance:
                  excess_fat_kg: float = 0.0, baseline_glucose_mg_dl: float = 90.0):
         self.weight = weight
         self.plasma_l = (blood_volume_ml - red_cell_volume_ml) / 1000.0
+        self.initial_plasma_l = self.plasma_l
         self.red_cells_l = red_cell_volume_ml / 1000.0
         # Adipose tissue has a much higher ECW/ICW ratio and lower total water
         # than lean mass (Waki 1991); parameterize excess adipose above BMI 25 at
@@ -181,6 +182,7 @@ class FluidBalance:
         self._arterial_k = 4.0
         self._arterial_cl = 104.0
         self._arterial_ica = self.calcium_set_point
+        self._arterial_ica_resting = self.calcium_set_point
         self._cell_solute = self.icf_l * self._extracellular_solute() / self.ecf_l
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
@@ -245,19 +247,25 @@ class FluidBalance:
         """Arterial-sample ionized calcium (mmol/L); frozen during zero-flow arrest and lags peripheral infusion during low flow."""
         if self._circulation >= 0.99:
             return self.ionized_calcium(ph)
+        if abs(ph - self.resting_ph) < 1e-9:
+            return self._arterial_ica_resting
         return self._arterial_ica
 
     def _extracellular_solute(self) -> float:
         return 2.0 * (self.amounts["sodium"] + self.amounts["potassium"]) + self.glucose_mmol
 
-    def _equilibrate_cell_water(self) -> None:
-        # Water crosses cell membranes until tonicity matches. It moves through
-        # the interstitium, as the circulation sets plasma volume.
+    def _equilibrate_cell_water(self) -> float:
+        # Water crosses cell membranes until tonicity matches; return the
+        # intravascular plasma share (mL) for hemodynamic volume synchronization.
         solute = self._extracellular_solute()
         water = self.ecf_l + self.icf_l
         moved = water * solute / (solute + self._cell_solute) - self.ecf_l
+        if moved == 0.0:
+            return 0.0
+        plasma_share = self.plasma_l / self.ecf_l if self.ecf_l > 0.0 else 0.0
         self.ecf_l += moved
         self.icf_l -= moved
+        return moved * plasma_share * 1000.0
 
     @property
     def plasma_albumin_g_l(self) -> float:
@@ -407,6 +415,12 @@ class FluidBalance:
             self._resting_hco3_key = key
         return self._resting_hco3
 
+    def shift_osmotic_plasma_water(self, vascular_change_ml: float) -> None:
+        """Apply pure free-water osmotic movement between ICF and plasma without adding interstitial solutes."""
+        if vascular_change_ml == 0.0:
+            return
+        self.plasma_l += vascular_change_ml / 1000.0
+
     def shift_water(self, vascular_change_ml: float, protein_fraction: float = 0.0) -> None:
         if vascular_change_ml == 0.0:
             return
@@ -445,6 +459,7 @@ class FluidBalance:
             self._arterial_k = self.concentration("potassium")
             self._arterial_cl = self.concentration("chloride")
             self._arterial_ica = self.ionized_calcium(self.ph if ph is None else ph)
+            self._arterial_ica_resting = self.ionized_calcium(self.resting_ph)
         self._circulation = new_circ
 
     def step(self, dt: float, *, ph: float, paco2: float, resting_paco2: float,
@@ -452,12 +467,12 @@ class FluidBalance:
              oxygen_supply: float, epinephrine: float,
              succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
              circulation: float = 1.0, lactate_acid_meq_l: float = 0.0,
-             temp_c: float = 37.0, insulin_k_uptake: float = 0.0) -> None:
+             temp_c: float = 37.0, insulin_k_uptake: float = 0.0) -> float:
         self.ph = ph
         self.sync_circulation(circulation, ph=ph)
-        self._equilibrate_cell_water()
+        osmotic_plasma_ml = self._equilibrate_cell_water()
         if dt <= 0.0:
-            return
+            return osmotic_plasma_ml
         if self.pending_calcium_mmol > 0.0 and self._circulation > 0.0:
             delivered = self.pending_calcium_mmol * -math.expm1(-self._circulation * dt / self._ca_push_tau_s)
             self.pending_calcium_mmol -= delivered
@@ -478,6 +493,8 @@ class FluidBalance:
             self._arterial_k += (self.concentration("potassium") - self._arterial_k) * alpha
             self._arterial_cl += (self.concentration("chloride") - self._arterial_cl) * alpha
             self._arterial_ica += (self.ionized_calcium(ph) - self._arterial_ica) * alpha
+            self._arterial_ica_resting += (self.ionized_calcium(self.resting_ph) - self._arterial_ica_resting) * alpha
+        return osmotic_plasma_ml
 
     def _metabolize_buffers(
         self, minutes: float, hepatic_function: float, oxygen_supply: float, *, temp_c: float = 37.0,
@@ -658,12 +675,20 @@ class FluidBalance:
             ph_efflux = 0.0
             ph_uptake = 0.50 * delta_ph
         efflux = 1.0 + ph_efflux
-        ins_k = max(0.0, insulin_k_uptake)
-        uptake_drive = 1.0 + beta + ph_uptake + ins_k
+        uptake_drive = 1.0 + beta + ph_uptake
         partition = 35.0 * uptake_drive / efflux
         intact_total = max(0.0, total - self._lysed_k_mmol - self._sux_k_efflux_mmol)
         lysed_ecf_share = self._lysed_k_mmol / uptake_drive
-        target_k = intact_total * self.ecf_l / (self.ecf_l + self.icf_l * partition) + lysed_ecf_share + self._sux_k_efflux_mmol
+        base_target_k = (
+            intact_total * self.ecf_l / (self.ecf_l + self.icf_l * partition)
+            + lysed_ecf_share
+            + self._sux_k_efflux_mmol
+        )
+        # Insulin-mediated Na+/K+-ATPase shift (DeFronzo 1980; Alvestrand 1984;
+        # Allon and Copkney 1990; Chothia 2014): plasma ΔK (mmol/L) is largely
+        # independent of baseline K+ and preserved in uremia.
+        ins_shift_mmol = max(0.0, insulin_k_uptake) * self.ecf_l
+        target_k = max(min(base_target_k, 1.8 * self.ecf_l), base_target_k - ins_shift_mmol)
         moved = (self.amounts["potassium"] - target_k) * -math.expm1(-minutes / 5.0)
         if moved > 0.0:
             moved *= self._circulation

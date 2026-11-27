@@ -39,12 +39,20 @@ class PulmonaryEmbolismModel:
         self.pe_target_obstruction: float = 0.0
         self.pe_obstruction: float = 0.0
         self.thrombolysis_active: bool = False
+        self._thrombolysis_bleed_level: float = 0.0
         # VAE state
         self.vae_active: bool = False
         self.vae_entrainment_ml_min: float = 0.0
         self.vae_air_ml: float = 0.0
+        self._vae_distal_ml: float = 0.0
+        self._vae_aspirate_cooldown_s: float = 0.0
         self.vae_n2o_factor: float = 1.0
         self._durant_active: bool = False
+
+    @property
+    def thrombolysis_bleeding_multiplier(self) -> float:
+        """Surgical hemorrhage amplification from systemic thrombolysis (calibrated from Marti 2015 OR 2.91)."""
+        return 1.0 + 0.65 * clamp01(self._thrombolysis_bleed_level)
 
     @property
     def vae_effective_ml(self) -> float:
@@ -105,11 +113,13 @@ class PulmonaryEmbolismModel:
         """Clear PE event and resolve clot."""
         self.pe_active = False
         self.thrombolysis_active = False
+        self._thrombolysis_bleed_level = 0.0
         self.pe_target_obstruction = 0.0
         self.pe_obstruction = 0.0
 
     def give_thrombolysis(self) -> None:
         """Administer systemic thrombolysis (e.g. alteplase), accelerating PE clot lysis."""
+        self._thrombolysis_bleed_level = 1.0
         if self.pe_obstruction > 0.0 or self.pe_active:
             self.thrombolysis_active = True
             self.pe_target_obstruction = min(
@@ -134,14 +144,22 @@ class PulmonaryEmbolismModel:
         self.vae_active = False
         self.vae_entrainment_ml_min = 0.0
         self.vae_air_ml = 0.0
+        self._vae_distal_ml = 0.0
+        self._vae_aspirate_cooldown_s = 0.0
         self.vae_n2o_factor = 1.0
 
     def aspirate_vae(self) -> float:
-        """Aspirate air via multiorifice right-atrial CVC; returns mL of air removed."""
-        if self.vae_air_ml <= 0.1:
+        """Aspirate right-atrial air via multiorifice CVC; returns mL of air removed."""
+        if self._vae_aspirate_cooldown_s > 0.0 or self.vae_air_ml <= 0.1:
             return 0.0
-        removed = self.vae_air_ml * VAE_ASPIRATE_FRACTION
+        aspirable_ml = max(0.0, self.vae_air_ml - self._vae_distal_ml)
+        if aspirable_ml <= 0.1:
+            return 0.0
+        removed = aspirable_ml * VAE_ASPIRATE_FRACTION
         self.vae_air_ml = max(0.0, self.vae_air_ml - removed)
+        # Unrecovered fraction of the bolus lies distally in the RVOT/PA beyond the RA catheter tip.
+        self._vae_distal_ml = min(self.vae_air_ml, self._vae_distal_ml + (aspirable_ml - removed))
+        self._vae_aspirate_cooldown_s = 10.0
         return removed
 
     def step(
@@ -154,6 +172,7 @@ class PulmonaryEmbolismModel:
         heparin_u_ml: float = 0.0,
         act_s: float = 120.0,
         circulation: float = 1.0,
+        pulmonary_circulation: float | None = None,
         pulmonary_ventilation: bool = True,
     ) -> None:
         """Advance PE clot kinetics and VAE entrainment, N2O expansion, and washout."""
@@ -161,6 +180,13 @@ class PulmonaryEmbolismModel:
             return
         self._durant_active = position == "left_lateral"
         circ = clamp01(circulation)
+        pulm_circ = circ if pulmonary_circulation is None else clamp01(pulmonary_circulation)
+        if self._vae_aspirate_cooldown_s > 0.0:
+            self._vae_aspirate_cooldown_s = max(0.0, self._vae_aspirate_cooldown_s - dt)
+        if self._thrombolysis_bleed_level > 0.0 and circ > 0.0:
+            self._thrombolysis_bleed_level *= math.exp(-dt * circ / 1800.0)
+            if self._thrombolysis_bleed_level < 1e-4:
+                self._thrombolysis_bleed_level = 0.0
 
         # Pulmonary thromboembolism kinetics (drug delivery and clot lysis require circulation).
         if self.thrombolysis_active:
@@ -171,17 +197,18 @@ class PulmonaryEmbolismModel:
                 )
                 if self.pe_obstruction <= PE_RESIDUAL_AFTER_LYSIS + 0.015:
                     self.pe_active = False
+                    self.thrombolysis_active = False
         elif self.pe_active:
-            therapeutic_hep = heparin_u_ml >= 0.25 or act_s >= 180.0
+            therapeutic_hep = heparin_u_ml >= 0.25
             if therapeutic_hep and circ > 0.0 and self.pe_target_obstruction > PE_RESIDUAL_AFTER_LYSIS:
                 # Therapeutic anticoagulation halts propagation and permits slow endogenous lysis.
                 self.pe_target_obstruction += (
                     (PE_RESIDUAL_AFTER_LYSIS - self.pe_target_obstruction)
                     * -math.expm1(-dt * circ / PE_HEPARIN_LYSIS_TAU_S)
                 )
-            if self.pe_obstruction < self.pe_target_obstruction:
+            if self.pe_obstruction < self.pe_target_obstruction and circ > 0.0:
                 self.pe_obstruction += (
-                    (self.pe_target_obstruction - self.pe_obstruction) * -math.expm1(-dt / PE_ONSET_TAU_S)
+                    (self.pe_target_obstruction - self.pe_obstruction) * -math.expm1(-dt * circ / PE_ONSET_TAU_S)
                 )
             elif self.pe_obstruction > self.pe_target_obstruction and circ > 0.0:
                 self.pe_obstruction += (
@@ -197,22 +224,24 @@ class PulmonaryEmbolismModel:
         f_n2o = clamp(p_alv_n2o, 0.0, 0.80)
         # Munson and Merrick 1966 (rabbit, 72-76% N2O): ~3.4x lethal-dose reduction -> 1/(1 - 0.94*F_N2O).
         target_n2o_factor = 1.0 / max(0.24, 1.0 - 0.94 * f_n2o)
-        if circ > 0.0:
+        if pulm_circ > 0.0:
             self.vae_n2o_factor += (target_n2o_factor - self.vae_n2o_factor) * -math.expm1(
-                -dt * circ / VAE_N2O_TAU_S
+                -dt * pulm_circ / VAE_N2O_TAU_S
             )
 
         if self.vae_active or self.vae_air_ml > 0.0:
-            inflow_ml_s = (self.vae_entrainment_ml_min / 60.0) if self.vae_active else 0.0
-            if circ > 0.0 and pulmonary_ventilation:
+            inflow_ml_s = (self.vae_entrainment_ml_min / 60.0) if (self.vae_active and circ > 0.0) else 0.0
+            if pulm_circ > 0.0 and pulmonary_ventilation:
                 # 100% O2 widens the N2 washout gradient across the alveolar membrane (Mirski 2007);
                 # tau_clear = 330 s on 100% O2 vs 720 s on air (calibrated to canine recovery times).
                 tau_clear = 720.0 - 390.0 * clamp01((alveolar_o2_fraction - 0.21) / 0.79)
-                k_clear = circ / max(60.0, tau_clear)
-                eq_ml = inflow_ml_s / k_clear
+                k_clear = pulm_circ / max(60.0, tau_clear)
                 decay = math.exp(-k_clear * dt)
-                self.vae_air_ml = clamp(eq_ml + (self.vae_air_ml - eq_ml) * decay, 0.0, 600.0)
+                inflow_integral = -math.expm1(-k_clear * dt) / k_clear
+                self.vae_air_ml = clamp(self.vae_air_ml * decay + inflow_ml_s * inflow_integral, 0.0, 600.0)
+                self._vae_distal_ml = min(self.vae_air_ml, self._vae_distal_ml * decay)
             elif inflow_ml_s > 0.0:
                 self.vae_air_ml = clamp(self.vae_air_ml + inflow_ml_s * dt, 0.0, 600.0)
             if not self.vae_active and self.vae_air_ml < 0.05:
                 self.vae_air_ml = 0.0
+                self._vae_distal_ml = 0.0

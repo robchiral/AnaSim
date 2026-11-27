@@ -326,9 +326,10 @@ def test_rizza_1979_insulin_hypoglycemia_counterregulation(engine_factory):
 
 
 def test_allon_1990_esrd_insulin_d50w_hyperkalemia_and_rebound_hypoglycemia(engine_factory):
-    """Allon and Copkney 1990 (n=12 hemodialysis patients, 10 U regular insulin + 25 g D50W):
-    reported K+ fall 0.65 +/- 0.09 mmol/L (SE) alone (1.21 +/- 0.19 with 20 mg nebulized albuterol),
-    and glucose 10.3 +/- 0.6 mmol/L (~186 mg/dL) at 15 min falling to 2.8 +/- 0.3 mmol/L (~50 mg/dL) at 60 min."""
+    """Allon and Copkney 1990 (n=12 hemodialysis patients, K0 = 5.48 +/- 0.21 SE mmol/L,
+    10 U regular insulin + 25 g D50W): reported maximal K+ fall 0.65 +/- 0.09 mmol/L (SE)
+    at 45 min (1.21 +/- 0.19 with 20 mg nebulized albuterol), and glucose 10.3 +/- 0.6 mmol/L
+    (~186 mg/dL) at 15 min falling to 2.8 +/- 0.3 mmol/L (~50 mg/dL) at 60 min."""
     from anasim.core.runtime import step_simulation
 
     eng = engine_factory(
@@ -336,6 +337,9 @@ def test_allon_1990_esrd_insulin_d50w_hyperkalemia_and_rebound_hypoglycemia(engi
         start=True,
         renal_function=0.05,
     )
+    eng.hemo.fluids.amounts["potassium"] = 5.48 * eng.hemo.fluids.ecf_l
+    eng.hemo.fluids.cell_k_mmol *= 5.48 / 4.0
+    eng.state.potassium = eng.hemo.fluids.arterial_potassium
     k0 = eng.state.potassium
     eng.give_drug_bolus("insulin", 10.0)
     eng.give_d50w(50.0)
@@ -349,7 +353,7 @@ def test_allon_1990_esrd_insulin_d50w_hyperkalemia_and_rebound_hypoglycemia(engi
         if minute == 15:
             g_15 = eng.state.glucose
     assert g_15 is not None and 155.0 <= g_15 <= 230.0
-    assert 0.55 <= k0 - min_k <= 1.25
+    assert 0.55 <= k0 - min_k <= 1.15
     assert eng.state.glucose < 70.0
 
 
@@ -546,3 +550,281 @@ def test_zaballos_2019_bicarbonate_rapidly_reduces_last_conduction_block(engine_
     assert base.toxicity.conduction_block < ctrl.toxicity.conduction_block * 0.70
     assert base.state.sodium > ctrl.state.sodium + 2.0
     assert base.state.ph > ctrl.state.ph + 0.06
+
+
+def test_chothia_2014_insulin_d50w_vs_d50w_alone_and_k0_independence(engine_factory):
+    """Chothia 2014 (n=10 nondiabetic HD crossover, mean +/- SD): 10 U insulin + 50 g D50W
+    lowered K+ by 0.83 +/- 0.53 mmol/L at 60 min (K0 = 6.01 +/- 0.87), while 50 g D50W alone
+    lowered K+ by 0.50 +/- 0.31 mmol/L (K0 = 6.23 +/- 1.20); ΔK is independent of baseline K0
+    (Alvestrand 1984)."""
+    from anasim.core.runtime import step_simulation
+
+    def _run_k(k0: float, give_insulin: bool) -> float:
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=2.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+            start=True,
+            renal_function=0.05,
+        )
+        eng.hemo.fluids.amounts["potassium"] = k0 * eng.hemo.fluids.ecf_l
+        eng.hemo.fluids.cell_k_mmol *= k0 / 4.0
+        eng.state.potassium = k0
+        if give_insulin:
+            eng.give_drug_bolus("insulin", 10.0)
+        eng.give_d50w(100.0)  # 50 g dextrose
+        for _ in range(60 * 30):
+            step_simulation(eng, 2.0, update_monitors=False)
+            eng.state.time += 2.0
+        return eng.state.potassium - k0
+
+    dk_ins_high = _run_k(6.0, give_insulin=True)
+    dk_ins_norm = _run_k(4.0, give_insulin=True)
+    dk_d50_only = _run_k(6.2, give_insulin=False)
+
+    assert -1.20 <= dk_ins_high <= -0.60
+    assert -0.85 <= dk_d50_only <= -0.35
+    assert dk_ins_high < dk_d50_only - 0.12
+    assert abs(dk_ins_high - dk_ins_norm) < 0.15
+
+
+def test_puhringer_2008_sugammadex_rsi_dose_response():
+    """Pühringer 2008 (n=167, Table 4, 1.2 mg/kg rocuronium + sugammadex at 3 min,
+    median [range] min to TOF 0.9): 2 mg/kg 63.3 [36.3-117.2], 4 mg/kg 11.3 [5.3-28.5],
+    8 mg/kg 3.6 [1.5-4.7], 12 mg/kg 1.9 [1.2-4.1], 16 mg/kg 1.3 [0.8-2.3]."""
+    from anasim.patient.pd.nmba import TOFModel
+    from anasim.patient.pk_models import RocuroniumPK
+
+    p = Patient(age=40, weight=70, height=170, sex="male")
+    times = {}
+    for dose_mg_kg in (2.0, 4.0, 8.0, 12.0, 16.0):
+        roc = RocuroniumPK(p)
+        pd = TOFModel(p)
+        roc.state.c1 += 1.2 * p.weight / roc.v1
+        for _ in range(180):
+            roc.step(1.0, 0.0)
+            pd.step_recovery(1.0, roc)
+        pd.give_sugammadex(dose_mg_kg * p.weight)
+        rec = None
+        for sec in range(1, 5401):
+            roc.step(1.0, 0.0)
+            if pd.step_recovery(1.0, roc) >= 90.0:
+                rec = sec / 60.0
+                break
+        assert rec is not None
+        times[dose_mg_kg] = rec
+
+    assert 36.0 <= times[2.0] <= 115.0
+    assert 5.3 <= times[4.0] <= 25.0
+    assert 1.5 <= times[8.0] <= 4.7
+    assert 1.2 <= times[12.0] <= 4.1
+    assert 0.8 <= times[16.0] <= 2.3
+    assert times[2.0] > times[4.0] > times[8.0] > times[12.0] > times[16.0]
+
+
+def test_stecker_2001_vitez_1974_and_cohen_1977_deep_hypothermia_pd_pk(engine_factory):
+    """Stecker 2001 (n=47 DHCA): EEG silence at 17.8 +/- 4 °C NP (20.6 +/- 5 °C central);
+    Vitez 1974 (rat, n=5/agent): volatile MAC falls ~5%/°C monotonically on cooling;
+    Cohen 1977 (n=11 CPB): 25 °C heparin decay 0.21 +/- 0.12 U/mL/hr (SD) vs 0.37-2.01 at 37 °C."""
+    from anasim.patient.pd.anesthesia import BISModel
+    from anasim.patient.pk_models import HeparinPK, NorepinephrinePK
+    from anasim.patient.volatile_pk import VolatilePK
+
+    p = Patient(age=55, weight=75, height=175, sex="male")
+    bis = BISModel(p)
+    assert 15.0 <= bis.compute_bis(2.5, temp_c=25.0) <= 35.0
+    assert bis.compute_bis(2.5, temp_c=21.0) < bis.compute_bis(2.5, temp_c=25.0)
+    assert bis.compute_bis(2.5, temp_c=18.0) < 1.0
+
+    # Endogenous norepinephrine remains invariant during deep hypothermia (no artificial 3x NE surge).
+    nore = NorepinephrinePK(p)
+    base_ne = nore.state.c1
+    nore.update_hemodynamics(1.0, 1.0, 1.0, temp_c=20.0)
+    for _ in range(600):
+        nore.step(1.0, 0.0)
+    assert nore.state.c1 == pytest.approx(base_ne, rel=0.03)
+
+    # Volatile MAC decreases monotonically down to 18 °C (outpacing blood solubility).
+    sevo = VolatilePK(p, "Sevoflurane", 0.65, 1.7, 2.05)
+    assert sevo.mac_at_temp(18.0) < sevo.mac_at_temp(22.0) < sevo.mac_at_temp(28.0) < sevo.mac_at_temp(37.0)
+
+    # Cohen 1977: post-distribution heparin decay at 25 °C vs 37 °C, and nonlinear/protamine CSHT.
+    decays = {}
+    for temp_c in (37.0, 25.0):
+        hep = HeparinPK(p)
+        hep.state.c1 = hep.state.c2 = 3500.0  # Equilibrated 3.5 U/mL on CPB
+        hep.update_hemodynamics(1.0, 1.0, 1.0, temp_c=temp_c)
+        for _ in range(3600):
+            hep.update_nonlinear_clearance()
+            hep.step(1.0, 0.0)
+        decays[temp_c] = (3500.0 - hep.state.c1) / 1000.0
+    assert 0.37 <= decays[37.0] <= 1.20
+    assert 0.09 <= decays[25.0] <= 0.36
+    assert decays[25.0] < decays[37.0] * 0.72
+
+    eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    eng.give_drug_bolus("heparin", 21000.0)
+    for _ in range(180):
+        eng.step(1.0)
+    csht_alone = eng.get_predicted_csht("heparin")
+    eng.give_drug_bolus("protamine", 210.0)
+    csht_with_prot = eng.get_predicted_csht("heparin")
+    assert csht_alone > 40.0
+    assert csht_with_prot < 5.0
+
+
+def test_nissinen_2009_al_sarraf_2011_hypothermic_cardioplegia_protection(engine_factory):
+    """Nissinen 2009 (n=3,280) and Al-Sarraf 2011 (n=3,799): 60 min of hypothermic cardioplegic
+    arrest preserves myocardial viability and weaning, whereas 60 min of warm unprotected cross-clamp
+    produces severe ischemic necrosis."""
+    from anasim.core.enums import RhythmType
+    from anasim.core.runtime import step_simulation
+
+    def _run_clamp(cold_cardioplegia: bool):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=4, maintenance_fluid_ml_hr=0.0),
+            start=True,
+        )
+        eng.give_drug_bolus("heparin", 25000.0)
+        eng.start_cpb(
+            blood_flow_l_min=4.5, sweep_gas_l_min=3.0, prime_volume_ml=1200.0,
+            heater_cooler_on=True, water_target_c=28.0 if cold_cardioplegia else 37.0,
+        )
+        if cold_cardioplegia:
+            eng.state.temp_c = 28.0
+            eng.thermal.peripheral_temp_c = 28.0
+            eng.set_cpb_cardioplegia(True)
+        else:
+            eng.set_cpb_cross_clamp(True)
+        for _ in range(3600):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        return eng
+
+    protected = _run_clamp(cold_cardioplegia=True)
+    unprotected = _run_clamp(cold_cardioplegia=False)
+    assert protected.hemo.coronary.injury < 0.05
+    assert unprotected.hemo.coronary.injury > 0.50
+    protected.set_cpb_cardioplegia(False)
+    protected.set_cpb_cross_clamp(False)
+    protected.set_rhythm(RhythmType.SINUS)
+    protected.state.temp_c = 36.5
+    protected.thermal.peripheral_temp_c = 36.0
+    protected.stop_extracorporeal(reinfuse=True)
+    for _ in range(30):
+        step_simulation(protected, 1.0, update_monitors=False)
+        protected.state.time += 1.0
+    assert protected.state.co > 2.5 and not protected.state.cardiac_arrest
+
+
+def test_feneck_1992_milrinone_pvr_reduction_and_rv_septal_shift(engine_factory):
+    """Feneck 1992 (n=99, mean +/- SEM): milrinone (50 mcg/kg + 0.5 mcg/kg/min) lowers
+    elevated PVR by 15-40% (14.8% at 15 min, up to 35-40% at 12 h); acute severe PVR elevation
+    with high RAP induces RV overdistension and septal-shift LV filling depression."""
+    from anasim.core.runtime import step_simulation
+
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=2), start=True)
+    eng.start_pulmonary_embolism(obstruction=0.55)
+    for _ in range(120):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    pvr_pre = eng.hemo._calc_pvr_factor(eng.state.pao2, eng.resp_mech.peep)
+    eng.give_drug_bolus("milri", 50.0 * eng.patient.weight)
+    eng.set_drug_rate("milri", 0.5)
+    for _ in range(900):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    pvr_post = eng.hemo._calc_pvr_factor(eng.state.pao2, eng.resp_mech.peep)
+    drop_frac = 1.0 - pvr_post / pvr_pre
+    assert 0.12 <= drop_frac <= 0.45
+
+    # Volume loading under severe acute PE raises RAP into RV overdistension and lowers SV.
+    eng_rv = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=2), start=True)
+    eng_rv.start_pulmonary_embolism(obstruction=0.72)
+    for _ in range(120):
+        step_simulation(eng_rv, 1.0, update_monitors=False)
+        eng_rv.state.time += 1.0
+    sv_before = eng_rv.state.sv
+    eng_rv.hemo.add_volume(2000.0)
+    for _ in range(30):
+        step_simulation(eng_rv, 1.0, update_monitors=False)
+        eng_rv.state.time += 1.0
+    assert eng_rv.hemo.state.rap > 12.0
+    assert eng_rv.state.sv < sv_before
+
+
+def test_matsukawa_1995b_ozaki_1994_and_comet_2001_neuraxial_thermal_and_motor(engine_factory):
+    """Matsukawa 1995b (n=6, T10 epidural): core temp drops 0.8 +/- 0.3 °C (SD) at 60 min;
+    Ozaki 1994: T10 neuraxial block lowers shivering threshold ~0.5-0.7 °C and removes leg
+    shivering capacity; COMET 2001 (n=1,054): 0.1% bupivacaine labor epidural spares motor
+    function (89% no hip-flexion weakness at 30 min)."""
+    from anasim.core.runtime import step_simulation
+
+    epi = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True,
+        age=35,
+    )
+    t0 = epi.state.temp_c
+    epi.give_epidural_bolus("bupivacaine", 12.0, 0.5)
+    for _ in range(3600):
+        step_simulation(epi, 1.0, update_monitors=False)
+        epi.state.time += 1.0
+    assert 0.45 <= t0 - epi.state.temp_c <= 1.15
+
+    # Ozaki 1994: neuraxial block lowers shivering threshold and attenuates shivering at 35.0 °C.
+    assert epi.neuraxial.shiver_threshold_shift_c >= 0.30
+    shiver_awake = epi.thermal.target_shivering(35.0, 97.0, 0.0, 1.0)
+    shiver_blocked = epi.thermal.target_shivering(
+        35.0, 97.0, 0.0, 1.0,
+        neuraxial_shiver_shift_c=epi.neuraxial.shiver_threshold_shift_c,
+        neuraxial_muscle_keep=epi.neuraxial.shiver_muscle_keep,
+    )
+    assert shiver_awake > 0.20
+    assert shiver_blocked < shiver_awake * 0.65
+
+    # COMET 2001: dilute 0.1% labor epidural maintains thoracic analgesia without dense motor block.
+    labor = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+        start=True,
+        age=30, weight=75, height=165, sex="female", gestational_age_weeks=39.0,
+    )
+    labor.give_epidural_bolus("bupivacaine", 15.0, 0.1)
+    labor.set_epidural_infusion(10.0, drug="bupivacaine", concentration_pct=0.1)
+    for _ in range(1800):
+        step_simulation(labor, 1.0, update_monitors=False)
+        labor.state.time += 1.0
+    assert labor.neuraxial.sensory_level >= 13.0  # >= T10
+    assert labor.neuraxial.bromage_score == 0
+
+
+def test_marti_2015_thrombolysis_bleeding_and_mirski_2007_vae_aspiration_cap(engine_factory):
+    """Marti 2015 (15 RCTs, n=2,057, major bleeding OR 2.91): PE thrombolysis increases active
+    surgical hemorrhage rate and clears thrombolysis_active on clot resolution;
+    Mirski 2007: CVC air aspiration removes ~45% of right-atrial air and cannot clear distal
+    pulmonary microvascular air via rapid repeat clicks."""
+    from anasim.core.runtime import step_simulation
+
+    base = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    lysed = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    lysed.start_pulmonary_embolism(0.45)
+    lysed.give_thrombolysis()
+    for _ in range(60):
+        step_simulation(lysed, 1.0, update_monitors=False)
+        lysed.state.time += 1.0
+    assert lysed.embolism.thrombolysis_bleeding_multiplier > 1.40
+
+    base.start_hemorrhage(300.0)
+    lysed.start_hemorrhage(300.0)
+    for _ in range(60):
+        step_simulation(base, 1.0, update_monitors=False)
+        step_simulation(lysed, 1.0, update_monitors=False)
+    assert lysed.state.blood_out_ml > base.state.blood_out_ml * 1.35
+
+    # Rapid repeat VAE aspirations cannot evacuate distal pulmonary air.
+    vae = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    vae.start_venous_air_embolism(rate_ml_min=0.0, initial_bolus_ml=100.0)
+    vae.stop_venous_air_embolism()
+    first = vae.aspirate_vae_air()
+    second = vae.aspirate_vae_air()
+    assert 40.0 <= first <= 50.0
+    assert second == 0.0
+    assert vae.state.vae_air_ml >= 50.0

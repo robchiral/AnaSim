@@ -142,7 +142,7 @@ class TOFModel:
     def _effective_ke0(self, mac_sevo: float) -> float:
         # Extrapolated from vecuronium in Caldwell 2000 (34.0-38.0 °C): ke0 slows
         # ~10%/°C with core cooling (Q10 2.6) while neuromuscular C50 is unchanged.
-        temp_ke0 = 2.6 ** ((clamp(self._temp_c, 25.0, 37.0) - 37.0) / 10.0) if self._temp_c < 37.0 else 1.0
+        temp_ke0 = 2.6 ** ((clamp(self._temp_c, 18.0, 37.0) - 37.0) / 10.0) if self._temp_c < 37.0 else 1.0
         return self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo)) * temp_ke0
 
     def simulate_decay(
@@ -222,8 +222,16 @@ class TOFModel:
         return max_seconds / 60.0
 
     def _sugammadex_removal(self, s_c1: float) -> float:
-        """Junctional rocuronium encapsulation rate (min^-1) for plasma sugammadex s_c1."""
-        return 0.58 * self.ks * s_c1 + 0.22 * s_c1 / (s_c1 + 0.30) if s_c1 > 0.0 else 0.0
+        """Junctional rocuronium encapsulation rate (min^-1) for plasma sugammadex s_c1.
+
+        Calibrated to Kleijn 2011 moderate/deep/immediate reversal, Pühringer 2008
+        RSI dose-response (2-16 mg/kg at 3 min after 1.2 mg/kg rocuronium), and
+        Eleveld 2007 sub-therapeutic rebound.
+        """
+        if s_c1 <= 0.0:
+            return 0.0
+        s2 = s_c1 * s_c1
+        return 0.60 * self.ks * s_c1 * (s2 / (s2 + 13.0 * 13.0)) + 0.10 * s_c1 / (s_c1 + 0.35)
 
     def _step_peri_and_backflux(
         self,

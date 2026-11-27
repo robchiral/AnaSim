@@ -119,11 +119,14 @@ tissue scaled to fat-free mass and fat volume growing with excess weight. When
 cardiac output is low, blood flow shifts away from muscle and fat toward the
 vessel-rich organs while cerebral autoregulation maintains brain uptake, so
 hemorrhagic shock speeds up the rise in brain MAC. Clinical effects depend on
-brain partial pressure, expressed as age- and pregnancy-adjusted MAC (Davis and
-Mapleson 1981; Yasuda 1991; Mapleson 1996; Nickalls and Mapleson 2003; Gin and
-Chan 1994). Hypothermia increases volatile blood-gas solubility (Lockwood 1997),
-conserving dissolved tissue anesthetic mass as temperature changes and slowing
-both uptake and washout. Nitrous oxide uptake concentrates other gases
+brain partial pressure, expressed as age-, pregnancy-, and temperature-adjusted MAC
+(Davis and Mapleson 1981; Yasuda 1991; Mapleson 1996; Nickalls and Mapleson 2003;
+Gin and Chan 1994). Core hypothermia increases volatile blood-gas solubility
+(Lockwood 1997) while lowering MAC continuously down to 18 °C (calibrated from rat
+halothane and isoflurane MAC data in Vitez 1974), conserving dissolved tissue
+anesthetic mass as temperature changes and slowing both uptake and washout.
+Arterial volatile partial pressure freezes during zero pulmonary or cardiac flow
+and mixes smoothly at very low flow. Nitrous oxide uptake concentrates other gases
 in the alveoli, and its washout dilutes them.
 
 When blood volume changes, the vascular share of each drug's central volume
@@ -146,9 +149,10 @@ interactions:
   remifentanil. Severe low cardiac output without hypovolemia also reduces
   propofol clearance.
 - Core hypothermia slows non-renal metabolic clearance and intercompartmental
-  or effect-site transfer across intravenous drugs (Leslie 1995), with
-  rocuronium slowing extrapolated from vecuronium (Caldwell 2000) and
-  hypothermic cardiopulmonary bypass data (Smeulers 1995).
+  or effect-site transfer down to 18 °C across intravenous drugs (Leslie 1995),
+  with rocuronium slowing extrapolated from vecuronium (Caldwell 2000) and
+  hypothermic cardiopulmonary bypass data (Smeulers 1995), while resting
+  endogenous norepinephrine stays invariant across core temperature shifts.
 - Midazolam and propofol slow each other's clearance within clinically studied
   concentrations (Vuyk 2009; Lichtenbelt 2010).
 
@@ -185,8 +189,9 @@ Decrement times for propofol, remifentanil, and fentanyl come from the pump
 model while TCI or pump history is active, and otherwise from the patient's
 live PK model (including sessions with TCI disabled). Rocuronium decrement time
 uses the patient's full PK and neuromuscular state, including sugammadex
-back-flux and sevoflurane. Norepinephrine decrement time is the time to fall
-halfway back to the endogenous baseline.
+back-flux and sevoflurane. Heparin and protamine decrement times simulate coupled
+nonlinear clearance and active plasma neutralization. Norepinephrine decrement
+time is the time to fall halfway back to the endogenous baseline.
 
 ## Anesthetic drug effects
 
@@ -222,7 +227,10 @@ halothane in dogs in Himes 1977, and for propofol during stimulation in Hans
 2010), though lidocaine alone does not produce surgical unresponsiveness.
 Opioids well above analgesic concentrations add direct sedation and EEG slowing,
 and moderate-to-severe core hypothermia directly depresses consciousness (Brown
-2012), modeled across responsiveness, laryngoscopy tolerance, and BIS.
+2012), descending smoothly into electrocerebral silence near 18 °C across
+responsiveness, laryngoscopy tolerance, and BIS (nasopharyngeal electrocerebral
+silence at 17.8 °C during deep hypothermic circulatory arrest in Stecker 2001,
+extended to BIS).
 
 ## Stimulation
 
@@ -278,8 +286,9 @@ at peripheral and central muscles. Hypothermia slows rocuronium clearance and
 equilibration (extrapolated from vecuronium data in Caldwell 2000) and increases
 sensitivity below 32.5 °C (calibrated from 25 to 28 °C cardiopulmonary bypass
 data in Smeulers 1995). Sugammadex binds free rocuronium in plasma, accelerates
-saturable washout from the effect site, and clears the bound complex at the rate
-of sugammadex. A perijunctional rocuronium buffer reproduces transient rebound
+saturable washout from the effect site (calibrated across 2 to 16 mg/kg reversal
+in Kleijn 2011 and Pühringer 2008), and clears the bound complex at the rate of
+sugammadex. A perijunctional rocuronium buffer reproduces transient rebound
 weakness when a sub-therapeutic sugammadex dose clears unbound plasma drug
 before peripheral stores empty (Eleveld 2007). Both drugs use measured
 creatinine clearance when provided, or estimate it from age and renal function;
@@ -349,7 +358,7 @@ reverses it.
 
 ### Opioids
 
-Opioids equilibrate hemodynamically within about a minute and act as
+Opioids equilibrate hemodynamically within one to two minutes and act as
 remifentanil equivalents, with fentanyl using its own effect site.
 
 Opioid hemodynamic effects plateau above 2.5 ng/mL remifentanil equivalent,
@@ -553,11 +562,16 @@ Dobutamine (Kates and Leier 1978) and milrinone (calibrated two-compartment
 kinetics matched to Baim 1983 and DailyMed 2026b, largely renally cleared) raise
 stroke volume and HR while lowering systemic vascular resistance (Magnani 1977;
 Baim 1983). Dobutamine's heart-rate curve rises progressively across stress-dose
-infusions (Daly 1997), while milrinone adds stronger arterial and venous
-dilation that lowers high filling pressure. Because dobutamine acts through beta
-receptors, beta blockade, acidemia (Schotola 2012), anaphylaxis, and septic
-shock (Hernández 2013) blunt its response, whereas milrinone keeps its effect in
-those states.
+infusions (Daly 1997), while milrinone adds stronger arterial, venous, and
+pulmonary dilation (post-bypass pulmonary vascular resistance reductions in
+Feneck 1992) that unloads high filling pressures. Under acute severe pulmonary
+vascular resistance elevation, volume overload above a right atrial pressure of
+12 mmHg causes right ventricular overdistension and septal shift that impairs
+left ventricular filling and stroke volume. Because dobutamine, exogenous
+norepinephrine, epinephrine, and ephedrine act through beta receptors, beta
+blockade, heart-failure receptor downregulation (Fowler 1986), acidemia
+(Schotola 2012), anaphylaxis, and septic shock (Hernández 2013) blunt their
+cardiac responses, whereas milrinone keeps its effect in those states.
 
 Esmolol uses blood-esterase PK and selective beta-1 blockade from Sum 1983
 (Wiest and Haney 2012), so clearance is independent of cardiac output and organ
@@ -624,7 +638,10 @@ conversion to sinus rhythm.
 Myocardial oxygen demand follows the rate-pressure product (Gobel 1978) plus a
 basal demand that remains even when mechanical work stops (isolated canine heart
 data in Harasawa 1992); fibrillating myocardium still consumes most of a beating
-heart's resting demand. Coronary supply depends on diastolic pressure above the
+heart's resting demand, whereas hypothermic cardioplegic arrest scales basal
+demand and ischemic injury rate down with core temperature across prolonged
+aortic cross-clamp periods (adult cross-clamp limits in Nissinen 2009 and
+Al-Sarraf 2011). Coronary supply depends on diastolic pressure above the
 coronary zero-flow pressure (Nanto 2001; canine data in Jeremy 1986), diastolic
 duration, coronary flow reserve, and arterial oxygen content; above 25 mmHg left
 atrial pressure, a model calibration moderates further rises in whole-wall
@@ -675,7 +692,8 @@ arrest progressively abolishes brainstem respiratory drive.
 
 CO₂ narcosis depresses responsiveness and airway tone without anoxic injury.
 Its severity depends on both PaCO₂ and pH (Westlake 1955; Sieker and Hickam
-1956): acidemia causes narcosis at lower PaCO₂ than compensated hypercapnia,
+1956), evaluated at in-vivo temperature during hypothermic pH-stat management:
+acidemia causes narcosis at lower PaCO₂ than compensated hypercapnia,
 and deep hypercapnic coma depresses medullary respiratory drive into shallow
 hypoventilation. Recovery after prolonged hypercapnic coma lags blood-gas
 correction (Sieker and Hickam 1956), using teaching calibrations for onset and
@@ -871,9 +889,11 @@ interstitium. Excess adipose tissue in obesity adds less extracellular and
 intracellular water per kilogram than lean mass (Waki 1991, applied above a BMI
 of 25), and baseline metabolic acid and buffer loads scale with lean mass
 rather than total body weight. Water shifts between extracellular fluid and
-cells to equalize tonicity (including extracellular glucose), so hyperglycemia
-draws water out of cells and lowers plasma sodium by roughly 1.6 to 1.8 mmol/L
-per 100 mg/dL rise in glucose (matching the sub-400 mg/dL slope in
+cells to equalize tonicity (including extracellular glucose), distributing
+osmotic water proportionally between plasma and interstitium while Starling
+refill tracks interstitial volume during osmotic diuresis. Hyperglycemia
+therefore draws water out of cells and lowers plasma sodium by roughly 1.6 to
+1.8 mmol/L per 100 mg/dL rise in glucose (matching the sub-400 mg/dL slope in
 somatostatin-clamped volunteers in Hillier 1999, without reproducing its steeper
 decline above 400 mg/dL), while free water from lactated Ringer's, dextrose
 solutions, and lipid emulsion distributes across total body water.
@@ -967,12 +987,14 @@ peripheral disposal (healthy volunteer clamps in Sherwin 1974 and Rizza 1981).
 Type 2 diabetes, obesity, chronic uremia, and cirrhosis reduce peripheral
 insulin-stimulated glucose disposal (Kolterman 1981; Alvestrand 1984; Letiexhe
 1993), while insulin-mediated potassium uptake remains intact in chronic uremia
-(Alvestrand 1984). In hemodialysis patients, 10 U insulin with 25 g D50W lowers
-plasma potassium by 0.65 mmol/L alone and 1.21 mmol/L with nebulized albuterol
-(Allon and Copkney 1990), and sustained euglycemic clamps lower potassium by
-roughly 1 mmol/L (Alvestrand 1984); AnaSim's potassium shift sits near the
-middle of that range. Hyperglycemia above the renal reabsorption threshold
-produces glycosuria and a calibrated osmotic diuresis, with higher maximal
+(Alvestrand 1984). In hemodialysis patients, insulin-mediated potassium
+lowering depends on insulin concentration rather than baseline potassium: 10 U
+insulin with dextrose lowers plasma potassium by 0.65 to 0.83 mmol/L (25 g
+dextrose in Allon and Copkney 1990; 50 g dextrose in Chothia 2014), whereas 50 g
+dextrose alone produces a smaller 0.50 mmol/L drop via endogenous insulin
+secretion (Chothia 2014), and sustained euglycemic clamps lower potassium by
+roughly 1 mmol/L (Alvestrand 1984). Hyperglycemia above the renal reabsorption
+threshold produces glycosuria and a calibrated osmotic diuresis, with higher maximal
 reabsorption and a calibrated higher onset threshold in type 2 diabetes
 (DeFronzo 2013).
 
@@ -1223,11 +1245,15 @@ during arrest.
 
 General anesthetics suppress thermoregulation, reduce metabolic heat
 production, and redistribute heat from the core to the periphery;
-redistribution halts during cardiac arrest. This redistribution follows
-propofol-fentanyl data (Matsukawa 1995) and is extended to sevoflurane and
-etomidate as a model assumption, whereas ketamine largely preserves peripheral
-vasoconstriction and spares redistribution cooling (Ikeda 2001) and midazolam
-shifts thermoregulatory thresholds much less (Kurz 1995b). Opioids lower both
+redistribution halts during cardiac arrest and clears gradually during awake
+normothermia. This redistribution follows propofol-fentanyl data (Matsukawa
+1995a) and is extended to sevoflurane and etomidate as a model assumption,
+whereas ketamine largely preserves peripheral vasoconstriction and spares
+redistribution cooling (Ikeda 2001) and midazolam shifts thermoregulatory
+thresholds much less (Kurz 1995b). Neuraxial anesthesia likewise causes
+lower-body vasodilation and core-to-peripheral heat redistribution (epidural
+data in Matsukawa 1995b), lowers the central shivering threshold, and removes
+lower-body shivering muscle mass (Ozaki 1994). Opioids lower both
 vasoconstriction and shivering thresholds (Kurz 1995c). First-hour
 redistribution cooling is smaller in heavier patients because of their higher
 mass-to-surface ratio (Kurz 1995a).
@@ -1454,12 +1480,14 @@ full-breath readings across shallow interposed breaths, shallow sub-dead-space
 breaths refresh the trace without reporting false full-breath readings, and the
 no-breath timeout extends automatically at slow rates. End-tidal oxygen and
 anesthetic values hold the last exhaled sample during brief apnea and clear
-when exhaled gas stops, while staying live during ventilated zero-flow arrest
-even when EtCO₂ reads zero; gas at the sampling port decays without flow. Once
-an airway is connected or assisted ventilation runs, EtCO₂ alarms activate
-after the first breath or after apnea timeout, with the low EtCO₂ limit lowered
-during pregnancy to match expected PaCO₂. Gas leaking around a facemask misses
-the sampling port, so large leaks flatten the capnogram.
+when exhaled gas stops or during esophageal intubation, while staying live
+during ventilated zero-flow arrest even when EtCO₂ reads zero; gas at the
+sampling port decays without flow. Once an airway is connected or assisted
+ventilation runs, EtCO₂ alarms activate after the first breath or after apnea
+timeout, with the low EtCO₂ limit lowered during pregnancy to match expected
+PaCO₂. Gas leaking around a facemask misses the sampling port, so large leaks
+flatten the capnogram, and a zero mask seal projects as disconnected for
+spirometry, capnography, and minute-ventilation alarms.
 
 Without an airway device, impedance respiratory rate counts breathing efforts
 even during obstruction. Whenever the ventilator is off (including manual mode
@@ -1531,8 +1559,9 @@ Karagiannidis 2017).
   cases.
 - **VA ECMO** diverts venous blood in parallel into the arterial tree,
   separating native LV output, pulmonary flow, and pump flow (simulation of
-  Donker 2019). Higher retrograde flow raises aortic afterload, reduces native
-  stroke volume (porcine data of Ostadal 2015), and elevates left atrial
+  Donker 2019), with closed-circuit VV and VA drainage bounded by available
+  venous return volume. Higher retrograde flow raises aortic afterload, reduces
+  native stroke volume (porcine data of Ostadal 2015), and elevates left atrial
   pressure unless relieved by lower pump flow (Aissaoui 2012), LV venting,
   inotropes, or volume unloading (Donker 2019). In peripheral femoral VA ECMO,
   antegrade LV output and retrograde pump flow meet at a flow-dependent aortic
@@ -1541,17 +1570,19 @@ Karagiannidis 2017).
   hyperoxic (Harlequin syndrome), whereas central cannulation mixes both
   streams uniformly. Nonpulsatile arterial support keeps systemic and coronary
   perfusion at pump MAP, flattens the arterial waveform with blanked systolic
-  and diastolic numerics, loses NIBP and pulse oximetry signals, and suppresses
+  and diastolic numerics, loses NIBP and pulse oximetry signals, supports
+  optional bypass alarm suppression while pump flow is active, and suppresses
   cardiac arrest.
 - **CPB** adds central arterial return, passive venous drainage from stressed
   volume into an open hard-shell reservoir with a low-level ramp and alarm
   (Magder and De Varennes 1998), crystalloid prime hemodilution lowering blood
   viscosity and SVR (Gordon 1975), cold-induced viscosity rise (in vitro data
-  of Eckmann 2000), active heat exchange into the core-periphery thermal model
-  producing post-bypass afterdrop blunted by forced-air warming (Rajek 2000),
-  alpha-stat versus pH-stat cerebral blood flow management (Murkin 1987),
-  aortic cross-clamping with cardioplegic arrest, and optional bypass alarm
-  suppression.
+  of Eckmann 2000), active heat exchange into a two-compartment core-periphery
+  thermal model producing post-bypass afterdrop blunted by forced-air warming
+  (Rajek 2000), alpha-stat versus pH-stat cerebral blood flow management
+  (Murkin 1987), aortic cross-clamping with hypothermic cardioplegic arrest
+  (Nissinen 2009; Al-Sarraf 2011), and optional bypass alarm suppression while
+  pump flow is active.
 
 Circuit priming expands central volume and dilutes albumin, raising propofol's
 unbound fraction (CPB study of Hiraoka 2004, extended to ECMO). Hypothermia
@@ -1566,13 +1597,15 @@ ECMO study of Morales Castro 2025).
 ### Heparin, protamine, and ACT
 
 [`coagulation.py`](../anasim/physiology/coagulation.py) models two-compartment
-unfractionated heparin kinetics (`HeparinPK`) with saturable cellular uptake
-plus linear renal elimination so half-life lengthens from roughly 30 minutes at
-25 U/kg to 120 to 150 minutes at 300 U/kg (extrapolated from 25 to 75 U/kg
-volunteer data in Bjornsson 1982). Activated clotting time (ACT) rises from a
-120-second baseline to roughly 250 to 300 seconds at 100 U/kg and above 480
-seconds at 300 U/kg, with mild calibrated hemodilution and hypothermia shifts
-(Bull 1975) and a 60-second Labs analysis delay.
+unfractionated heparin kinetics (`HeparinPK`) with temperature-sensitive
+saturable cellular uptake (slowing during hypothermic CPB in Cohen 1977)
+separate from linear predominantly renal elimination so half-life lengthens
+from roughly 30 minutes at 25 U/kg to 120 to 150 minutes at 300 U/kg
+(extrapolated from 25 to 75 U/kg volunteer data in Bjornsson 1982). Activated
+clotting time (ACT) rises from a 120-second baseline to roughly 250 to 300
+seconds at 100 U/kg and above 480 seconds at 300 U/kg, with mild calibrated
+hemodilution and hypothermia shifts (Bull 1975) and a 60-second Labs analysis
+delay.
 
 Protamine (`ProtaminePK`) neutralizes plasma heparin at 1 mg per 100 U and
 clears rapidly (about 4.5-minute half-life after CPB in Butterworth 2002), so
@@ -1643,13 +1676,16 @@ atrial pressures in patients without prior cardiopulmonary disease in McIntyre
 and Sasahara 1971) and add parallel alveolar dead space with modest shunt,
 dropping EtCO₂ and widening the PaCO₂-to-EtCO₂ gradient without a bronchospastic
 Phase III capnogram upslope (Eriksson 1989). Systemic thrombolysis dissolves
-thromboemboli over minutes while therapeutic heparin halts propagation and
-allows slow endogenous lysis, both gated on pulmonary circulation. For VAE,
-nitrous oxide expands intravascular gas bubbles in proportion to alveolar N₂O
-(rabbit lethal air-dose reductions in Munson and Merrick 1966), 100% oxygen
-accelerates calibrated nitrogen washout compared with room air, right-atrial
-central venous catheter aspiration removes a calibrated 45% of entrained air
-(within the 30 to 60% multiorifice catheter range reviewed in Mirski 2007), and
+thromboemboli over minutes while raising active surgical hemorrhage (calibrated
+from the unstratified major-bleeding odds ratio in Marti 2015), whereas
+therapeutic plasma heparin halts propagation and allows slow endogenous lysis,
+both gated on pulmonary circulation. For VAE, nitrous oxide expands
+intravascular gas bubbles in proportion to alveolar N₂O (rabbit lethal air-dose
+reductions in Munson and Merrick 1966), 100% oxygen accelerates calibrated
+nitrogen washout compared with room air, right-atrial central venous catheter
+aspiration removes a calibrated 45% of proximal right-heart air per pass with a
+brief cooldown while leaving distal pulmonary-bed air unrecoverable (within the
+30 to 60% multiorifice catheter range reviewed in Mirski 2007), and
 left-lateral Durant positioning provides calibrated partial right-ventricular
 outflow relief (noting that experimental canine hemodynamic data reviewed in
 Mirski 2007 are mixed).
@@ -1657,16 +1693,20 @@ Mirski 2007 are mixed).
 ## Neuraxial anesthesia
 
 [`neuraxial.py`](../anasim/physiology/neuraxial.py) models subarachnoid
-(spinal) boluses, epidural catheter boluses and continuous infusions, and
-accidental intrathecal high or total spinal block. Hyperbaric and isobaric
-bupivacaine or lidocaine advance on a continuous dermatome scale (S5 through C2
-and brainstem), with higher cephalad spread in older adults (hyperbaric
-bupivacaine data in Veering 1988) plus calibrated slower regression with age,
-higher pregnancy spread, and bedside cold/pinprick plus modified Bromage checks.
-Motor block lags sensory height by 2.8 segments for spinal and 4.6 segments for
-epidural block (lidocaine data in Freund 1967, extended to bupivacaine), while
+(spinal) boluses, epidural catheter boluses and continuous infusions (building
+block height gradually even without an initial bolus and blending repeat-bolus
+concentrations), and accidental intrathecal high or total spinal block. Hyperbaric and isobaric bupivacaine or lidocaine
+advance on a continuous dermatome scale (S5 through C2 and brainstem), with
+higher cephalad spread in older adults (hyperbaric bupivacaine data in Veering
+1988) plus calibrated slower regression with age, higher pregnancy spread, and
+bedside cold/pinprick plus modified Bromage checks. Motor block lags sensory
+height by 2.8 segments for spinal and 4.6 segments for surgical-concentration
+epidural block (lidocaine data in Freund 1967, extended to bupivacaine), with
+additional motor sparing during dilute labor epidural analgesia (0.1%
+bupivacaine hip-flexion preservation in COMET Study Group UK 2001), while
 sympathetic block is calibrated to extend roughly two dermatomes above the
-sensory level.
+sensory level. Thoracic neuraxial block attenuates somatic surgical stimulation
+while leaving laryngoscopy airway reflexes intact.
 
 Thoracolumbar sympathectomy pools blood into unstressed venous capacitance,
 blunts endogenous reflex vasoconstriction while preserving exogenous pressors,
@@ -1739,9 +1779,9 @@ Attempting tracheal intubation triggers a brief laryngoscopy stimulus whether
 or not placement succeeds. When central muscle strength is more than half
 intact, placement fails during severe laryngospasm or, while systemic perfusion
 continues, when the patient is responsive or lacks adequate laryngoscopy
-tolerance or deep volatile anesthesia (Kimura 1994). During cardiac arrest or
-nonperfusing rhythms without arterial extracorporeal support, placement succeeds
-unless severe laryngospasm closes the vocal cords.
+tolerance, deep non-drug coma, or deep volatile anesthesia (Kimura 1994). During
+cardiac arrest or nonperfusing rhythms without arterial extracorporeal support,
+placement succeeds unless severe laryngospasm closes the vocal cords.
 
 [`clinical_actions.py`](../anasim/core/clinical_actions.py) also checks
 supraglottic airway and oral airway placement against patient responsiveness,
@@ -1766,6 +1806,6 @@ raises a warning without blocking the action when:
   seconds
 - insulin is given during hypoglycemia (blood glucose below 70 mg/dL)
 - insulin is given during hypokalemia (plasma potassium below 3.5 mmol/L)
-- sodium bicarbonate is given during alkalemia (arterial pH above 7.50)
+- sodium bicarbonate is given during alkalemia (37 °C arterial pH above 7.50)
 - sodium bicarbonate is given during severe hypernatremia (plasma sodium above
   155 mmol/L)

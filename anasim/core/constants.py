@@ -94,7 +94,7 @@ class ThermalTuning:
     """Heat balance parameters."""
 
     ambient_temp_c: float = 20.0
-    # Matsukawa 1995: core temperature fell 1.6 °C in the first hour of
+    # Matsukawa 1995a: core temperature fell 1.6 °C in the first hour of
     # propofol-fentanyl anesthesia (81% redistribution) and 2.8 °C by 3 h, as
     # redistribution continued and heat production fell a third. Fitted at
     # propofol 3.5 mcg/mL with the metabolic reduction below. Conductance is at

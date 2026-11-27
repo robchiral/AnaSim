@@ -105,6 +105,8 @@ def po2_and_sat_from_content(
     if content <= 0.0:
         return 0.0, 0.0
     bound_capacity = O2_PER_HB * hb
+    if bound_capacity <= 0.0:
+        return content / solubility, 0.0
     lower, upper = 0.0, max(760.0, content / solubility)
     pressure = max(1e-6, min(upper, previous))
     for _ in range(24):

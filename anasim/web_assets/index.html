@@ -798,7 +798,7 @@
             <button type="button" class="btn full" id="c-epidural-bolus">Give epidural bolus</button>
             <div class="bolus">
               <div class="bolus-field">
-                <div class="control-setting-head"><label for="c-epidural-rate">Epidural infusion (0.125%)</label><span>mL/hr</span></div>
+                <div class="control-setting-head"><label id="c-epidural-rate-label" for="c-epidural-rate">Epidural infusion (0.125%)</label><span>mL/hr</span></div>
                 <input id="c-epidural-rate" type="number" min="0" max="25" step="1" value="0">
               </div>
               <button type="button" class="btn outlined" id="c-epidural-rate-apply">Set</button>
@@ -881,10 +881,10 @@
               </div>
               <div class="ecmo-actions">
                 <button type="button" class="btn toggle full" id="c-ecmo-hc" aria-pressed="true">Heater-cooler: On</button>
+                <button type="button" class="btn toggle full" id="c-cpb-alarm-mode" aria-pressed="false" hidden>Bypass alarm mode: Off</button>
                 <div id="ecmo-cpb-controls" class="ecmo-cpb-controls" hidden>
                   <button type="button" class="btn toggle full" id="c-cpb-cross-clamp" aria-pressed="false">Apply aortic cross-clamp</button>
                   <button type="button" class="btn toggle full" id="c-cpb-cardioplegia" aria-pressed="false">Start cardioplegia</button>
-                  <button type="button" class="btn toggle full" id="c-cpb-alarm-mode" aria-pressed="true">Bypass alarm mode: On</button>
                   <div class="fluid-grid">
                     <button type="button" class="btn fluid-key" data-reservoir-fluid="crystalloid" data-volume="500"><span>Reservoir LR</span><small>+500 mL</small></button>
                     <button type="button" class="btn fluid-key" data-reservoir-fluid="blood" data-volume="300"><span>Reservoir PRBC</span><small>+300 mL</small></button>

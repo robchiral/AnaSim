@@ -1038,9 +1038,14 @@ export class Controls {
       };
     }
     if (epiDrug && epiConc) {
-      epiDrug.onchange = () => {
-        epiConc.value = epiDrug.value === "lidocaine" ? "2" : "0.5";
+      const syncEpiDrugConc = () => {
+        const isLido = epiDrug.value === "lidocaine";
+        epiConc.value = isLido ? "2" : "0.5";
+        const rateLabel = $("c-epidural-rate-label");
+        if (rateLabel) setText(rateLabel, `Epidural infusion (${isLido ? "0.5" : "0.125"}%)`);
       };
+      epiDrug.onchange = syncEpiDrugConc;
+      syncEpiDrugConc();
     }
     const spinalGive = $("c-spinal-give");
     if (spinalGive) {
@@ -1069,10 +1074,11 @@ export class Controls {
     if (epiRateApply) {
       epiRateApply.onclick = async () => {
         if (epiRate?.reportValidity && !epiRate.reportValidity()) return;
+        const drug = epiDrug?.value ?? "bupivacaine";
         const result = await this.performAction(epiRateApply, "neuraxial_epidural_rate", {
           ml_hr: readNumber(epiRate),
-          drug: epiDrug?.value ?? "bupivacaine",
-          concentration_pct: 0.125,
+          drug,
+          concentration_pct: drug === "lidocaine" ? 0.5 : 0.125,
         });
         if (!this.destroyed && result !== undefined) this.epiduralRateDraft = false;
       };
@@ -1124,6 +1130,18 @@ export class Controls {
         setText(readout, `${minutesSeconds(nx.last_check.time)} ${nx.last_check.note}`);
         readout.hidden = false;
       }
+    } else if (!nx.last_check && this.lastNeuraxialCheckTime !== null) {
+      this.lastNeuraxialCheckTime = null;
+      const readout = $("c-neuraxial-readout");
+      if (readout) {
+        clearTimeout(this.feedbackTimers?.get("neuraxial"));
+        this.feedbackTimers?.delete("neuraxial");
+        readout.hidden = true;
+        setText(readout, "");
+      }
+    }
+    if (!nx.active && nx.epidural_rate === 0 && !nx.epidural_catheter) {
+      this.epiduralRateDraft = false;
     }
   }
 
@@ -1212,6 +1230,13 @@ export class Controls {
     setRow("ecmo-venous-row", "c-ecmo-venous-clamp", isCPB);
     setRow("ecmo-bg-row", "c-ecmo-bg-strategy", isCPB);
     if ($("ecmo-cpb-controls")) $("ecmo-cpb-controls").hidden = !isCPB;
+    if ($("c-cpb-alarm-mode")) {
+      $("c-cpb-alarm-mode").hidden = !(isCPB || isVA);
+      if (isCPB || isVA) {
+        setPressed($("c-cpb-alarm-mode"), ec.bypass_alarm_mode,
+          ec.bypass_alarm_mode ? "Bypass alarm mode: On" : "Bypass alarm mode: Off");
+      }
+    }
     setValue($("c-ecmo-flow"), round(ec.target_flow, 2));
     setValue($("c-ecmo-sweep"), round(ec.sweep, 2));
     setValue($("c-ecmo-fio2"), round(ec.fio2, 0));
@@ -1232,10 +1257,6 @@ export class Controls {
       if ($("c-cpb-cardioplegia")) {
         setPressed($("c-cpb-cardioplegia"), ec.cardioplegia,
           ec.cardioplegia ? "Stop cardioplegia" : "Start cardioplegia");
-      }
-      if ($("c-cpb-alarm-mode")) {
-        setPressed($("c-cpb-alarm-mode"), ec.bypass_alarm_mode,
-          ec.bypass_alarm_mode ? "Bypass alarm mode: On" : "Bypass alarm mode: Off");
       }
     }
     const readout = $("ecmo-readout");
@@ -1358,9 +1379,14 @@ export class Controls {
       timeCell.scope = "row";
       timeCell.textContent = minutesSeconds(result.drawn_at);
       const valCell = document.createElement("td");
-      valCell.textContent = result.act_s === null ? "—" : String(Math.round(result.act_s));
-      if (result.act_s !== null && result.act_s > 150) {
-        valCell.className = "abg-high";
+      if (result.act_s === null) {
+        valCell.textContent = "—";
+      } else {
+        const roundedAct = Math.round(result.act_s);
+        valCell.textContent = String(roundedAct);
+        if (roundedAct > 150) {
+          valCell.className = "abg-high";
+        }
       }
       row.append(timeCell, valCell);
       return row;

@@ -105,8 +105,8 @@ class HemodynamicConfig:
     # rate and level off above the saturation concentration, since Sjøen 2024
     # found equal falls in SAP and HR at peak Ce of 2, 4, and 8 ng/mL.
     prop_cv_half_time_by_age: tuple[tuple[float, float], ...] = ((30.0, 11.0), (50.0, 10.5), (65.0, 9.5), (77.5, 19.8))
-    prop_cv_potency_by_age: tuple[tuple[float, float], ...] = ((65.0, 1.0), (77.5, 1.5))
-    opioid_cv_half_time: float = 1.2
+    prop_cv_potency_by_age: tuple[tuple[float, float], ...] = ((65.0, 1.0), (77.5, 1.35))
+    opioid_cv_half_time: float = 1.5
     # Remifentanil's antimuscarinic-reversible vagal bradycardia (Poterman 2017),
     # not applied to fentanyl here. Share of HR at saturation, which Sjøen 2024's
     # equal falls at 2-8 ng/mL place below clinical doses. 4% matches VitalDB TIVA
@@ -117,16 +117,15 @@ class HemodynamicConfig:
     gamma_remi_tpr: float = 1.0
     # Direct opioid effects without propofol: no stroke-volume rise and
     # modest central vagal bradycardia across awake/balanced/etomidate states.
-    sl_remi_hr: float = -0.020
+    sl_remi_hr: float = -0.017
     sl_remi_sv: float = 0.0
     # Opioid interactions on resistance, HR, and stroke volume. Fitted so routine
-    # propofol-remifentanil induction falls as VitalDB recordings do (median 31%
-    # at the lowest reading, 27% before incision), with research inductions at
-    # higher doses (Sjøen 2023 and 2024, Poterman 2017, Sawano 2013) within 2 SD
-    # of their reported falls.
+    # propofol-remifentanil induction tracks VitalDB recordings, with research
+    # inductions at higher doses (Sjøen 2023 and 2024, Poterman 2017, Sawano 2013)
+    # within 2 SD of their reported falls.
     int_tpr: float = 0.65
-    int_hr: float = -0.055
-    ec50_int_hr: float = 0.20
+    int_hr: float = -0.066
+    ec50_int_hr: float = 0.65
     int_sv: float = -0.068
     # Su shares the direct SV EC50 (0.44); a higher EC50 makes the stroke-volume
     # interaction grow with propofol dose, as the higher-dose trials fall further.
@@ -155,11 +154,11 @@ class HemodynamicConfig:
     # MAC while SVR fell 3% and 15% (non-significant until 2 MAC; Malan 1995).
     ke0_sevo: float = 0.05
     sevo_emax_tpr: float = -0.4
-    sevo_ec50_tpr: float = 1.05
+    sevo_ec50_tpr: float = 1.12
     sevo_gamma_tpr: float = 2.5
     sevo_emax_sv: float = -0.5
     sevo_ec50_sv: float = 0.6
-    sevo_emax_hr: float = -0.14
+    sevo_emax_hr: float = -0.10
     sevo_ec50_hr: float = 0.5
 
     # Blood volume, preload, and fluid balance.
@@ -334,13 +333,15 @@ class HemodynamicConfig:
     dobu_emax_sv: float = 0.35
     dobu_emax_svr: float = -0.25
 
-    # Milrinone (ng/mL): Baim 1983 (SVR -35%, CI +53%, MAP -6% in HFrEF); rapid
-    # bolus causes vasodilatory hypotension in normal and HFpEF hearts.
+    # Milrinone (ng/mL): Baim 1983 (SVR -35%, CI +53%, MAP -6% in HFrEF);
+    # Feneck 1992 (post-CPB 50 mcg/kg load + maintenance: PVR -15% at 15 min, -35 to -40% at steady infusion);
+    # rapid bolus causes vasodilatory hypotension in normal and HFpEF hearts.
     mil_c50: float = 150.0
     mil_gamma: float = 1.2
     mil_emax_hr: float = 10.0
     mil_emax_sv: float = 0.34
     mil_emax_svr: float = -0.52
+    mil_emax_pvr: float = -0.45
     mil_venous_pooling_fraction: float = 0.34
 
     # Adrenoceptor blockade. Competitive antagonists divide the agonist

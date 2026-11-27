@@ -141,6 +141,7 @@ class ExtracorporealSystem:
         self.oxygenator.area_m2 = area
         self.set_blood_flow(blood_flow_l_min)
         self.state.blood_flow_l_min = self.state.target_blood_flow_l_min
+        self.state.effective_blood_flow_l_min = self.state.blood_flow_l_min
         self.set_sweep_gas(sweep_gas_l_min)
         self.set_sweep_fio2(sweep_fio2)
         self.set_heater_cooler(heater_cooler_on, water_target_c)
@@ -317,6 +318,27 @@ class ExtracorporealSystem:
         self.state.target_blood_flow_l_min = bounded_number("extracorporeal blood flow", l_min, 0.0, 8.0, unit="L/min")
         if self.is_active and not self.is_cpb:
             self.state.blood_flow_l_min = self.state.target_blood_flow_l_min
+            self.state.effective_blood_flow_l_min = self.state.blood_flow_l_min * (1.0 - self.state.recirculation_fraction)
+
+    def apply_closed_circuit_drainage_limit(
+        self,
+        patient_stressed_vol_ml: float,
+        patient_blood_volume_ml: float,
+        min_patient_blood_volume_ml: float = 500.0,
+    ) -> float:
+        """Limit closed-circuit VV/VA ECMO pump flow when venous drainage collapses in severe hypovolemia."""
+        st = self.state
+        if not self.is_active or self.is_cpb:
+            return st.blood_flow_l_min if self.is_active else 0.0
+        vol_margin = max(0.0, patient_blood_volume_ml - min_patient_blood_volume_ml)
+        vol_gate = clamp01(vol_margin / 500.0)
+        stress_gate = clamp01(max(0.0, patient_stressed_vol_ml) / 200.0)
+        drain_gate = min(vol_gate, stress_gate)
+        st.blood_flow_l_min = st.target_blood_flow_l_min * drain_gate
+        st.venous_drainage_l_min = st.blood_flow_l_min
+        if self.is_va:
+            st.effective_blood_flow_l_min = st.blood_flow_l_min
+        return st.blood_flow_l_min
 
     def set_sweep_gas(self, l_min: float) -> None:
         self.state.sweep_gas_l_min = bounded_number("sweep gas flow", l_min, 0.0, 16.0, unit="L/min")
@@ -476,7 +498,6 @@ class ExtracorporealSystem:
             self._last_pass = None
             return None
         if self.is_vv:
-            st.blood_flow_l_min = st.target_blood_flow_l_min
             result, recirc = self.oxygenator.solve_vv_exchange(
                 st.blood_flow_l_min,
                 native_co_l_min,
@@ -498,8 +519,6 @@ class ExtracorporealSystem:
             st.recirculation_fraction = recirc
             st.effective_blood_flow_l_min = st.blood_flow_l_min * (1.0 - recirc)
         else:
-            if self.is_va:
-                st.blood_flow_l_min = st.target_blood_flow_l_min
             result = self.oxygenator.solve_pass(
                 st.blood_flow_l_min,
                 st.sweep_gas_l_min,

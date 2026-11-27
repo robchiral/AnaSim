@@ -84,7 +84,8 @@ minutes after propofol.
 
 Both scripts fit a patient-offset likelihood model with patient bootstrap 95%
 intervals, report 5-fold cross-validation stability, and accept `--override '{...}'`
-or `--cv-grid '{"field": [v1, v2]}'` (`--folds 5`) for cross-validated sweeps.
+or `--cv-grid '{"field": [v1, v2]}'` (`--folds 5`, evaluating pre-incision
+induction windows) for cross-validated sweeps.
 
 ### Current results
 
@@ -92,22 +93,22 @@ MAP error, in mmHg with 95% CI:
 
 | Report | Patients | Window | MAP error |
 |---|---:|---|---|
-| TIVA (all) | 511 | Propofol to incision | -3.4 (-4.4 to -2.6) |
-| TIVA (legacy core) | 330 | Propofol to incision | -3.1 (-4.1 to -2.2) |
-| TIVA, untreated | 182 | Surgery | -3.5 (-5.2 to -1.8) |
-| Sevoflurane (all) | 136 | Propofol to incision | -7.0 (-9.1 to -4.9) |
-| Sevoflurane (legacy core) | 29 | Propofol to incision | -6.3 (-10.3 to -2.3) |
-| Sevoflurane, untreated | 48 | Surgery | -4.0 (-8.9 to 0.6) |
+| TIVA (all) | 511 | Propofol to incision | -2.7 (-3.7 to -1.9) |
+| TIVA (legacy core) | 330 | Propofol to incision | -2.4 (-3.4 to -1.6) |
+| TIVA, untreated | 182 | Surgery | -1.2 (-2.9 to 0.5) |
+| Sevoflurane (all) | 136 | Propofol to incision | -6.1 (-8.2 to -4.1) |
+| Sevoflurane (legacy core) | 29 | Propofol to incision | -5.5 (-9.5 to -1.5) |
+| Sevoflurane, untreated | 48 | Surgery | 0.3 (-4.7 to 5.0) |
 
 Median fall in MAP from the pre-induction value:
 
 | Report | 1 to 2 minutes | Lowest reading in 10 minutes | Before incision |
 |---|---|---|---|
 | TIVA, recorded | 18% | 33% | 29% |
-| TIVA, model | 19% | 30% | 29% |
+| TIVA, model | 17% | 30% | 29% |
 | Sevoflurane, recorded | 17% | 29% | 27% |
-| Sevoflurane, model | 14% | 32% | 29% |
+| Sevoflurane, model | 14% | 31% | 28% |
 
-Untreated HR error was `+0.1` bpm (induction) and `-0.1` bpm (surgery) in TIVA,
-and `-5.4` bpm at 5 to 10 minutes and `-2.7` bpm during surgery in sevoflurane,
+Untreated HR error was `+0.4` bpm (induction) and `-0.4` bpm (surgery) in TIVA,
+and `-4.2` bpm at 5 to 10 minutes and `-0.3` bpm during surgery in sevoflurane,
 where 2 to 5 minute MAP fell `18%` in the model versus `15%` recorded.

@@ -154,18 +154,27 @@ class CoagulationModel:
         circ = clamp01(circulation)
         if circ <= 0.0:
             # Zero-flow arrest isolates arterial coagulation readings from peripheral IV doses
-            # until circulation resumes; queued infusions still accumulate in C1.
+            # until circulation resumes; queued infusions still accumulate in C1 and the
+            # pending Type I vasodilation exposure buffer.
             if dt > 0.0:
                 if heparin_rate_u_s > 0.0:
                     heparin_pk.step(dt, heparin_rate_u_s)
                 if protamine_rate_mg_s > 0.0:
                     self.cumulative_protamine_mg += protamine_rate_mg_s * dt
                     protamine_pk.step(dt, protamine_rate_mg_s)
+                    infusion_delta = (protamine_rate_mg_s * dt) / max(1.0, protamine_pk.v1)
+                    self._pending_bolus_vaso_ug_ml += 0.35 * infusion_delta
             return self.state
 
-        if self._pending_bolus_vaso_ug_ml > 0.0:
-            self._vaso_exposure_ug_ml += self._pending_bolus_vaso_ug_ml * circ
-            self._pending_bolus_vaso_ug_ml = 0.0
+        if self._pending_bolus_vaso_ug_ml > 0.0 and dt > 0.0:
+            # Flush queued arrest/low-flow bolus exposure continuously with circulation
+            # so low-flow ROSC or CPB weaning neither deletes dose nor diverges with dt.
+            flush_frac = -math.expm1(-dt * circ / 10.0)
+            transfer = self._pending_bolus_vaso_ug_ml * flush_frac
+            self._vaso_exposure_ug_ml += transfer
+            self._pending_bolus_vaso_ug_ml = max(0.0, self._pending_bolus_vaso_ug_ml - transfer)
+            if self._pending_bolus_vaso_ug_ml < 1e-6:
+                self._pending_bolus_vaso_ug_ml = 0.0
             if self.reaction_armed:
                 self.reaction_active = True
                 self.reaction_armed = False

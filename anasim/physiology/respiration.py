@@ -412,7 +412,7 @@ class RespiratoryModel:
         fluids = self.fluids
         if fluids is None:
             return
-        venous_only = circulation <= 0.0
+        venous_only = circulation <= 0.02
         no_pulm_flow = not venous_only and pulmonary_flow is not None and pulmonary_flow <= 0.0
         transport = self.gas_transport
         old_volumes = transport.volumes
@@ -1138,12 +1138,17 @@ class RespiratoryModel:
             blood_volume + transport.extracellular_volume
         )
 
+    def arterial_po2_and_sat_at_37(self) -> tuple[float, float]:
+        """Arterial (PO2 mmHg, SaO2 %) after the analyzer warms the sample to 37 °C."""
+        p50 = self._acid_base_p50(self._blood_ph[1], self._blood_pressures[1], at_37=True)
+        po2_37, sat_37 = self._po2_and_sat_from_content(
+            self.gas_transport.oxygen[1], self._arterial_hb, p50, self._blood_po2[1], solubility=_O2_SOLUBILITY,
+        )
+        return float(po2_37), float(sat_37 * 100.0)
+
     def arterial_po2_at_37(self) -> float:
         """Arterial PO2 after the analyzer warms the sample to 37 °C, mmHg."""
-        p50 = self._acid_base_p50(self._blood_ph[1], self._blood_pressures[1], at_37=True)
-        return self._po2_from_content(
-            self.gas_transport.oxygen[1], self._arterial_hb, p50, self._blood_po2[1], solubility=_O2_SOLUBILITY
-        )
+        return self.arterial_po2_and_sat_at_37()[0]
 
     def _rebalance_base_above_floor(
         self, *, venous_only: bool = False, exclude_pulmonary: bool = False,
@@ -1228,7 +1233,9 @@ class RespiratoryModel:
                         if self.fluids is not None:
                             self.fluids.base_meq += unbuffered
 
-    def remove_buffer_base(self, meq: float, *, venous_only: bool = False) -> None:
+    def remove_buffer_base(
+        self, meq: float, *, venous_only: bool = False, exclude_pulmonary: bool = False,
+    ) -> None:
         """Remove buffer base across extracellular fluid and blood; a negative amount adds base."""
         if meq < 0.0 and self._unbuffered_acid_meq > 0.0:
             repaid = min(self._unbuffered_acid_meq, -meq)
@@ -1244,18 +1251,24 @@ class RespiratoryModel:
         if transport.blood_volume > 0.0 and blood_delta != 0.0:
             if venous_only and transport.volumes[2] > 0.0:
                 transport.base[2] -= blood_delta / transport.volumes[2]
+            elif exclude_pulmonary and (transport.volumes[1] + transport.volumes[2]) > 0.0:
+                shift = blood_delta / (transport.volumes[1] + transport.volumes[2])
+                transport.base[1] -= shift
+                transport.base[2] -= shift
             else:
                 shift = blood_delta / transport.blood_volume
                 transport.base = [b - shift for b in transport.base]
         transport.extracellular_base -= meq - blood_delta
         if self.fluids is not None and transport.blood_volume > 0.0:
             self.fluids.adjust_running_blood_base(-blood_delta)
-        self._rebalance_base_above_floor(venous_only=venous_only)
+        self._rebalance_base_above_floor(venous_only=venous_only, exclude_pulmonary=exclude_pulmonary)
         if self.fluids is not None and transport.blood_volume > 0.0:
             self.fluids.blood_base_meq_l = transport.blood_amount(transport.base) / transport.blood_volume
         self._publish_base_excess()
 
-    def add_organic_carbon(self, mmol: float) -> None:
+    def add_organic_carbon(
+        self, mmol: float, *, venous_only: bool = False, exclude_pulmonary: bool = False,
+    ) -> None:
         """Add bicarbonate/CO2 carbon produced by aerobic oxidation of exogenous organic anions."""
         if mmol <= 0.0:
             return
@@ -1263,8 +1276,15 @@ class RespiratoryModel:
         plasma_share = self._plasma_share()
         blood_delta = mmol * plasma_share
         if transport.blood_volume > 0.0 and blood_delta != 0.0:
-            shift = blood_delta / transport.blood_volume
-            transport.co2 = [c + shift for c in transport.co2]
+            if venous_only and transport.volumes[2] > 0.0:
+                transport.co2[2] += blood_delta / transport.volumes[2]
+            elif exclude_pulmonary and (transport.volumes[1] + transport.volumes[2]) > 0.0:
+                shift = blood_delta / (transport.volumes[1] + transport.volumes[2])
+                transport.co2[1] += shift
+                transport.co2[2] += shift
+            else:
+                shift = blood_delta / transport.blood_volume
+                transport.co2 = [c + shift for c in transport.co2]
         transport.extracellular_co2 += mmol - blood_delta
 
     def central_nmba_block(self, ce_roc: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
@@ -1825,19 +1845,33 @@ class RespiratoryModel:
             low_vq_venous_o2: float | None = None
             ecmo_res = None
             if ecmo_active:
-                ecmo_res = extracorporeal.step_gas_exchange(
-                    sub_dt,
-                    pulm_co,
-                    transport.co2[2],
-                    transport.oxygen[2],
-                    transport.base[2],
-                    hb,
-                    temp_c,
-                    self.chemistry,
-                    pco2_v_guess=self._blood_pressures[2],
-                    ph_v_guess=self._blood_ph[2],
-                    po2_v_guess=self._blood_po2[2],
+                ecmo_st = extracorporeal.state
+                ecmo_no_flow = (
+                    (extracorporeal.is_vv and pulm_co <= 1e-6)
+                    or (not extracorporeal.is_vv and ecmo_st.blood_flow_l_min <= 1e-6)
                 )
+                if ecmo_no_flow:
+                    if extracorporeal.is_vv:
+                        ecmo_st.recirculation_fraction = 1.0 if ecmo_st.blood_flow_l_min > 1e-6 else 0.0
+                    else:
+                        ecmo_st.recirculation_fraction = 0.0
+                    ecmo_st.effective_blood_flow_l_min = 0.0
+                    ecmo_st.o2_transfer_ml_min = 0.0
+                    ecmo_st.co2_removal_ml_min = 0.0
+                else:
+                    ecmo_res = extracorporeal.step_gas_exchange(
+                        sub_dt,
+                        pulm_co,
+                        transport.co2[2],
+                        transport.oxygen[2],
+                        transport.base[2],
+                        hb,
+                        temp_c,
+                        self.chemistry,
+                        pco2_v_guess=self._blood_pressures[2],
+                        ph_v_guess=self._blood_ph[2],
+                        po2_v_guess=self._blood_po2[2],
+                    )
                 if ecmo_res is not None and sub_dt > 0.0:
                     ecmo_o2_step = ecmo_res.o2_transfer_l_min * sub_dt / 60.0
                     ecmo_co2_step = -ecmo_res.co2_removal_l_min * sub_dt / 60.0 / _CO2_L_PER_MMOL

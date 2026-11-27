@@ -284,8 +284,12 @@ class BISModel:
             )
             drug_bis = min(self.baseline, drug_bis + ket_shift)
         if temp_c < 34.0:
-            # Hypothermia progressively slows cortical EEG activity below 34 °C.
-            drug_bis *= 1.0 - 0.55 * (clamp01((34.0 - temp_c) / 9.0) ** 1.3)
+            # Hypothermia progressively slows cortical EEG activity below 34 °C
+            # toward burst suppression (~24-27 °C) and electrocerebral silence
+            # (~18-21 °C; Stecker 2001).
+            moderate = 0.55 * (clamp01((34.0 - temp_c) / 9.0) ** 1.3)
+            deep = 0.45 * clamp01((25.0 - temp_c) / 7.0)
+            drug_bis *= max(0.0, 1.0 - moderate - deep)
         return drug_bis
 
     @staticmethod
@@ -505,36 +509,21 @@ class ClinicalResponseModel:
         intensity_scale = clamp(intensity / 1.64, 0.5, 1.5)
         fent_p_c50 = FENTANYL_PRESSURE_C50 * intensity_scale
         fent_hr_c50 = FENTANYL_HR_C50 * intensity_scale
-        prop_share = clamp01(ce_prop_pos / 2.5)
-        non_prop_non_sevo = (1.0 - prop_share) * (1.0 - clamp01(sevo_mac / 0.25))
-        pressure_fent = ce_fentanyl + non_prop_non_sevo * remi_as_fent
-        pressure_exposure = (pressure_fent / fent_p_c50) ** FENTANYL_PRESSURE_GAMMA if pressure_fent > 0.0 else 0.0
-        # Fentanyl (and equipotent non-fentanyl opioids outside propofol TIVA / sevo MAC_BAR)
-        # blunts the laryngoscopy pressor response directly and alongside propofol or ketamine.
-        direct_fent_floor = 0.65 * (1.0 - clamp01(sevo_mac / 0.5))
-        fent_pressure_scale = max(
-            direct_fent_floor,
-            ce_prop_pos / 3.4 + 1.2 * ce_ket_pos / KETAMINE_MAC_EQUIVALENT,
-        )
-        pressure = (
-            remaining * math.exp(-_LN2 * pressure_exposure * fent_pressure_scale)
-            if pressure_exposure > 0.0
+        fent_exposure = (ce_fentanyl / fent_p_c50) ** FENTANYL_PRESSURE_GAMMA if ce_fentanyl > 0.0 else 0.0
+        prop_ket_scale = ce_prop_pos / 3.4 + 1.2 * ce_ket_pos / KETAMINE_MAC_EQUIVALENT
+        p_main = (
+            remaining * math.exp(-_LN2 * fent_exposure * prop_ket_scale)
+            if fent_exposure > 0.0 and prop_ket_scale > 0.0
             else remaining
         )
-        # Monotonic direct-opioid ceiling so lone high-dose remifentanil/morphine
-        # blunts stimulation without distorting the calibrated propofol-remifentanil
-        # intubation curve (Albertin 2005; VitalDB TIVA).
+        # Monotonic direct-opioid ceilings so lone opioids blunt stimulation
+        # without distorting the calibrated propofol-remifentanil or
+        # sevoflurane MAC-BAR surfaces (Kazama 1997; Katoh 1999; Albertin 2005).
         lone_remi = 1.0 / (1.0 + (ce_remi / (12.0 * intensity_scale)) ** 3.0) if ce_remi > 0.0 else 1.0
-        lone_opioid_p = (
-            (math.exp(-_LN2 * pressure_exposure * 0.65) if pressure_exposure > 0.0 else 1.0)
-            * lone_remi
-            * one_minus_lido
-        )
-        pressure = min(pressure, lone_opioid_p)
+        direct_fent_p = math.exp(-_LN2 * fent_exposure * 0.65) if fent_exposure > 0.0 else 1.0
+        pressure = min(p_main, direct_fent_p * lone_remi * one_minus_lido)
         sevo_hr_weight = clamp01(sevo_mac / 0.25) if sevo_mac > 0.0 else 0.0
-        iv_opioid_share = clamp01(ce_prop_pos / 2.5 + ce_ket_pos / 1.5)
-        remi_hr_weight = max(sevo_hr_weight * (1.0 - 0.5 * iv_opioid_share), 1.0 - prop_share)
-        hr_fent = ce_fentanyl + remi_hr_weight * remi_as_fent
+        hr_fent = ce_fentanyl + sevo_hr_weight * remi_as_fent
         hr_denom = 1.0 + (hr_fent / fent_hr_c50) ** FENTANYL_HR_GAMMA if hr_fent > 0.0 else 1.0
         hr = min(remaining / hr_denom, one_minus_lido / hr_denom * lone_remi)
         return pressure, hr

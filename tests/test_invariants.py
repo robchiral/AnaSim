@@ -431,10 +431,11 @@ def test_extracorporeal_mode_switching_and_colloid_prime_conservation(engine_fac
     eng.set_bypass_alarm_mode(True)
     advance_time(eng, 10.0, dt=0.5)
     pat_before_vv = eng.hemo.patient_blood_volume
+    res_before_vv = eng.extracorporeal.state.reservoir_volume_ml
     eng.start_vv_ecmo(blood_flow_l_min=4.0, prime_volume_ml=600.0)
     assert eng.state.ecmo_mode == "vv_ecmo"
     assert eng.hemo.extracorporeal_volume_ml == pytest.approx(600.0, abs=1e-6)
-    assert eng.hemo.patient_blood_volume == pytest.approx(pat_before_vv, abs=1.0)
+    assert eng.hemo.patient_blood_volume == pytest.approx(pat_before_vv + res_before_vv, abs=1.0)
     assert eng.hemo._aortic_cross_clamp is False
     assert eng.hemo._cardioplegia_arrest is False
     assert eng.hemo._cpb_open_drainage is False
@@ -617,6 +618,8 @@ def test_sodium_bicarbonate_step_size_invariance(engine_factory, advance_time):
             config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=17, maintenance_fluid_ml_hr=0.0),
             start=True,
         )
+        # Controlled VCV isolates NaHCO3 acid-base/osmotic dynamics from asynchronous spontaneous-over-VCV beat phase.
+        eng.give_drug_bolus("roc", 50.0)
         eng.resp.remove_buffer_base(120.0)
         advance_time(eng, 60.0, dt=dt)
         eng.give_sodium_bicarbonate(100.0)
@@ -673,3 +676,180 @@ def test_airway_thoracic_embolism_and_neuraxial_arrest_isolation_and_stop_events
     assert not eng.pneumothorax.active and eng.pneumothorax.total_volume_l == 0.0
     assert not eng.embolism.pe_active and eng.embolism.vae_air_ml == 0.0
     assert not eng.neuraxial.active and not eng.neuraxial.epidural_catheter
+
+
+def test_cardiovascular_response_fractions_monotonic_across_all_seven_drugs():
+    """Increasing any single drug never increases residual cardiovascular stimulation."""
+    import random
+
+    from anasim.patient.pd.anesthesia import ClinicalResponseModel
+
+    crm = ClinicalResponseModel(age=40.0)
+    rng = random.Random(101)
+    for _ in range(400):
+        base = [
+            rng.uniform(0.0, 8.0),   # ce_prop
+            rng.uniform(0.0, 12.0),  # ce_remi
+            rng.uniform(0.0, 2.5),   # mac_sevo
+            rng.uniform(0.0, 0.8),   # mac_n2o
+            rng.uniform(0.0, 4.0),   # ce_ketamine
+            rng.uniform(0.0, 6.0),   # ce_lidocaine
+            rng.uniform(0.0, 8.0),   # ce_fentanyl
+        ]
+        intensity = rng.uniform(0.8, 1.9)
+        p0, h0 = crm.cardiovascular_response_fractions(
+            base[0], base[1], base[2], base[3], base[4], base[5],
+            intensity=intensity, ce_fentanyl=base[6],
+        )
+        for idx in range(7):
+            bumped = list(base)
+            bumped[idx] += rng.uniform(0.05, 2.0)
+            p1, h1 = crm.cardiovascular_response_fractions(
+                bumped[0], bumped[1], bumped[2], bumped[3], bumped[4], bumped[5],
+                intensity=intensity, ce_fentanyl=bumped[6],
+            )
+            assert p1 <= p0 + 1e-12
+            assert h1 <= h0 + 1e-12
+
+
+def test_zero_flow_pea_isolation_and_dt_invariant_rosc_flush(engine_factory, advance_time):
+    """Zero-flow PEA isolates arterial gases, volatile p_art, fluid thermal heat,
+    PE/VAE kinetics, and protamine vasodilation exposure until circulation resumes."""
+    from anasim.physiology.coagulation import CoagulationModel
+    from anasim.physiology.embolism import PulmonaryEmbolismModel
+    from anasim.physiology.thermal import ThermalModel
+
+    # 1. Zero-flow PEA freezes arterial pH/PaCO2/p_art and isolates oxygenator / fluid heat.
+    eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.5, rng_seed=3),
+        start=True,
+    )
+    advance_time(eng, 15.0, dt=0.5)
+    eng.set_rhythm(RhythmType.ASYSTOLE)
+    advance_time(eng, 2.0, dt=0.5)
+    p_art_0 = eng.pk_sevo.state.p_art
+    paco2_0 = eng.state.pa_co2
+    eng.set_vaporizer(8.0)
+    eng.set_fgf(10.0, 0.0, 0.0)
+    eng.give_fluid(500.0)
+    advance_time(eng, 20.0, dt=0.5)
+    assert eng.pk_sevo.state.p_art == pytest.approx(p_art_0, abs=1e-4)
+    assert eng.state.pa_co2 == pytest.approx(paco2_0, abs=0.5)
+
+    # 2. Fluid thermal heat stays queued during zero perfusion and delivers once perfusion returns.
+    th = ThermalModel(Patient())
+    th.add_fluid_heat_j(1000.0, 6.0, 37.0, is_blood=True)
+    assert th._pending_fluid_heat_j < -1e4
+    th.step_temperature(1.0, 37.0, 0.0, perfusing=False)
+    assert th._pending_fluid_heat_j < -1e4
+    th.step_temperature(1.0, 37.0, 0.0, perfusing=True)
+    assert th._pending_fluid_heat_j == 0.0
+
+    # 3. PE onset and VAE entrainment halt at circ == 0; protamine ROSC flush is dt-invariant.
+    emb = PulmonaryEmbolismModel(reference_weight_kg=70.0)
+    emb.start_pe(0.65)
+    emb.start_vae(rate_ml_min=80.0, initial_bolus_ml=0.0)
+    emb.step(60.0, p_alv_n2o=0.5, alveolar_o2_fraction=0.5, circulation=0.0, pulmonary_circulation=0.0)
+    assert emb.pe_obstruction == 0.0
+    assert emb.vae_air_ml == 0.0
+
+    exposures = []
+    for dt in (0.1, 1.0):
+        from anasim.patient.pk_models import HeparinPK, ProtaminePK
+
+        p = Patient()
+        coag = CoagulationModel()
+        hep, prot = HeparinPK(p), ProtaminePK(p)
+        coag.record_protamine_bolus(50.0, prot.v1, circulation=0.0)
+        for _ in range(round(20.0 / dt)):
+            coag.step(dt, hep, prot, circulation=0.5)
+        exposures.append(coag._vaso_exposure_ug_ml)
+    assert exposures[0] == pytest.approx(exposures[1], rel=0.03)
+
+
+def test_extracorporeal_prime_drainage_bypass_silence_ecpr_and_actionlog_events(engine_factory, advance_time):
+    """Verify prime validation, closed-circuit drainage throttling, bypass-alarm pump gate,
+    eCPR monitor continuity, and pre-mutation crisis event logging."""
+    from anasim.core.action_log import ACTION_EVENT_START, ACTION_EVENT_STOP
+
+    eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=5, arterial_line_enabled=True),
+        start=True,
+    )
+    with pytest.raises(ValueError, match="hematocrit"):
+        eng.start_va_ecmo(prime_label="blood", prime_hematocrit=0.0)
+    with pytest.raises(ValueError, match="hematocrit"):
+        eng.start_va_ecmo(prime_label="crystalloid", prime_hematocrit=0.35)
+
+    # Blood prime defaults to Hct 0.55 and does not drop Hb precipitously.
+    hb0 = eng.hemo.hb_conc
+    eng.start_va_ecmo(
+        blood_flow_l_min=4.0, sweep_gas_l_min=4.0, prime_volume_ml=600.0,
+        prime_label="blood", bypass_alarm_mode=True,
+    )
+    assert eng.hemo.hb_conc >= hb0 - 0.3
+
+    # eCPR (VA ECMO + chest compressions) preserves VA ECMO arterial perfusion instead of CPR collapse.
+    eng.set_rhythm(RhythmType.VFIB)
+    eng.set_chest_compressions(True)
+    advance_time(eng, 10.0, dt=0.5)
+    assert eng.state.map >= 45.0
+    assert eng.state.art_map >= 45.0
+    assert not eng.state.cardiac_arrest
+
+    # Bypass alarm silence disables when pump flow drops to zero.
+    eng.set_ecmo_flow(0.0)
+    advance_time(eng, 10.0, dt=0.5)
+    assert "Asystole" in eng.state.alarms or "VFIB" in eng.state.alarms or "Arrest" in eng.state.alarms
+
+    # Closed-circuit ECMO throttles delivered blood flow during severe hypovolemia.
+    eng.set_chest_compressions(False)
+    eng.set_rhythm(RhythmType.SINUS)
+    eng.set_ecmo_flow(5.0)
+    eng.hemo.add_volume(-2200.0)
+    advance_time(eng, 5.0, dt=0.5)
+    assert eng.extracorporeal.state.blood_flow_l_min < 4.5
+    eng.stop_extracorporeal(reinfuse=False)
+
+    # Pre-mutation crisis event logging across difficult airway, esophageal, high spinal, and armed protamine.
+    ev = engine_factory(config=SimulationConfig(mode="awake", dt=0.5, rng_seed=7), start=True)
+    ev.give_drug_bolus("propofol", 200.0)
+    ev.give_drug_bolus("roc", 50.0)
+    advance_time(ev, 45.0, dt=0.5)
+    ev.set_difficult_airway("anterior_dl")
+    assert any(r.label == "difficult_airway" for r in ev.actions.records if r.action == ACTION_EVENT_START)
+    ev.set_difficult_airway("none")
+    assert any(r.label == "difficult_airway" for r in ev.actions.records if r.action == ACTION_EVENT_STOP)
+
+    ev.arm_esophageal_intubation(True)
+    ev.attempt_intubation("dl")
+    assert any(r.label == "esophageal_intubation" for r in ev.actions.records if r.action == ACTION_EVENT_START)
+    ev.perform_fona()
+    assert any(r.label == "esophageal_intubation" for r in ev.actions.records if r.action == ACTION_EVENT_STOP)
+
+    ev.give_spinal("bupivacaine", 50.0)
+    assert any(r.label == "high_spinal" for r in ev.actions.records if r.action == ACTION_EVENT_START)
+
+    ev.arm_protamine_reaction(True)
+    ev.give_drug_bolus("protamine", 50.0)
+    assert any(r.label == "protamine_reaction" for r in ev.actions.records if r.action == ACTION_EVENT_START)
+
+    # Low-flow acidemia does not inflate resting-pH arterial iCa used for hyperkalemia membrane threshold.
+    fb = ev.hemo.fluids
+    fb.sync_circulation(0.15, ph=7.05)
+    assert fb.arterial_ionized_calcium(7.05) > fb.arterial_ionized_calcium(fb.resting_ph) + 0.10
+    assert fb.arterial_ionized_calcium(fb.resting_ph) == pytest.approx(fb.calcium_set_point, abs=0.05)
+
+    # Hypothermic awake startup equilibrates endogenous NE without a cold-clearance startup overshoot.
+    cold_ne = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True, baseline_temp=32.0,
+    )
+    ne0 = cold_ne.pk["nore"].state.c1
+    advance_time(cold_ne, 60.0, dt=1.0)
+    assert cold_ne.pk["nore"].state.c1 == pytest.approx(ne0, rel=0.02)
+
+    # Negative osmotic plasma shifts never reverse sign if blood volume sits below min_bv.
+    cold_ne.hemo.blood_volume = 1200.0
+    bv_low = cold_ne.hemo.blood_volume
+    cold_ne.hemo.apply_osmotic_plasma_shift(-50.0)
+    assert cold_ne.hemo.blood_volume <= bv_low

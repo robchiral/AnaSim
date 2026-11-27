@@ -61,7 +61,7 @@ def test_hypothermia_slows_apneic_co2_rise(engine_factory):
 
 
 def test_core_drop_after_induction(patient):
-    """Matsukawa 1995: core temperature fell 1.6 ± 0.3 °C in the first hour and 2.8 ± 0.5 °C by 3 h."""
+    """Matsukawa 1995a: core temperature fell 1.6 ± 0.3 °C in the first hour and 2.8 ± 0.5 °C by 3 h."""
     thermal = ThermalModel(patient)
     temp_c = 37.0
     # Awake thermoregulation holds core temperature before induction.

@@ -15,6 +15,7 @@ import math
 
 from anasim.core.constants import TEMP_METABOLIC_COEFFICIENT
 from anasim.core.utils import clamp, clamp01
+from anasim.physiology.blood_gas_math import temperature_pco2_scale
 
 
 class CerebralModel:
@@ -165,11 +166,19 @@ class CerebralModel:
             self.dysfunction += (target - self.dysfunction) * -math.expm1(-dt / tau)
         # Acute hypercapnia impairs response more with acidemia; compensated
         # retention does so only above 100 mmHg. Gating pH by PaCO2 keeps
-        # metabolic acidosis from causing narcosis.
-        if pa_co2 > 60.0:
-            hypercapnia = clamp01((pa_co2 - 60.0) / 40.0)
-            acidemia = clamp01((7.3 - ph) / 0.2)
-            target_co2 = max(clamp01((pa_co2 - 100.0) / 40.0), hypercapnia * acidemia)
+        # metabolic acidosis from causing narcosis. Under hypothermic pH-stat CPB,
+        # CO2 is intentionally added to hold in-vivo PaCO2/pH normal, so evaluate
+        # narcosis on temperature-corrected in-vivo values.
+        if ph_stat and temp_c < 36.0:
+            narcosis_paco2 = pa_co2 * temperature_pco2_scale(temp_c)
+            narcosis_ph = ph + 0.0147 * (37.0 - temp_c)
+        else:
+            narcosis_paco2 = pa_co2
+            narcosis_ph = ph
+        if narcosis_paco2 > 60.0:
+            hypercapnia = clamp01((narcosis_paco2 - 60.0) / 40.0)
+            acidemia = clamp01((7.3 - narcosis_ph) / 0.2)
+            target_co2 = max(clamp01((narcosis_paco2 - 100.0) / 40.0), hypercapnia * acidemia)
         else:
             target_co2 = 0.0
         prolonged = (
@@ -190,10 +199,10 @@ class CerebralModel:
             self.hypercapnic_coma_s *= math.exp(-dt / (2.0 * self.CO2_RECOVERY_MAX_TAU_S))
         # Deeper hypercapnic coma depresses medullary breathing toward shallow
         # hypoventilation (Westlake 1955; Sieker and Hickam 1956).
-        if pa_co2 > 90.0:
+        if narcosis_paco2 > 90.0:
             medullary_co2 = max(
-                clamp01((pa_co2 - 110.0) / 35.0),
-                clamp01((pa_co2 - 90.0) / 40.0) * clamp01((7.22 - ph) / 0.14),
+                clamp01((narcosis_paco2 - 110.0) / 35.0),
+                clamp01((narcosis_paco2 - 90.0) / 40.0) * clamp01((7.22 - narcosis_ph) / 0.14),
             )
             target_resp_dep = 0.95 * medullary_co2 * medullary_co2
         else:

@@ -245,7 +245,7 @@ class CardiacCycle:
             self._recent_rr_total = sum(self._recent_rr)
 
         recent = self._recent_rr
-        if beat_started or (
+        if beat_started or self._elapsed_s >= 8.0 or (
             self._elapsed_s > 1.5 * recent[-1]
             or (len(recent) > 1 and self._recent_rr_total - recent[0] + self._elapsed_s >= 8.0)
             if recent

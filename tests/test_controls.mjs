@@ -862,3 +862,71 @@ test("airway tools, neuraxial block, crisis procedures, and dynamic position row
   assert.equal(elements.get("crisis-proc-summary").textContent, "Chest vented · Lysis running");
   clearTimeout(controls.crisisProcFeedbackTimer);
 });
+
+test("epidural lidocaine infusion updates concentration, VA ECMO exposes bypass alarm mode, and ACT rounds consistently", async () => {
+  const elements = new Map();
+  const makeEl = (extra = {}) => ({
+    value: "", disabled: false, hidden: false, checked: false, open: false,
+    className: "", textContent: "", dataset: {},
+    attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; },
+    getAttribute(k) { return this.attrs[k]; },
+    querySelectorAll: () => [],
+    ...extra,
+  });
+  for (const id of [
+    "neuraxial-module", "neuraxial-summary", "c-spinal-drug", "c-spinal-dose", "c-spinal-baricity",
+    "c-spinal-give", "c-epidural-drug", "c-epidural-vol", "c-epidural-conc", "c-epidural-epi",
+    "c-epidural-bolus", "c-epidural-rate", "c-epidural-rate-label", "c-epidural-rate-apply",
+    "c-epidural-stop", "c-neuraxial-check", "c-neuraxial-readout",
+    "ecmo-module", "ecmo-summary", "ecmo-start-panel", "ecmo-active-panel", "c-abg-site-row",
+    "c-abg-site", "ecmo-lv-vent-row", "c-ecmo-lv-vent", "ecmo-sevo-row", "c-ecmo-sevo",
+    "ecmo-venous-row", "c-ecmo-venous-clamp", "ecmo-bg-row", "c-ecmo-bg-strategy",
+    "ecmo-cpb-controls", "c-ecmo-flow", "c-ecmo-sweep", "c-ecmo-fio2", "c-ecmo-water",
+    "c-ecmo-hc", "c-cpb-cross-clamp", "c-cpb-cardioplegia", "c-cpb-alarm-mode", "ecmo-readout",
+    "act-pending", "act-results",
+  ]) {
+    elements.set(id, makeEl());
+  }
+  elements.get("c-epidural-drug").value = "bupivacaine";
+  elements.get("c-epidural-rate").value = "10";
+  const tbody = { children: [], replaceChildren(...kids) { this.children = kids; } };
+  elements.get("act-results").querySelector = () => ({ tBodies: [tbody] });
+  globalThis.document = {
+    activeElement: null,
+    getElementById: id => elements.get(id),
+    createElement: tag => ({ tag, scope: "", className: "", textContent: "", children: [], append(...kids) { this.children.push(...kids); } }),
+  };
+
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.destroyed = false;
+  controls.feedbackTimers = new Map();
+  controls.performAction = async (_btn, name, args) => { sent.push([name, args]); return {}; };
+  controls.bindNeuraxial();
+  elements.get("c-epidural-drug").value = "lidocaine";
+  elements.get("c-epidural-drug").onchange();
+  assert.equal(elements.get("c-epidural-conc").value, "2");
+  assert.equal(elements.get("c-epidural-rate-label").textContent, "Epidural infusion (0.5%)");
+  elements.get("c-epidural-rate").value = "10";
+  await elements.get("c-epidural-rate-apply").onclick();
+  assert.deepEqual(sent[0], ["neuraxial_epidural_rate", { ml_hr: 10, drug: "lidocaine", concentration_pct: 0.5 }]);
+
+  // VA ECMO reveals bypass alarm mode toggle even though CPB-only controls remain hidden.
+  controls.syncExtracorporeal({
+    active: true, mode: "va_ecmo", flow: 4.0, target_flow: 4.0, sweep: 3.5, fio2: 100,
+    water_target_c: 37, heater_cooler_on: true, lv_vent: 0, bypass_alarm_mode: true,
+  });
+  assert.equal(elements.get("ecmo-cpb-controls").hidden, true);
+  assert.equal(elements.get("c-cpb-alarm-mode").hidden, false);
+  assert.equal(elements.get("c-cpb-alarm-mode").textContent, "Bypass alarm mode: On");
+
+  // ACT 150.4 rounds to 150 and must not be highlighted as > 150.
+  controls.time = 100;
+  controls.shownActs = 0;
+  controls.acts = [{ drawn_at: 10, ready_at: 70, act_s: 150.4 }];
+  controls.showActs();
+  const row = tbody.children[0];
+  assert.equal(row.children[1].textContent, "150");
+  assert.equal(row.children[1].className, "");
+});

@@ -293,6 +293,7 @@ class WebSession:
         """Return session constants the UI needs once, as JSON."""
         engine = self.engine
         patient = engine.patient
+        self._trend_pending.clear()
         return json.dumps({
             "version": __version__,
             "patient": {
@@ -526,9 +527,9 @@ class WebSession:
         s = engine.state
         # Spirometry needs gas through the circuit, Pplat a positive-pressure
         # breath, and end-tidal values an exhaled breath.
-        connected = s.airway_mode != AirwayType.NONE
+        connected = circuit_connected(engine)
         assisted = connected and (engine.vent.is_on or assisted_positive_pressure(engine))
-        exhaled = s.etco2_signal_valid or engine.etco2_readout.gas_valid
+        exhaled = (s.etco2_signal_valid or engine.etco2_readout.gas_valid) and not s.esophageal_intubation
         nibp_ts = (
             engine.nibp.failed_timestamp
             if (s.nibp_measurement_failed and engine.nibp.failed_timestamp is not None)
@@ -986,7 +987,7 @@ class WebSession:
         prev = self.engine.state.airway_mode
         was_esophageal = prev == AirwayType.ETT and self.engine.airway_crisis.esophageal_intubation
         was_assisted = (prev != AirwayType.NONE) and not was_esophageal and (
-            self.engine.vent.is_on or self.engine.bag_mask_active
+            (self.engine.vent.is_on and self.engine.vent.settings.mode != "CPAP") or self.engine.bag_mask_active
         )
         leaving_infraglottic = prev in (AirwayType.ETT, AirwayType.FONA)
         feedback = check_airway_removal(self.engine) if leaving_infraglottic else None
@@ -1352,10 +1353,10 @@ class WebSession:
         self.engine.set_ards_shunt(domain.bounded_number("ARDS shunt", percent, 0.0, 90.0, unit="%") / 100.0)
 
     def _cmd_extracorporeal_start(self, mode: str, **kwargs):
-        common = {"blood_flow", "sweep_gas", "sweep_fio2", "membrane_type", "prime_volume_ml", "heater_cooler_on", "water_target_c"}
+        common = {"blood_flow", "sweep_gas", "sweep_fio2", "fio2_percent", "membrane_type", "prime_volume_ml", "heater_cooler_on", "water_target_c"}
         mode_specs = {
             "vv_ecmo": ("VV ECMO", common | {"cannulation"}),
-            "va_ecmo": ("VA ECMO", common | {"cannulation", "lv_vent"}),
+            "va_ecmo": ("VA ECMO", common | {"cannulation", "lv_vent", "bypass_alarm_mode"}),
             "cpb": (
                 "CPB",
                 common | {"sweep_fco2", "sweep_sevo", "initial_reservoir_ml", "blood_gas_strategy", "venous_clamp", "bypass_alarm_mode"},
@@ -1377,6 +1378,8 @@ class WebSession:
         for key, value in kwargs.items():
             if key == "venous_clamp":
                 opts["venous_clamp_open"] = domain.bounded_number("venous clamp", value, 0.0, 100.0, unit="%") / 100.0
+            elif key == "fio2_percent":
+                opts["sweep_fio2"] = domain.bounded_number("sweep FiO2", value, 21.0, 100.0, unit="%") / 100.0
             else:
                 opts[rename.get(key, key)] = value
         feedback = check_extracorporeal_start(self.engine, mode) if mode == "cpb" else None

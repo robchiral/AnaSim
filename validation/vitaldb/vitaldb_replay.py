@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize
 
+from anasim.core import runtime as runtime_core
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
@@ -260,6 +261,22 @@ def window_medians(
     return out if len(out) == 2 else None
 
 
+def step_headless(engine: SimulationEngine, dt: float) -> None:
+    """Advance the full engine without 100 Hz monitor waveform rendering."""
+    if dt <= 0.0 or not engine.running:
+        return
+    runtime_core.step_simulation(engine, dt, update_monitors=False)
+    engine.state.time = round(engine.state.time + dt, 9)
+
+
+_INDUCTION_ONLY = False
+
+
+def induction_only_mode() -> bool:
+    """Whether worker evaluation should stop at incision (used by pre-incision CV grid sweeps)."""
+    return _INDUCTION_ONLY
+
+
 def run_hemodynamic_replay(
     case: dict[str, Any],
     patient: Patient,
@@ -328,7 +345,7 @@ def run_hemodynamic_replay(
             fi_state["now"] = float(inspired_sevo[i - 1]) / 100.0
         engine.infusion_rates["propofol"] = float(propofol_mg_s[i - 1])
         engine.infusion_rates["remi"] = float(remi_ug_s[i - 1])
-        engine.step(float(dt))
+        step_headless(engine, float(dt))
         out[i] = engine.state.map, engine.state.hr, engine.state.et_sevo
     return out
 
@@ -642,9 +659,19 @@ def hemo_period_line(rows: list[dict[str, Any]], rng: np.random.Generator) -> li
     ]
 
 
-def hemo_worker_init(override: dict[str, Any], cache: Path) -> None:
+def hemo_worker_init(override: dict[str, Any], cache: Path, induction_only: bool = False) -> None:
+    global _INDUCTION_ONLY
+    _INDUCTION_ONLY = induction_only
     vitaldb_data.CACHE = cache
     apply_hemo_override(override)
+
+
+def _case_duration_key(item: Any) -> float:
+    case = item[0]
+    try:
+        return float(case.get("opend", 0.0)) - float(case.get("anestart", 0.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def run_hemo_pool(
@@ -654,13 +681,23 @@ def run_hemo_pool(
     workers: int,
     override: dict[str, Any],
     cache: Path,
+    *,
+    induction_only: bool = False,
 ) -> list[dict[str, Any]]:
     if workers <= 1:
-        hemo_worker_init(override, cache)
+        hemo_worker_init(override, cache, induction_only)
         return [evaluate_fn(item, dt) for item in pool]
-    chunksize = max(1, min(4, len(pool) // (workers * 2) or 1))
-    with ProcessPoolExecutor(workers, initializer=hemo_worker_init, initargs=(override, cache)) as executor:
-        return list(executor.map(evaluate_fn, pool, [dt] * len(pool), chunksize=chunksize))
+    # Schedule longest cases first with chunksize=1 to avoid straggler workers.
+    order = sorted(range(len(pool)), key=lambda idx: _case_duration_key(pool[idx]), reverse=True)
+    ordered_pool = [pool[idx] for idx in order]
+    with ProcessPoolExecutor(
+        workers, initializer=hemo_worker_init, initargs=(override, cache, induction_only),
+    ) as executor:
+        ordered_results = list(executor.map(evaluate_fn, ordered_pool, [dt] * len(ordered_pool), chunksize=1))
+    results: list[dict[str, Any]] = [{}] * len(pool)
+    for orig_idx, res in zip(order, ordered_results, strict=True):
+        results[orig_idx] = res
+    return results
 
 
 def run_hemo_cli(
@@ -712,7 +749,9 @@ def run_hemo_cli(
             if merged == override:
                 candidate_results.append((merged, rows))
             else:
-                cand_res = run_hemo_pool(evaluate_fn, retained_pool, args.dt, args.workers, merged, args.cache)
+                cand_res = run_hemo_pool(
+                    evaluate_fn, retained_pool, args.dt, args.workers, merged, args.cache, induction_only=True,
+                )
                 candidate_results.append((merged, [r for r in cand_res if "exclusion" not in r]))
         data["cv_grid"] = cv_hemodynamic_grid(candidate_results, n_folds=args.folds, seed=args.seed)
 

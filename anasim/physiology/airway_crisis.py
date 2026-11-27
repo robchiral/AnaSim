@@ -185,6 +185,7 @@ class AirwayCrisisModel:
                         trauma_added=trauma,
                     )
                 self.clear_esophageal()
+                self.esophageal_armed = False
                 self.last_view = "Grade IIa"
                 return IntubationAttemptResult(
                     placed=True,
@@ -209,6 +210,7 @@ class AirwayCrisisModel:
                         trauma_added=trauma,
                     )
                 self.clear_esophageal()
+                self.esophageal_armed = False
                 self.last_view = "Grade IIa"
                 return IntubationAttemptResult(
                     placed=True,
@@ -233,6 +235,7 @@ class AirwayCrisisModel:
                     trauma_added=trauma,
                 )
             self.clear_esophageal()
+            self.esophageal_armed = False
             self.last_view = "Glottis visualized (FOI)"
             return IntubationAttemptResult(
                 placed=True,

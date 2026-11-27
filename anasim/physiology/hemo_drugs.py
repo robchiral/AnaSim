@@ -60,6 +60,8 @@ def calc_nore_effects(
     anesthetic_depth: float = 0.0,
     *,
     nore_scale: float = 1.0,
+    hf_beta_hr: float = 1.0,
+    hf_beta_sv: float = 1.0,
 ) -> tuple[float, float, float]:
     """Return direct chronotropy, stroke-volume factor, and vascular-resistance factor.
 
@@ -69,14 +71,19 @@ def calc_nore_effects(
     if eff_ce <= 0:
         return 0.0, 1.0, 1.0
     beta_hill = hill_function(eff_ce / beta1_dr, cfg.nore_c50, 1.0)
-    delta_hr = cfg.nore_emax_hr * beta_hill * age_chronotropy
+    # Apply HFrEF beta-1 receptor downregulation to exogenous NE above resting
+    # endogenous tone, preserving baseline sympathetic support and venous-return coupling.
+    exo_share = clamp01((ce_nore - basal_nore_ce) / max(1e-6, eff_ce / max(1e-6, nore_scale)))
+    eff_hf_hr = 1.0 - exo_share * (1.0 - hf_beta_hr)
+    eff_hf_sv = 1.0 - exo_share * 0.5 * (1.0 - hf_beta_sv)
+    delta_hr = cfg.nore_emax_hr * eff_hf_hr * beta_hill * age_chronotropy
     # Anesthetic SV restoration saturates at high doses to avoid supraphysiologic SV.
     anest_hill = (
         beta_hill
         if beta_hill <= 0.42
         else 0.42 + 0.18 * math.tanh((beta_hill - 0.42) / 0.18)
     )
-    sv_factor = 1.0 + cfg.nore_emax_sv * beta_hill + cfg.nore_anesthetic_sv_gain * anesthetic_depth * anest_hill
+    sv_factor = 1.0 + cfg.nore_emax_sv * eff_hf_sv * beta_hill + cfg.nore_anesthetic_sv_gain * anesthetic_depth * anest_hill
     alpha_hill = hill_function(eff_ce / alpha_dr, cfg.nore_c50, 1.0)
     alpha_gain = 1.0 + cfg.nore_anesthetic_alpha_gain * anesthetic_depth
     svr_factor = 1.0 + cfg.nore_emax_svr * alpha_gain * alpha_hill
@@ -274,6 +281,9 @@ def compute_step_ephedrine(
     base_hr: float,
     age_chronotropy: float,
     amiodarone_hr: float,
+    *,
+    hf_beta_hr: float = 1.0,
+    hf_beta_sv: float = 1.0,
 ) -> tuple[float, float, float, float]:
     """Update ephedrine tolerance state and return (new_tol_ce, svr, sv, delta_hr)."""
     if ce_ephedrine_raw <= 0.0 and tolerance_ce == 0.0:
@@ -293,8 +303,8 @@ def compute_step_ephedrine(
         0.0, hill_function(ephedrine_raw / beta1_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol,
     )
     ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_alpha_effect
-    ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * ephedrine_beta_effect
-    ephedrine_chrono_gate = age_chronotropy * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
+    ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * hf_beta_sv * ephedrine_beta_effect
+    ephedrine_chrono_gate = age_chronotropy * hf_beta_hr * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
     ephedrine_beta_conc = ephedrine / beta1_dr
     sustained_hr_max = 0.40
     sustained_hr_term = (

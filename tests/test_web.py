@@ -1013,3 +1013,40 @@ def test_airway_crisis_thoracic_embolism_and_neuraxial_commands_round_trip():
             eng.give_thrombolysis()
         met, msg = step.check_requirements(eng)
         assert not met and "Measure blood pressure again" in msg
+
+
+def test_audit_web_esophageal_blanking_mask_zero_cpap_ecmo_and_no_duplicate_t0():
+    """Verify esophageal gas blanking, Mask seal=0% disconnect projection, CPAP airway removal,
+    extracorporeal_start fio2_percent/VA bypass_alarm_mode, and no duplicate t=0 trend after info()."""
+    # 1. info() followed by snapshot() does not emit a duplicate t = 0 trend point.
+    s0 = WebSession({**PATIENT, "mode": "steady_state"})
+    info0 = parse(s0.info())
+    assert [pt["time"] for pt in info0["trends"]] == [0]
+    assert s0.snapshot()["trends"] == []
+
+    # 2. Esophageal intubation blanks EtO2, EtSevo, EtN2O, and EtMAC in vitals.
+    esoph = WebSession({**PATIENT, "mode": "steady_state"})
+    esoph.engine.set_esophageal_intubation(True, gastric_co2_mmhg=18.0)
+    run_seconds(esoph, 10)
+    v_e = esoph.snapshot()["vitals"]
+    assert v_e["eto2"] is None and v_e["et_sevo"] is None and v_e["et_n2o"] is None and v_e["et_mac"] is None
+
+    # 3. Mask seal 0% projects disconnected spirometry (None) and impedance RR.
+    m0 = WebSession({**PATIENT, "mode": "awake"})
+    cmd(m0, "airway", mode="Mask")
+    cmd(m0, "mask_seal", percent=0)
+    v_m0 = m0.snapshot()["vitals"]
+    assert v_m0["ppeak"] is None and v_m0["vte"] is None and v_m0["mv"] is None
+    assert v_m0["rr_source"] == "impedance"
+
+    # 4. Removing an airway on spontaneous CPAP does not emit a false ventilation_stopped warning.
+    cpap = WebSession({**PATIENT, "mode": "steady_state"})
+    cmd(cpap, "vent", mode="CPAP", peep=5)
+    res_rm = cmd(cpap, "airway", mode="None")
+    assert res_rm.get("feedback") is None or res_rm["feedback"]["code"] != "ventilation_stopped"
+
+    # 5. extracorporeal_start accepts fio2_percent and VA ECMO bypass_alarm_mode.
+    ec = WebSession({**PATIENT, "mode": "steady_state"})
+    cmd(ec, "extracorporeal_start", mode="va_ecmo", blood_flow=4.0, sweep_gas=3.5, fio2_percent=80, bypass_alarm_mode=True)
+    assert ec.engine.extracorporeal.state.sweep_fio2 == pytest.approx(0.80)
+    assert ec.engine.extracorporeal.state.bypass_alarm_mode is True

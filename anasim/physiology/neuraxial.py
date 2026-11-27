@@ -82,7 +82,7 @@ class NeuraxialModel:
 
         self._epidural_depot: float = 0.0     # Epidural space drug pool (level units)
         self._epidural_level: float = 0.0     # Established epidural sensory height (0-30)
-        self._epidural_density: float = 0.55  # Block density (0.25-0.65) relative to spinal (1.0)
+        self._epidural_density: float = 0.0   # Block density (0.20-0.65) relative to spinal (1.0)
         self._epidural_tau_on: float = 420.0  # s (slower onset than spinal; Ward 1965)
         self._epidural_tau_off: float = 4800.0
 
@@ -124,12 +124,16 @@ class NeuraxialModel:
 
     @property
     def motor_level(self) -> float:
-        """Motor block lags sensory by 2.8 segments for spinal and 4.6 for epidural (Freund 1967)."""
+        """Motor block lags sensory by 2.8 segments for spinal and 4.6 for dense
+        surgical epidural (Freund 1967), widening for dilute labor-analgesia
+        epidurals (COMET 2001)."""
         s = self.sensory_level
         if s < 0.5:
             return 0.0
-        lag = 2.8 if self.is_spinal_dominant else 4.6
-        return max(0.0, s - lag)
+        if self.is_spinal_dominant:
+            return max(0.0, s - 2.8)
+        dilute_lag = 8.5 * clamp01((0.42 - self._epidural_density) / 0.15)
+        return max(0.0, s - (4.6 + dilute_lag))
 
     @property
     def bromage_score(self) -> int:
@@ -215,8 +219,22 @@ class NeuraxialModel:
 
     @property
     def thermal_redistribution_depth(self) -> float:
-        """Effective lower-body vasodilation depth for core-to-peripheral heat redistribution."""
-        return 0.35 * self.vasomotor_symp_fraction * self.density
+        """Effective lower-body vasodilation depth for core-to-peripheral heat
+        redistribution (Matsukawa 1995b: ~0.8 °C 1-h core drop at T10 epidural)."""
+        return clamp01(0.95 * self.vasomotor_symp_fraction * (0.45 + 0.55 * self.density))
+
+    @property
+    def shiver_threshold_shift_c(self) -> float:
+        """Lowered central shivering threshold (°C) under neuraxial block (Ozaki 1994)."""
+        if self.sensory_level < 0.5:
+            return 0.0
+        return 0.60 * clamp01(self.sensory_level / 13.0) * (0.45 + 0.55 * self.density)
+
+    @property
+    def shiver_muscle_keep(self) -> float:
+        """Unblocked shivering muscle fraction; lower-body paralysis removes leg heat
+        production (~43% of body mass, Matsukawa 1995b; Ozaki 1994)."""
+        return 1.0 - 0.43 * clamp01(self.bromage_score / 3.0)
 
     def surgical_analgesia(self, surgical_site: str = "other") -> float:
         """Fraction of surgical nociception blocked by the neuraxial sensory level (0-0.95)."""
@@ -255,16 +273,23 @@ class NeuraxialModel:
             # 12.5 mg hyperbaric bupivacaine -> ~T6 (17.0) in 40 yo, ~T4 in 73 yo or pregnant;
             # 15 mg -> ~T5; >30 mg intrathecal overdose -> high/total spinal (C4-Brainstem).
             # Multiply depot slightly (~1.12) so the bi-exponential onset/regression peak lands on target.
-            raw_target = clamp(17.0 + 0.40 * (bupi_eq - 12.5) + age_shift + preg_shift + bar_shift, 8.0, 30.0)
-            target = min(31.5, raw_target * 1.12)
-            tau_on = (200.0 if drug_norm == "bupivacaine" else 140.0) * (1.0 if bar_norm == "hyperbaric" else 1.2)
+            raw_target = clamp(17.0 + 0.40 * (bupi_eq - 12.5) + age_shift + preg_shift + bar_shift, 8.0, 32.5)
+            target = min(34.5, raw_target * 1.12)
+            overdose = clamp01((bupi_eq - 25.0) / 20.0)
+            base_tau_on = (200.0 if drug_norm == "bupivacaine" else 140.0) * (1.0 if bar_norm == "hyperbaric" else 1.2)
+            tau_on = base_tau_on + (65.0 - base_tau_on) * overdose
         age_dur = 1.0 + 0.20 * clamp01((self.age - 40.0) / 35.0)
         tau_off = (5400.0 if drug_norm == "bupivacaine" else 2700.0) * age_dur
-        self._spinal_depot = max(self._spinal_depot, target)
+        if self._spinal_depot <= 0.05 or high_spinal:
+            self._spinal_depot = max(self._spinal_depot, target)
+        else:
+            # Repeated intrathecal doses accumulate on residual subarachnoid drug.
+            increment = 0.40 * bupi_eq * 1.12
+            self._spinal_depot = min(34.5, max(target, self._spinal_depot + increment))
         self._spinal_tau_on = tau_on
         self._spinal_tau_off = tau_off
         self.last_drug = drug_norm
-        self.last_mode = "high_spinal" if (high_spinal or target >= 26.0) else "spinal"
+        self.last_mode = "high_spinal" if (high_spinal or self._spinal_depot >= 26.0) else "spinal"
 
     def place_epidural(self, placed: bool = True) -> None:
         self.epidural_catheter = bool(placed)
@@ -294,13 +319,26 @@ class NeuraxialModel:
             return
         age_shift = 0.05 * (self.age - 40.0)
         preg_shift = 2.5 if self.pregnant else 0.0
-        # Calibrated volume-spread curve (10 mL -> ~T8, 15 mL -> ~T5, 20 mL -> ~T3).
-        raw_target = clamp(10.0 + 0.55 * vol + age_shift + preg_shift, 8.0, 23.0)
-        target = min(26.5, raw_target * 1.20)
         bupi_conc_eq = conc if drug_norm == "bupivacaine" else conc / 4.0
+        # Calibrated volume-spread curve (0.5% surgical: 10 mL -> ~T8, 15 mL -> ~T5, 20 mL -> ~T3;
+        # dilute 0.1% labor boluses produce narrower analgesia around T10-T8, COMET 2001).
+        conc_scale = clamp(0.65 + 0.70 * bupi_conc_eq, 0.70, 1.0)
+        raw_target = clamp((10.0 + 0.55 * vol + age_shift + preg_shift) * conc_scale, 8.0, 23.0)
+        target = min(26.5, raw_target * 1.20)
         density = clamp(0.25 + 0.70 * bupi_conc_eq, 0.25, 0.65)
-        self._epidural_depot = max(self._epidural_depot, target)
-        self._epidural_density = max(self._epidural_density, density)
+        if self._epidural_depot <= 0.05:
+            self._epidural_depot = target
+            self._epidural_density = density
+        else:
+            # Repeated epidural boluses accumulate volume and blend concentration density.
+            old_depot = self._epidural_depot
+            increment = 0.55 * vol * 1.20
+            new_depot = min(27.5, max(target, old_depot + increment))
+            added_weight = max(increment, new_depot - old_depot)
+            self._epidural_density = (
+                old_depot * self._epidural_density + added_weight * density
+            ) / (old_depot + added_weight)
+            self._epidural_depot = new_depot
         self._epidural_tau_on = 360.0 if drug_norm == "bupivacaine" else 240.0
         self._epidural_tau_off = 4800.0 if drug_norm == "bupivacaine" else 2400.0
         self.last_drug = drug_norm
@@ -324,6 +362,8 @@ class NeuraxialModel:
         rate = clamp(float(ml_hr), 0.0, 25.0)
         if rate > 0.0:
             self.epidural_catheter = True
+            self._epidural_tau_on = 360.0 if drug_norm == "bupivacaine" else 240.0
+            self._epidural_tau_off = 4800.0 if drug_norm == "bupivacaine" else 2400.0
         self.epidural_infusion_ml_hr = rate
         self.epidural_infusion_drug = drug_norm
         self.epidural_infusion_conc_pct = clamp(float(concentration_pct), 0.05, 0.5)
@@ -365,8 +405,13 @@ class NeuraxialModel:
         self.epidural_infusion_ml_hr = 0.0
         self._spinal_depot = 0.0
         self._spinal_level = 0.0
+        self._spinal_tau_on = 240.0
+        self._spinal_tau_off = 5400.0
         self._epidural_depot = 0.0
         self._epidural_level = 0.0
+        self._epidural_density = 0.0
+        self._epidural_tau_on = 420.0
+        self._epidural_tau_off = 4800.0
         self._epi_depot_ng_ml = 0.0
         self.absorbed_epi_ng_ml = 0.0
         self.last_mode = "none"
@@ -409,8 +454,18 @@ class NeuraxialModel:
             )
             inf_density = clamp(0.20 + 0.70 * bupi_inf_conc, 0.20, 0.55)
             if self._epidural_depot < inf_target:
-                self._epidural_depot = inf_target
-                self._epidural_density = max(self._epidural_density, inf_density)
+                # Continuous epidural infusion builds the epidural pool smoothly over
+                # minutes rather than jumping instantaneously on the first step.
+                tau_charge = 540.0 / max(0.35, self.epidural_infusion_ml_hr / 10.0)
+                alpha_charge = -math.expm1(-dt / tau_charge)
+                old_depot = self._epidural_depot
+                new_depot = old_depot + (inf_target - old_depot) * alpha_charge
+                added = max(0.0, new_depot - old_depot)
+                if new_depot > 0.0:
+                    self._epidural_density = (
+                        old_depot * self._epidural_density + added * inf_density
+                    ) / new_depot
+                self._epidural_depot = new_depot
         if self._epidural_depot > 0.0 or self._epidural_level > 0.0:
             if self._epidural_depot > self._epidural_level:
                 self._epidural_level += (self._epidural_depot - self._epidural_level) * (
@@ -419,12 +474,13 @@ class NeuraxialModel:
             decay_e = math.exp(-dt / max(300.0, self._epidural_tau_off))
             if self._epidural_depot > inf_target:
                 self._epidural_depot = inf_target + (self._epidural_depot - inf_target) * decay_e
-            if inf_density > 0.0 and self._epidural_density > inf_density:
+            if inf_density > 0.0 and self._epidural_density != inf_density:
                 self._epidural_density = inf_density + (self._epidural_density - inf_density) * decay_e
             if self._epidural_level >= self._epidural_depot:
                 self._epidural_level = self._epidural_depot
-            if self._epidural_level < 0.05 and self._epidural_depot < 0.05:
+            if self.epidural_infusion_ml_hr <= 0.0 and self._epidural_level < 0.05 and self._epidural_depot < 0.05:
                 self._epidural_level = self._epidural_depot = 0.0
+                self._epidural_density = 0.0
 
         # Systemic absorption of epidural epinephrine (1:200,000; Ward 1965); requires perfusion.
         circ = clamp01(circulation)

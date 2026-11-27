@@ -112,21 +112,22 @@ class CoronaryModel:
         sbp_val = self._nonneg_pressure(sbp)
         dbp_val = self._nonneg_pressure(dbp)
         active_sbp = sbp_val if intrinsic_sbp is None else self._nonneg_pressure(intrinsic_sbp)
+        temp_q10 = clamp(TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 18.0, 38.0)), 0.20, 1.15)
         if cardioplegia_arrest:
-            # Cold diastolic cardioplegic arrest reduces basal myocardial VO2 >85-90%.
-            temp_q10 = max(0.20, TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 18.0, 38.0)))
+            # Cold diastolic cardioplegic arrest lowers basal myocardial VO2 >85-90%
+            # and extends safe cross-clamp tolerance well past 60-90 min (Nissinen 2009; Al-Sarraf 2011).
             demand = 0.12 * temp_q10
         elif fibrillating:
             # Fibrillating myocardium uses most of the beating heart's resting
-            # oxygen, less as its energy fails.
-            demand = 0.25 + 0.5 * (1.0 - self.energy_failure)
+            # oxygen, less as its energy fails; hypothermia slows metabolic demand.
+            demand = (0.25 + 0.5 * (1.0 - self.energy_failure)) * temp_q10
         else:
             # Basal and activation metabolism persist when mechanical work falls (isolated canine heart data in Harasawa 1992).
             work = hr * active_sbp / self._reference_rpp
             activation_hr = hr / self._reference_hr
             if compressions and activation_hr > 1.5:
                 activation_hr += clamp01((35.0 - active_sbp) / 15.0) * (1.5 - activation_hr)
-            demand = max(work, 0.35 + 0.30 * activation_hr)
+            demand = max(work, (0.35 + 0.30 * activation_hr) * temp_q10)
         if aortic_cross_clamp:
             pressure = 0.0
             diastolic_fraction = 1.0
@@ -180,7 +181,10 @@ class CoronaryModel:
         # no flow, as in the electrical phase of arrest (Weisfeldt and Becker 2002).
         # Excitation then fails and injury accumulates. The timing is a teaching calibration.
         severity = clamp01((max(self.ischemia, hypoxia) - 0.5) / 0.5)
-        depletion_scale = clamp(demand / 0.45, 0.08, 1.0) if cardioplegia_arrest else 1.0
+        # Cold cardioplegic protection sustains ~90-120 min cross-clamp tolerance at 28 °C
+        # (LCOS rises above 90 min in Al-Sarraf 2011; mortality jumps past 150 min in Nissinen 2009),
+        # while hypothermic non-cardioplegic arrest slows ATP depletion with Q10.
+        depletion_scale = clamp(0.064 * temp_q10, 0.015, 0.12) if cardioplegia_arrest else temp_q10
         if severity > 0.0 or self.energy_reserve < 1.0:
             self.energy_reserve = clamp01(
                 self.energy_reserve
@@ -191,7 +195,7 @@ class CoronaryModel:
             self.injury = min(1.0, self.injury + dt * severity * depletion_scale / INJURY_TIME_S)
         failure_target = severity if exhausted else 0.0
         if failure_target != self.energy_failure:
-            failure_tau = 90.0 if failure_target > self.energy_failure else 60.0
+            failure_tau = 90.0 / max(0.20, temp_q10) if failure_target > self.energy_failure else 60.0
             self.energy_failure += (failure_target - self.energy_failure) * -math.expm1(-dt / failure_tau)
 
     @property

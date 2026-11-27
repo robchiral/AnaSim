@@ -46,6 +46,7 @@ from validation.vitaldb.vitaldb_replay import (  # noqa: E402
     hemo_period_line,
     hemo_subgroup_rows,
     hemo_summary_table_lines,
+    induction_only_mode,
     mean_ci,
     pre_induction,
     procedure,
@@ -112,11 +113,19 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
         patient = patient_from_case(case, baseline_map=baseline_map, baseline_hr=baseline_hr)
         maintenance = (opstart + 900.0, min(opend, stop, end))
         has_maintenance = incision == opstart and maintenance[1] - maintenance[0] >= 600
-        grid = time_grid(max(start, onset - 60.0), maintenance[1] if has_maintenance else incision, dt)
-        propofol_mg = delivered_volume(rate, grid) * 20.0
-        measured = np.interp(grid[-1], *volume) - np.interp(grid[0], *volume)
-        if abs(propofol_mg[-1] - propofol_mg[0] - 20.0 * measured) > 20.0 * max(0.5, 0.05 * measured):
+        full_end = maintenance[1] if has_maintenance else incision
+        check_grid = time_grid(max(start, onset - 60.0), full_end, dt)
+        propofol_mg_full = delivered_volume(rate, check_grid) * 20.0
+        measured = np.interp(check_grid[-1], *volume) - np.interp(check_grid[0], *volume)
+        if abs(propofol_mg_full[-1] - propofol_mg_full[0] - 20.0 * measured) > 20.0 * max(0.5, 0.05 * measured):
             raise Excluded("infusion rate and volume disagree by more than five percent or 0.5 mL")
+        if induction_only_mode() and has_maintenance:
+            has_maintenance = False
+            grid = time_grid(max(start, onset - 60.0), incision, dt)
+            propofol_mg = delivered_volume(rate, grid) * 20.0
+        else:
+            grid = check_grid
+            propofol_mg = propofol_mg_full
         remi_ug = delivered_volume(remi, grid) * REMI_UG_PER_ML[remi_name]
         step_dt = np.diff(grid)
         propofol_mg_s = np.diff(propofol_mg) / step_dt

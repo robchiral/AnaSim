@@ -167,6 +167,26 @@ def test_hemodynamic_replay_injects_inspired_sevoflurane():
     )
     assert out[-1, 2] > 1.2  # et_sevo (%) rises cleanly under injected FiSevo 2.5%
 
+    # Headless stepping matches full-monitor engine.step bit-for-bit on MAP, HR, EtSevo, and BIS.
+    from anasim.core.engine import SimulationEngine
+    from anasim.core.state import SimulationConfig
+    from validation.vitaldb.vitaldb_replay import step_headless
+
+    eng_full = SimulationEngine(patient, SimulationConfig(mode="awake", rng_seed=1))
+    eng_fast = SimulationEngine(patient, SimulationConfig(mode="awake", rng_seed=1))
+    for eng in (eng_full, eng_fast):
+        eng.start()
+        eng.set_airway_mode("Mask")
+        eng.set_fgf(6.0, 0.0)
+        eng.give_drug_bolus("propofol", 120.0)
+    for _ in range(30):
+        eng_full.step(1.0)
+        step_headless(eng_fast, 1.0)
+    assert eng_fast.state.map == pytest.approx(eng_full.state.map, abs=1e-9)
+    assert eng_fast.state.hr == pytest.approx(eng_full.state.hr, abs=1e-9)
+    assert eng_fast.state.et_sevo == pytest.approx(eng_full.state.et_sevo, abs=1e-9)
+    assert eng_fast.state.bis == pytest.approx(eng_full.state.bis, abs=1e-9)
+
 
 def tiva_recording(comparison):
     time = np.arange(2201, dtype=float)

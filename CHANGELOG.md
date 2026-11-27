@@ -16,13 +16,14 @@
   aspiration), and guided or independent cases for each crisis.
 - Added spinal and epidural neuraxial anesthesia (bupivacaine and lidocaine
   boluses, epinephrine-containing solutions, continuous epidural infusions,
-  bedside dermatome and Bromage level checks, and Bezold-Jarisch reflex
-  bradycardia) for open simulation, along with a guided or independent high or
-  total spinal case.
+  dilute labor epidural motor sparing, bedside dermatome and Bromage level
+  checks, core heat redistribution, and Bezold-Jarisch reflex bradycardia) for
+  open simulation, along with a guided or independent high or total spinal case.
 - Added venovenous ECMO, venoarterial ECMO, and cardiopulmonary bypass support
-  with membrane gas exchange, regional differential oxygenation, passive bypass
-  reservoir drainage, active heat exchange, circuit drug sequestration, and
-  site-specific blood gas sampling.
+  with membrane gas exchange, regional differential oxygenation, closed-circuit
+  drainage limits, passive bypass reservoir drainage, two-compartment thermal
+  afterdrop rewarming, hypothermic cardioplegic protection, circuit drug
+  sequestration, and site-specific blood gas sampling.
 - Added unfractionated heparin and protamine kinetics, point-of-care activated
   clotting time (ACT), protamine hemodynamic reactions, an ARDS shunt event,
   and guided or independent extracorporeal and anticoagulation cases.
@@ -43,45 +44,55 @@
   `creatinine_clearance_ml_min` when `renal_function` is left at 1.0.
 - Updated pregnancy, obesity, and liver-disease scaling across drug kinetics,
   volatile MAC, respiratory compliance, baseline metabolism, and lactate pools.
-- Expanded hypothermia and thermoregulation across drug clearance, volatile
-  mass conservation, ventilation, BIS, defibrillation success, sweating,
-  shivering (stopping at or below 31 °C or during arrest), and vasoconstriction
-  thresholds.
+- Expanded hypothermia and thermoregulation down to 18 °C across drug and
+  heparin clearance, volatile MAC and mass conservation, ventilation, BIS
+  electrocerebral silence, defibrillation success, sweating, shivering (stopping
+  at or below 31 °C or during arrest), and vasoconstriction thresholds.
 - Added graded postanoxic cortical and brainstem respiratory injury alongside
   permanent coma, and updated cerebral perfusion for venous pressure, chronic
   hypertension, metabolic demand, and CPR flow limits.
 - Improved shock, anemia, acidemia, and heart-failure hemodynamics, including
-  venous-recruitment and pressor limits during severe hemorrhage and an
-  age-dependent sinus heart-rate ceiling.
+  venous-recruitment and pressor limits during severe hemorrhage, acute
+  right-ventricular overdistension under elevated pulmonary vascular resistance,
+  HFrEF catecholamine attenuation, anaphylactic blunting of surgical
+  vasoconstriction, and an age-dependent sinus heart-rate ceiling.
 - Recalibrated cardiovascular drugs, including age-scaled antimuscarinics,
-  labetalol alpha-blockade, two-compartment IV ephedrine, amiodarone rate
-  control in atrial fibrillation, opioid stroke-volume effects, and acidemic
+  labetalol alpha-blockade, two-compartment IV ephedrine, milrinone pulmonary
+  vasodilation, amiodarone rate control in atrial fibrillation, and acidemic
   epinephrine responses.
+- Recalibrated anesthetic and surgical hemodynamics across opioid equilibration
+  and stroke-volume effects, propofol-opioid HR interaction, elderly propofol
+  potency, sevoflurane HR and resistance, and tonic surgical vasoconstriction.
 - Improved cardiac arrest and resuscitation physiology, including filling-dependent
   CPR pulses, vasoplegic PEA, primary asystole recovery, local anesthetic
   arrhythmias and lipid dosing, passive left atrial pressure equilibration, and
-  zero-flow arterial blood gas isolation.
+  zero-flow isolation across arterial blood gases, volatile kinetics, lactic
+  acid buffering, fluid warming, protamine, and emboli.
 - Updated airway reflexes, neuromuscular responses, and malignant hyperthermia
   remission, including separate extubation tolerance, slower rocuronium
-  washout under sevoflurane, and succinylcholine Phase II central weakness.
+  washout under sevoflurane, immediate high-dose sugammadex reversal, and
+  succinylcholine Phase II central weakness.
 - Improved respiratory control, COPD dead space and trapped-gas modeling,
-  BMI-scaled airway closure, empty-bellows PEEP loss without fresh gas flow,
-  and step-size coupling between mechanics and gas exchange.
+  BMI-scaled airway closure, ventilator mode transitions, empty-bellows PEEP
+  loss without fresh gas flow, and step-size coupling between mechanics and gas
+  exchange.
 - Updated fluid, electrolyte, and transfusion physiology, including natriuresis,
-  hypovolemic suppression of crystalloid excretion, post-transfusion alkalosis,
-  lactate and citrate oxidation CO₂, and calcium chloride distribution.
+  hypovolemic suppression of crystalloid excretion, osmotic free-water plasma
+  partitioning, post-transfusion alkalosis, lactate and citrate oxidation CO₂,
+  and calcium chloride distribution.
 - Added dedicated arrest and lethal-rhythm alarms (`Asystole`, `VFIB`, `VTACH`,
   `Arrest`) that highlight the HR tile, display the rhythm in the alarm banner,
   and break silence on recurrence (along with `O2Supply`).
 - Upgraded patient monitors with core temperature alarms, perfusion-dependent
   SpO₂ transit delay, CPR pleth and VF HR blanking, deflation-averaged NIBP,
-  capnogram Phase III steepening and slow-rate timeouts, a 60-second PTC
-  lockout across modes, whole-percent TOF rounding, and spirometry loop
-  clearing on disconnect.
-- Refined clinical cases and safety checks for unparalyzed intubation,
-  succinylcholine warnings in malignant hyperthermia or hyperkalemia, sepsis
-  vasopressor crediting, debrief targets, post-lock Trends viewing, and
-  defibrillator sync reset.
+  capnogram Phase III steepening and slow-rate timeouts, esophageal gas
+  blanking, zero-seal facemask disconnect handling, a 60-second PTC lockout
+  across modes, whole-percent TOF rounding, and spirometry loop clearing on
+  disconnect.
+- Refined clinical cases, action checks, and browser controls, including
+  unparalyzed intubation, succinylcholine warnings in malignant hyperthermia or
+  hyperkalemia, sepsis vasopressor crediting and source-control timing, debrief
+  targets, post-lock Trends viewing, and defibrillator sync reset.
 - Expanded VitalDB comparisons across the full adult domain with preoperative
   labs, multiprocessing, and 5-fold patient-grouped cross-validation, and
   consolidated clinical benchmarks and invariants under `tests/`.

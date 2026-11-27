@@ -150,8 +150,10 @@ class PneumothoraxModel:
                 else:
                     leak_l = 0.0
                 if leak_l > 0.0:
-                    self.air_volume_l = min(MAX_PLEURAL_VOLUME_L, self.air_volume_l + leak_l * (1.0 - f_n2o))
-                    self.n2o_volume_l = min(MAX_PLEURAL_VOLUME_L, self.n2o_volume_l + leak_l * f_n2o)
+                    headroom = max(0.0, MAX_PLEURAL_VOLUME_L - (self.air_volume_l + self.n2o_volume_l))
+                    added = min(leak_l, headroom)
+                    self.air_volume_l += added * (1.0 - f_n2o)
+                    self.n2o_volume_l += added * f_n2o
 
         # Blood-borne N2O diffuses into or out of closed pleural spaces toward Dalton equilibrium
         # V_n2o_eq = V_air * F_A_N2O / (1 - F_A_N2O) (Eger and Saidman 1965); halts at zero circulation.

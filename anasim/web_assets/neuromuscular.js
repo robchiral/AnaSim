@@ -42,7 +42,7 @@ export class NeuromuscularDisplay {
       } else {
         title = label;
         value = `${Math.floor(reading.ratio)}%`;
-        const t1Depressed = reading.t1 !== null && reading.t1 < 90;
+        const t1Depressed = reading.t1 !== null && Math.round(reading.t1) < 90;
         if (t1Depressed) detail = `T1 ${Math.round(reading.t1)}%`;
         quality = reading.ratio >= 90 && !t1Depressed ? "recovered" : "";
       }

@@ -301,3 +301,40 @@ def test_poc_glucose_abg_glucose_and_insulin_safety_warnings():
     assert _describe(ActionRecord(12.0, ACTION_FLUID, "d10w", 100.0)) == "100 mL D10W (10 g) started"
     assert _describe(ActionRecord(14.0, ACTION_FLUID, "d50w", 50.0)) == "50 mL D50W (25 g) started"
     assert _describe(ActionRecord(16.0, ACTION_GLUCOSE, "poc", 185.0)) == "Point-of-care glucose checked (185 mg/dL)"
+
+
+def test_osmotic_water_plasma_partitioning_and_hyperglycemic_diuresis_refill():
+    """Acute hyperglycemic osmotic water shifts enter plasma without adding fake solute, and diuresis draws from interstitial excess."""
+    eng = SimulationEngine(
+        Patient(baseline_glucose=90.0),
+        SimulationConfig(dt=1.0, maintenance_fluid_ml_hr=0.0, rng_seed=3),
+    )
+    bv0 = eng.hemo.blood_volume
+    na0 = eng.hemo.fluids.amounts["sodium"]
+    k0 = eng.hemo.fluids.amounts["potassium"]
+    cl0 = eng.hemo.fluids.amounts["chloride"]
+
+    # Raise ECF glucose directly by 25 mmol/L (~450 mg/dL) with no fluid volume added to isolate the osmotic free-water shift.
+    eng.hemo.fluids.glucose_mmol += 25.0 * eng.hemo.fluids.ecf_l
+    _fast_advance(eng, 120.0, dt=1.0)
+
+    # Free-water translocation into ECF partitions ~plasma_fraction into blood volume and dilutes [Na+] without creating Na/K/Cl solute.
+    initial_isf_l = eng.hemo.fluids.initial_ecf_l - eng.hemo.fluids.initial_plasma_l
+    isf_excess_after_shift = (eng.hemo.fluids.interstitial_l - initial_isf_l) * 1000.0
+    assert eng.hemo.total_osmotic_plasma_shift_ml > 50.0
+    assert eng.hemo.blood_volume > bv0 + 30.0
+    assert isf_excess_after_shift > 100.0
+    assert eng.hemo.fluids.amounts["sodium"] <= na0 + 1e-6
+    assert eng.hemo.fluids.amounts["sodium"] + eng.hemo.fluids.amounts["potassium"] <= na0 + k0 + 1e-6
+    assert eng.hemo.fluids.amounts["chloride"] <= cl0 + 1e-6
+    assert eng.hemo.fluids.concentration("sodium") < 138.0
+
+    # Continued hyperglycemic osmotic diuresis depletes urine while interstitial excess buffers blood volume via Starling refill.
+    uo_before = eng.hemo.total_urine_out_ml
+    _fast_advance(eng, 1800.0, dt=2.0)
+    uo_delta = eng.hemo.total_urine_out_ml - uo_before
+    isf_excess_after_diuresis = (eng.hemo.fluids.interstitial_l - initial_isf_l) * 1000.0
+    assert uo_delta > 150.0
+    assert isf_excess_after_diuresis < isf_excess_after_shift
+    assert eng.hemo.blood_volume > 4000.0
+
