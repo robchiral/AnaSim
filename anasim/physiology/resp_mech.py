@@ -45,9 +45,15 @@ class RespiratoryMechanics:
         self.volume = 0.0  # L
         self._unrefilled_absorption_l = 0.0  # L BTPS subatmospheric gas loss awaiting refill
         self._prev_ee_excess_l: float | None = None
+        self._exp_trough_vol: float | None = None
         self._mandatory_ventilating = False
+        self._time_triggered_fraction = 0.0
         self.p2 = 0.0  # cmH2O
         self.effort = PatientEffort()
+
+    def note_volume(self, volume: float) -> None:
+        """Record the lowest lung volume reached during the current expiratory phase."""
+        self._exp_trough_vol = volume if self._exp_trough_vol is None else min(self._exp_trough_vol, volume)
 
     def _transmitted_peep(self, peep: float) -> float:
         if self.aeration is None:
@@ -69,6 +75,8 @@ class RespiratoryMechanics:
             return 0.0
         self.volume -= applied
         self._unrefilled_absorption_l += applied
+        if self._exp_trough_vol is not None:
+            self._exp_trough_vol -= applied
         self.effort.shift_volume_reference(-applied)
         return applied
 
@@ -102,6 +110,8 @@ class RespiratoryMechanics:
         if cpr_active:
             static_frc = aeration.reference_volume + self.volume_offset + self.compliance * peep + self._unrefilled_absorption_l
             aeration.frc = min(aeration.frc, static_frc)
+        if self._exp_trough_vol is not None:
+            self._exp_trough_vol += shift
         self.effort.shift_volume_reference(shift)
         return shift
 
@@ -110,7 +120,11 @@ class RespiratoryMechanics:
             return
         absorbed = self._clamp_absorption()
         static_frc = self.aeration.reference_volume + self.volume_offset + self.compliance * peep + absorbed
-        volume = max(0.0, self.volume) if cpr_active else self.volume
+        # Anchor end-expiratory FRC to the expiratory trough rather than the
+        # already-rising volume when inspiratory flow crosses the trigger threshold.
+        raw_vol = self.volume if (settled or self._exp_trough_vol is None) else min(self.volume, self._exp_trough_vol)
+        self._exp_trough_vol = None
+        volume = max(0.0, raw_vol) if cpr_active else raw_vol
         dual_source = self._mandatory_ventilating and self.effort.rr > 0.0 and self.effort.amplitude > 0.0
         if settled or volume <= 0.0 or not dual_source:
             self._prev_ee_excess_l = max(0.0, volume)
@@ -677,7 +691,16 @@ class PatientEffort:
         if self.rr > 0.0:
             desired_period = 60.0 / self.rr
             if self.period > desired_period and math.isfinite(self.period):
-                self.period = max(self.ti, desired_period)
+                min_period = max(self.ti + self.release, self.clock)
+                new_period = max(min_period, desired_period)
+                if new_period < self.period:
+                    self.period = new_period
+                    if len(self._knots) >= 2 and self._knots[-1] > self.period:
+                        if self.period > self._knots[-2] + 1e-12:
+                            self._knots = (*self._knots[:-1], self.period)
+                        elif self.period >= self._knots[-2] - 1e-12:
+                            self._knots = self._knots[:-1]
+                            self._values = self._values[:-1]
             if self._waiting:
                 self._wait_end = min(self._wait_end, self.clock + desired_period)
         if self._waiting:
@@ -766,8 +789,9 @@ class PatientEffort:
         recoil = self.target_vt / lung.compliance
         # On patient-triggered breaths, intrinsic PEEP imposes an inspiratory
         # threshold load that pressure support cannot unload (Brochard 1989; Jubran 1995).
-        # Time-triggered mandatory breaths bypass patient triggering.
-        trigger_load = 0.0 if lung._mandatory_ventilating else 0.45 * max(0.0, lung.elastic_pressure)
+        # Time-triggered mandatory breaths bypass patient triggering proportionally.
+        time_trig = max(0.0, min(1.0, lung._time_triggered_fraction))
+        trigger_load = (1.0 - time_trig) * 0.45 * max(0.0, lung.elastic_pressure)
         elastic_unloading = recoil / (recoil + self.support_pressure)
         unloading = (trigger_load + recoil * elastic_unloading) / max(1e-6, trigger_load + recoil)
         self.ti = min(self.TI_FRACTION * self.period, self.TI_MAX) * math.sqrt(unloading)
@@ -809,9 +833,14 @@ class PatientEffort:
         and stays positive for normalized slopes above -3.
         """
         n, m = self.PROFILE_POINTS, self._release_slope
-        steps = [i / n for i in range(1, n + 1)]
-        self._knots += tuple(self.ti + self.release * s for s in steps) + (self.period,)
-        self._values += tuple(value * (1.0 - s) ** 2 * (1.0 + (2.0 + m) * s) for s in steps) + (0.0,)
+        rel = min(self.release, max(0.0, self.period - self.ti))
+        if rel > 1e-12:
+            steps = [i / n for i in range(1, n + 1)]
+            self._knots += tuple(self.ti + rel * s for s in steps)
+            self._values += tuple(value * (1.0 - s) ** 2 * (1.0 + (2.0 + m) * s) for s in steps)
+        if not self._knots or self.period > self._knots[-1] + 1e-12:
+            self._knots += (self.period,)
+            self._values += (0.0,)
 
     @staticmethod
     def _effective_effort_resistance(lung: RespiratoryMechanics) -> float:

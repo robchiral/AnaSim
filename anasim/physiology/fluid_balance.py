@@ -183,6 +183,9 @@ class FluidBalance:
         self._arterial_cl = 104.0
         self._arterial_ica = self.calcium_set_point
         self._arterial_ica_resting = self.calcium_set_point
+        self._arterial_ica_ph = resting_ph
+        self._arterial_alb = (self.plasma_albumin_g + self.interstitial_albumin_g) / self.ecf_l
+        self._pre_partitioned_free_water_l = 0.0
         self._cell_solute = self.icf_l * self._extracellular_solute() / self.ecf_l
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
@@ -249,23 +252,40 @@ class FluidBalance:
             return self.ionized_calcium(ph)
         if abs(ph - self.resting_ph) < 1e-9:
             return self._arterial_ica_resting
-        return self._arterial_ica
+        if abs(ph - self._arterial_ica_ph) < 1e-9:
+            return self._arterial_ica
+        ratio = (1.0 + _albumin_binding(self._arterial_alb, self._arterial_ica_ph)) / (
+            1.0 + _albumin_binding(self._arterial_alb, ph)
+        )
+        return self._arterial_ica * ratio
 
     def _extracellular_solute(self) -> float:
         return 2.0 * (self.amounts["sodium"] + self.amounts["potassium"]) + self.glucose_mmol
 
-    def _equilibrate_cell_water(self) -> float:
+    def _equilibrate_cell_water(self, fraction: float = 1.0) -> float:
         # Water crosses cell membranes until tonicity matches; return the
         # intravascular plasma share (mL) for hemodynamic volume synchronization.
+        frac = clamp01(fraction)
+        if frac <= 0.0:
+            return 0.0
         solute = self._extracellular_solute()
         water = self.ecf_l + self.icf_l
-        moved = water * solute / (solute + self._cell_solute) - self.ecf_l
+        moved = (water * solute / (solute + self._cell_solute) - self.ecf_l) * frac
         if moved == 0.0:
             return 0.0
         plasma_share = self.plasma_l / self.ecf_l if self.ecf_l > 0.0 else 0.0
         self.ecf_l += moved
         self.icf_l -= moved
-        return moved * plasma_share * 1000.0
+        plasma_moved = moved
+        if moved < 0.0 and self._pre_partitioned_free_water_l > 0.0:
+            # Pre-partitioned extravascular free water (e.g. 20% lipid emulsion ICF share)
+            # feeds ICF uptake directly without double-draining plasma.
+            from_isf = min(-moved, self._pre_partitioned_free_water_l)
+            self._pre_partitioned_free_water_l -= from_isf
+            plasma_moved = moved + from_isf
+        elif moved > 0.0 and self._pre_partitioned_free_water_l > 0.0:
+            self._pre_partitioned_free_water_l = 0.0
+        return plasma_moved * plasma_share * 1000.0
 
     @property
     def plasma_albumin_g_l(self) -> float:
@@ -361,6 +381,10 @@ class FluidBalance:
         sync.blood_base_retained_meq += blood_inc
         self._running_blood_base_meq = running_blood_base + blood_inc
         self.plasma_l += plasma_water
+        if label == "lipid" and water > plasma_water:
+            total_w = self.ecf_l + self.icf_l
+            icf_share = water * (self.icf_l / total_w) if total_w > 0.0 else 0.0
+            self._pre_partitioned_free_water_l += min(water - plasma_water, icf_share)
         self.plasma_albumin_g += plasma_water * fluid.albumin
         self.interstitial_albumin_g += (water - plasma_water) * fluid.albumin
 
@@ -458,8 +482,11 @@ class FluidBalance:
             self._arterial_na = self.concentration("sodium")
             self._arterial_k = self.concentration("potassium")
             self._arterial_cl = self.concentration("chloride")
-            self._arterial_ica = self.ionized_calcium(self.ph if ph is None else ph)
+            snap_ph = self.ph if ph is None else ph
+            self._arterial_ica = self.ionized_calcium(snap_ph)
             self._arterial_ica_resting = self.ionized_calcium(self.resting_ph)
+            self._arterial_ica_ph = snap_ph
+            self._arterial_alb = (self.plasma_albumin_g + self.interstitial_albumin_g) / self.ecf_l
         self._circulation = new_circ
 
     def step(self, dt: float, *, ph: float, paco2: float, resting_paco2: float,
@@ -470,7 +497,13 @@ class FluidBalance:
              temp_c: float = 37.0, insulin_k_uptake: float = 0.0) -> float:
         self.ph = ph
         self.sync_circulation(circulation, ph=ph)
-        osmotic_plasma_ml = self._equilibrate_cell_water()
+        if self._circulation >= 0.99:
+            osm_frac = 1.0
+        elif self._circulation > 0.0 and dt > 0.0:
+            osm_frac = -math.expm1(-dt * self._circulation / 10.0)
+        else:
+            osm_frac = 0.0
+        osmotic_plasma_ml = self._equilibrate_cell_water(osm_frac)
         if dt <= 0.0:
             return osmotic_plasma_ml
         if self.pending_calcium_mmol > 0.0 and self._circulation > 0.0:
@@ -492,8 +525,12 @@ class FluidBalance:
             self._arterial_na += (self.concentration("sodium") - self._arterial_na) * alpha
             self._arterial_k += (self.concentration("potassium") - self._arterial_k) * alpha
             self._arterial_cl += (self.concentration("chloride") - self._arterial_cl) * alpha
-            self._arterial_ica += (self.ionized_calcium(ph) - self._arterial_ica) * alpha
+            art_ica_at_ph = self.arterial_ionized_calcium(ph)
+            self._arterial_ica = art_ica_at_ph + (self.ionized_calcium(ph) - art_ica_at_ph) * alpha
             self._arterial_ica_resting += (self.ionized_calcium(self.resting_ph) - self._arterial_ica_resting) * alpha
+            self._arterial_ica_ph = ph
+            ecf_alb = (self.plasma_albumin_g + self.interstitial_albumin_g) / self.ecf_l
+            self._arterial_alb += (ecf_alb - self._arterial_alb) * alpha
         return osmotic_plasma_ml
 
     def _metabolize_buffers(

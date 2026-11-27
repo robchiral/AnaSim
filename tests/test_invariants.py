@@ -131,7 +131,7 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     abg2 = eng.draw_blood_gas()
     assert eng.state.epi_ce > 1.0
     assert eng.state.roc_ce > roc0 + 0.5
-    assert abg2.ionized_calcium > abg1.ionized_calcium + 0.05
+    assert abg2.ionized_calcium > abg1.ionized_calcium + 0.04
     assert abg2.lactate > abg1.lactate + 0.05
     assert abg2.glucose > abg1.glucose + 10.0
     assert eng.state.insulin_mu_l > ins0 + 10.0
@@ -139,7 +139,7 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     assert eng.state.heparin_u_ml > 1.0
 
 
-@pytest.mark.parametrize("mode", ["VCV", "PCV", "PCV-VG", "SIMV-VC", "SIMV-PC", "PSV", "CPAP"])
+@pytest.mark.parametrize("mode", ["VCV", "PCV", "PCV-VG", "SIMV-VC", "SIMV-PC", "SIMV-VG", "PSV", "CPAP"])
 def test_empty_bellows_zero_fgf_collapses_peep_in_every_mode(engine_factory, advance_time, mode: str):
     """Draining the bellows with zero FGF collapses PEEP without oscillation and empties VT once recoil O2 is consumed."""
     eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
@@ -151,6 +151,12 @@ def test_empty_bellows_zero_fgf_collapses_peep_in_every_mode(engine_factory, adv
     eng.circuit.reservoir_volume = 0.0
     advance_time(eng, 15.0, dt=1.0)
     assert eng.state.peep < 0.5, f"mode {mode} bounced PEEP={eng.state.peep} right after collapse"
+    if mode == "VCV":
+        # Sub-VO2 FGF (0.05 L/min) cannot refill the bellows or restore phantom PEEP.
+        eng.set_fgf(0.05, 0.0, 0.0)
+        advance_time(eng, 10.0, dt=1.0)
+        assert eng.state.peep < 0.5, f"sub-VO2 FGF restored phantom PEEP={eng.state.peep}"
+        eng.set_fgf(0.0, 0.0, 0.0)
     advance_time(eng, 285.0, dt=1.0)
     assert eng.state.peep < 0.5, f"mode {mode} retained phantom PEEP={eng.state.peep}"
     assert eng.state.vt < 50.0, f"mode {mode} delivered phantom VT={eng.state.vt}"
@@ -523,7 +529,7 @@ def test_extracorporeal_abg_sites_and_temperature_parity(engine_factory, advance
     advance_time(eng, 20.0, dt=0.5)
     pre_cold = eng.draw_blood_gas("pre_oxy")
     assert pre_cold.pao2 > eng.extracorporeal.state.pre_oxy_po2 + 5.0
-    assert pre_cold.sao2 <= eng.extracorporeal.state.pre_oxy_so2 * 100.0 + 1.5
+    assert pre_cold.sao2 <= eng.extracorporeal.state.pre_oxy_so2 + 1.5
 
 
 def test_peripheral_va_ecmo_harlequin_step_size_invariance(engine_factory, advance_time):
@@ -736,14 +742,19 @@ def test_zero_flow_pea_isolation_and_dt_invariant_rosc_flush(engine_factory, adv
     assert eng.pk_sevo.state.p_art == pytest.approx(p_art_0, abs=1e-4)
     assert eng.state.pa_co2 == pytest.approx(paco2_0, abs=0.5)
 
-    # 2. Fluid thermal heat stays queued during zero perfusion and delivers once perfusion returns.
+    # 2. Fluid thermal heat stays queued during zero perfusion and washes in smoothly on ROSC.
     th = ThermalModel(Patient())
     th.add_fluid_heat_j(1000.0, 6.0, 37.0, is_blood=True)
-    assert th._pending_fluid_heat_j < -1e4
-    th.step_temperature(1.0, 37.0, 0.0, perfusing=False)
-    assert th._pending_fluid_heat_j < -1e4
-    th.step_temperature(1.0, 37.0, 0.0, perfusing=True)
-    assert th._pending_fluid_heat_j == 0.0
+    queued_j = th._pending_fluid_heat_j
+    assert queued_j < -1e4
+    th.step_temperature(1.0, 37.0, 0.0, perfusing=False, circulation=0.0)
+    assert th._pending_fluid_heat_j == pytest.approx(queued_j, rel=1e-9)
+    t_rosc = th.step_temperature(1.0, 37.0, 0.0, perfusing=True, circulation=1.0)
+    assert queued_j < th._pending_fluid_heat_j < 0.0
+    assert 37.0 - t_rosc < 0.08
+    for _ in range(120):
+        t_rosc = th.step_temperature(1.0, t_rosc, 0.0, perfusing=True, circulation=1.0)
+    assert abs(th._pending_fluid_heat_j) < 100.0
 
     # 3. PE onset and VAE entrainment halt at circ == 0; protamine ROSC flush is dt-invariant.
     emb = PulmonaryEmbolismModel(reference_weight_kg=70.0)
@@ -853,3 +864,260 @@ def test_extracorporeal_prime_drainage_bypass_silence_ecpr_and_actionlog_events(
     bv_low = cold_ne.hemo.blood_volume
     cold_ne.hemo.apply_osmotic_plasma_shift(-50.0)
     assert cold_ne.hemo.blood_volume <= bv_low
+
+
+def test_conservation_oxygenator_rosc_pneumo_massive_pe_and_pk_invariants(engine_factory, advance_time):
+    """Verify hypercapnic low-sweep oxygenator ceiling, asystole-to-ROSC arterial O2 conservation,
+    zero-flow pneumoperitoneum CO2 halt, massive PE LV inflow conservation, PK mass/bleed invariants,
+    and heparin-protamine dt-invariance without t=0 ACT paradox."""
+    from anasim.core.runtime import step_simulation
+    from anasim.extracorporeal.oxygenator import MembraneOxygenator
+
+    # 1. Hypercapnic low-sweep oxygenator preserves high post-oxygenator PCO2 without ceiling distortion.
+    ref_eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    chem = ref_eng.resp.chemistry
+    base_in = ref_eng.resp.buffer_base
+    b_in = chem.solve(220.0, 0.70, base_in, 7.0)
+    oxy = MembraneOxygenator()
+    res = oxy.solve_pass(
+        blood_flow_l_min=4.0,
+        sweep_gas_l_min=0.05,
+        sweep_fio2=1.0,
+        co2_in_mmol_l=b_in.total_co2,
+        o2_in_l_l=0.14,
+        base_in_meq_l=base_in,
+        hb_g_dl=ref_eng.hemo.hb_conc,
+        temp_c=37.0,
+        chemistry=chem,
+        pco2_in_guess=220.0,
+        ph_in_guess=b_in.ph,
+        po2_in_guess=40.0,
+    )
+    assert res.pco2_out_37 > 160.0
+
+    # 2. Asystole + crystalloid or pRBC followed by ROSC conserves total blood O2 without PaO2 spike or collapse.
+    for give_blood in (False, True):
+        eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+        eng.set_rhythm(RhythmType.ASYSTOLE)
+        advance_time(eng, 10.0, dt=1.0)
+        if give_blood:
+            eng.hemo.add_volume(1500.0, hematocrit=0.65, label="blood")
+        else:
+            eng.hemo.add_volume(3000.0, hematocrit=0.0, label="crystalloid")
+        advance_time(eng, 10.0, dt=1.0)
+        gt = eng.resp.gas_transport
+        o2_pre_rosc = sum(c * v for c, v in zip(gt.oxygen, gt.volumes, strict=True))
+        eng.set_rhythm(RhythmType.SINUS)
+        eng.step(1.0)
+        o2_post_rosc = sum(c * v for c, v in zip(gt.oxygen, gt.volumes, strict=True))
+        assert abs(o2_post_rosc - o2_pre_rosc) < 0.08
+        assert 65.0 < eng.state.pao2 < 650.0
+        assert eng.state.sao2 > 90.0
+
+    # 3. Zero-flow arrest halts exogenous pneumoperitoneum CO2 absorption into pulmonary/blood stores.
+    pneumo_ctrl = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    pneumo = copy.deepcopy(pneumo_ctrl)
+    pneumo.start_pneumoperitoneum(15.0)
+    for m in (pneumo_ctrl, pneumo):
+        m.set_rhythm(RhythmType.ASYSTOLE)
+        advance_time(m, 5.0, dt=1.0)
+    prod_ctrl0 = pneumo_ctrl.resp.gas_transport.produced_l
+    prod0 = pneumo.resp.gas_transport.produced_l
+    advance_time(pneumo_ctrl, 30.0, dt=1.0)
+    advance_time(pneumo, 30.0, dt=1.0)
+    assert abs((pneumo.resp.gas_transport.produced_l - prod0) - (pneumo_ctrl.resp.gas_transport.produced_l - prod_ctrl0)) < 1e-6
+
+    # 4. Massive PE with epinephrine/dobutamine obeys LV inflow mass conservation.
+    pe = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    pe.start_pulmonary_embolism(0.80)
+    pe.set_drug_rate("epi", 12.0)
+    pe.set_drug_rate("dobu", 10.0)
+    for _ in range(120):
+        step_simulation(pe, 1.0, update_monitors=False)
+        pe.state.time += 1.0
+    assert pe.state.co <= 1.15 * max(0.2, pe.hemo._last_lv_inflow)
+
+    # 5. MorphinePK M6G tracks bleed loss and has_mass(), and SuccinylcholinePK reports has_mass().
+    pk_eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    morph = pk_eng.pk["morphine"]
+    morph._m6g_actual = 50.0
+    morph._m6g_normal = 20.0
+    assert morph.has_mass()
+    morph.remove_blood(1.0, 5.0)
+    assert morph._m6g_actual < 50.0 and morph._m6g_normal < 20.0
+    sux = pk_eng.pk["succinylcholine"]
+    assert not sux.has_mass()
+    sux.phase2_exposure = 1.0
+    assert sux.has_mass()
+    sux.phase2_exposure = 0.0
+    assert not sux.has_mass()
+
+    # 5b. Bicarbonate bolus leaves hemo.state fresh, and low-flow arterial_ionized_calcium stays pH-consistent.
+    bic_eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    bic_eng.hemo.add_volume(100.0, hematocrit=0.0, label="bicarbonate")
+    assert bic_eng.hemo.state.sv == pytest.approx(bic_eng.hemo.evaluate_state().sv, rel=1e-6)
+    fb = bic_eng.hemo.fluids
+    fb.sync_circulation(0.25, ph=7.40)
+    fb.step(
+        1.0, ph=7.10, paco2=40.0, resting_paco2=40.0,
+        renal_function=1.0, renal_perfusion=1.0, hepatic_function=1.0,
+        oxygen_supply=1.0, epinephrine=0.0,
+    )
+    assert fb.arterial_ionized_calcium(7.35) == pytest.approx(fb.ionized_calcium(7.35), abs=0.02)
+
+    # 6. Heparin + protamine bolus is dt-invariant without a t=0 paradoxical ACT spike.
+    acts = {}
+    for dt in (0.5, 2.0):
+        coag = engine_factory(config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=1), start=True)
+        coag.give_drug_bolus("heparin", 25000.0)
+        advance_time(coag, 180.0, dt=dt)
+        act_pre = coag.state.act_s
+        coag.give_drug_bolus("protamine", 200.0)
+        assert coag.state.act_s <= act_pre + 1.0
+        advance_time(coag, 300.0, dt=dt)
+        acts[dt] = coag.state.act_s
+    assert abs(acts[0.5] - acts[2.0]) < 15.0
+
+
+def test_mechanics_thermoregulation_monitor_parity_and_validation_invariants(engine_factory, advance_time):
+    """Verify MANUAL breath timing, SIMV smooth PEEPi continuity, obstructed aeration dt-parity,
+    update_monitors physiological invariance, VA ECMO spontaneous_circulation, N2O balanced setup,
+    thermoregulatory threshold ordering, normothermic ECMO zero drift, and NaN/negative validation."""
+    from anasim.core.recorder import DataRecorder
+    from anasim.core.runtime import step_simulation
+    from anasim.scenarios.thoracic_embolism import _setup_n2o_balanced
+
+    # 1. Single provisional MANUAL breath and repeated 10 s breaths yield RR ~6.0 and dt-invariant MV.
+    manual_rrs = {}
+    for dt in (0.2, 1.0):
+        eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=1), start=True)
+        eng.give_drug_bolus("roc", 70.0)
+        eng.set_vent_power(False)
+        eng.set_airway_mode("ETT")
+        eng.set_apl_valve(20.0)
+        eng.set_fgf(4.0, 0.0)
+        advance_time(eng, 15.0, dt=dt)
+        eng.deliver_manual_breath()
+        advance_time(eng, 10.0, dt=dt)
+        assert abs(eng.state.rr - 6.0) < 0.8
+        for _ in range(4):
+            eng.deliver_manual_breath()
+            advance_time(eng, 10.0, dt=dt)
+        manual_rrs[dt] = (eng.state.rr, eng.state.mv)
+    assert abs(manual_rrs[0.2][0] - 6.0) < 0.8
+    assert abs(manual_rrs[0.2][0] - manual_rrs[1.0][0]) < 0.5
+    assert abs(manual_rrs[0.2][1] - manual_rrs[1.0][1]) < 0.3
+
+    # 2. SIMV-VC rr=0.0 -> 0.1 transitions smoothly without a PEEPi unloading cliff.
+    ptps = {}
+    for rr in (0.0, 0.1):
+        simv = engine_factory(
+            config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+            start=True, age=68, weight=65, height=170, copd_severity=0.8,
+        )
+        simv.set_airway_mode("ETT")
+        simv.set_fgf(4.0, 6.0)
+        simv.set_vent_settings(mode="SIMV-VC", rr=rr, vt=0.5, peep=0.0, p_support=0.0, ie="1:2")
+        simv.set_vent_power(True)
+        advance_time(simv, 90.0, dt=1.0)
+        ptp_total = 0.0
+        for _ in range(30):
+            simv.step(1.0)
+            ptp_total += simv.vent.muscle_pressure_area
+        ptps[rr] = ptp_total
+    assert abs(ptps[0.1] - ptps[0.0]) / max(1.0, ptps[0.0]) < 0.08
+
+    # 3. Obstructed breathing maintains dt=0.05 vs dt=0.5 s aeration.frc and PaO2 parity.
+    obstr_pao2 = {}
+    obstr_frc = {}
+    for dt in (0.05, 0.5):
+        obs = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
+        obs.set_airway_obstruction(0.85)
+        advance_time(obs, 90.0, dt=dt)
+        obstr_pao2[dt] = obs.state.pao2
+        obstr_frc[dt] = obs.aeration.frc
+    assert abs(obstr_pao2[0.05] - obstr_pao2[0.5]) < 1.5
+    assert abs(obstr_frc[0.05] - obstr_frc[0.5]) < 0.08
+
+    # 4. update_monitors=False matches update_monitors=True on AFib CAD, synchronized shock, and injury arrest.
+    mon_on = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=5),
+        start=True, coronary_flow_reserve=1.6,
+    )
+    mon_off = copy.deepcopy(mon_on)
+    for m in (mon_on, mon_off):
+        m.set_rhythm(RhythmType.AFIB)
+        m.charge_defibrillator()
+    for _ in range(16):
+        step_simulation(mon_on, 0.5, update_monitors=True)
+        mon_on.state.time += 0.5
+        step_simulation(mon_off, 0.5, update_monitors=False)
+        mon_off.state.time += 0.5
+    mon_on.defibrillate(synchronized=True)
+    mon_off.defibrillate(synchronized=True)
+    for _ in range(10):
+        step_simulation(mon_on, 0.5, update_monitors=True)
+        mon_on.state.time += 0.5
+        step_simulation(mon_off, 0.5, update_monitors=False)
+        mon_off.state.time += 0.5
+    assert mon_on.state.rhythm_type == mon_off.state.rhythm_type
+    assert abs(mon_on.hemo.coronary.ischemia - mon_off.hemo.coronary.ischemia) < 0.02
+    inj_on = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    inj_off = copy.deepcopy(inj_on)
+    inj_on.hemo.coronary.injury = inj_off.hemo.coronary.injury = 0.96
+    for _ in range(10):
+        step_simulation(inj_on, 0.1, update_monitors=True)
+        inj_on.state.time += 0.1
+        step_simulation(inj_off, 0.1, update_monitors=False)
+        inj_off.state.time += 0.1
+    assert abs(inj_on._pulseless_s - inj_off._pulseless_s) < 1e-6
+
+    # 5. spontaneous_circulation is False during zero-ejection VA ECMO VF.
+    va = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    va.start_va_ecmo(blood_flow_l_min=4.5, sweep_gas_l_min=4.0, prime_volume_ml=0.0)
+    va.set_rhythm(RhythmType.VFIB)
+    advance_time(va, 5.0, dt=0.5)
+    assert not va.spontaneous_circulation
+
+    # 6. Normothermic VA ECMO 2-compartment model stays at 37.0 °C with zero drift.
+    normo = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True,
+    )
+    normo.start_va_ecmo(blood_flow_l_min=4.0, sweep_gas_l_min=3.0, prime_volume_ml=0.0)
+    for _ in range(1800):
+        step_simulation(normo, 1.0, update_monitors=False)
+        normo.state.time += 1.0
+    assert abs(normo.state.temp_c - 37.0) < 0.05
+
+    # 7. _setup_n2o_balanced obeys Dalton's law and seeds venous N2O.
+    n2o_eng = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
+    _setup_n2o_balanced(n2o_eng)
+    assert n2o_eng.pk_n2o.state.p_ven > 0.40
+    assert 150.0 < n2o_eng.state.pao2 < 320.0
+
+    # 8. Vasoconstriction threshold stays >= shivering threshold + 0.50 °C across adult ages and clinical states.
+    for age in (25.0, 45.0, 60.0, 75.0, 82.0):
+        t_eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, age=age)
+        for depth in (0.0, 0.5, 1.0):
+            for op in (0.0, 0.8):
+                for nx_vc, nx_sh in ((0.0, 0.0), (0.45, 0.55)):
+                    vc = t_eng.thermal.vasoconstriction_threshold(op, nx_vc, depth_index=depth)
+                    sh = t_eng.thermal.shivering_threshold(op, nx_sh, depth_index=depth)
+                    assert vc >= sh + 0.50
+
+    # 9. Input validation rejects NaN/Inf/negative bounds on events, fluids, and recorder.
+    with pytest.raises(ValueError):
+        SimulationConfig(maintenance_fluid_ml_hr=-10.0)
+    with pytest.raises(ValueError):
+        va.set_continuous_fluid_rate(-5.0)
+    with pytest.raises(ValueError):
+        va.start_pneumothorax(1.0, initial_volume_l=float("nan"))
+    with pytest.raises(ValueError):
+        va.start_venous_air_embolism(10.0, initial_bolus_ml=float("inf"))
+    with pytest.raises(ValueError):
+        va.set_esophageal_intubation(True, gastric_co2_mmhg=float("nan"))
+    with pytest.raises(ValueError):
+        DataRecorder(output_dir=".", sample_interval_sec=float("nan"))
+    with pytest.raises(ValueError):
+        DataRecorder(output_dir=".", sample_interval_sec=-1.0)

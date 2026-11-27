@@ -10,7 +10,7 @@ For installation and the browser interface, see the [README](../README.md).
 | `--mode` | Run mode, `ui` or `headless` | `ui` |
 | `--port` | Local UI port, 0 to 65535; `0` chooses a free port | `0` |
 | `--no-browser` | Print the local URL without opening it | `false` |
-| `--duration` | Headless duration in simulated seconds | `10.0` |
+| `--duration` | Headless duration in simulated seconds, finite and non-negative | `10.0` |
 | `--config` | Headless JSON configuration path | No file |
 | `--record` | Write CSV in headless mode | `false` |
 | `--record-dir` | CSV directory for headless runs and the local UI | `recordings` |
@@ -71,7 +71,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient aged 55 or under |
 | `position` | `"supine"` | `"supine"` or `"left_lateral"`; relieves aortocaval compression from 20 weeks of pregnancy and provides Durant left-lateral positioning during venous air embolism |
 
-Patient ranges are inclusive, and patient inputs and `dt` must be finite. If you
+Patient ranges are inclusive, and numeric patient and runtime inputs must be finite. If you
 set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`, and setting
 both `renal_function` and `creatinine_clearance_ml_min` rejects grossly
 inconsistent combinations. During pregnancy, hemoglobin and hematocrit are the
@@ -88,11 +88,11 @@ how the models represent these patient conditions.
 | `concomitant_opioids` | `true` | Whether the patient receives opioids, a covariate in the Eleveld propofol PK model; steady-state initialization requires `true` |
 | `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
 | `dt` | 0.01 | Engine step in seconds, above 0 and at most 2.0 |
-| `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
+| `rng_seed` | `null` | Non-negative integer for repeatable runs; `null` for a new random sequence |
 | `patient_variability` | `false` | Sample individual drug kinetics and responses; `rng_seed` fixes the sampled patient |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
 | `fluid_warmer_enabled` | `false` | Warm infused intravenous fluids and packed red cells to 37 °C |
-| `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
+| `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr, at least 0; `null` uses 1 mL/kg/hr |
 | `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
 | `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
 
@@ -100,9 +100,11 @@ how the models represent these patient conditions.
 
 `anasim_log_<timestamp>.csv` contains sampled
 [`SimulationState`](../anasim/core/state.py) values. `time` is the elapsed
-simulation time in seconds. The default interval is 1 second, and each engine
-step records at most one row. An interval shorter than `dt` still produces one
-row per step. Restarting a recording creates a new CSV file.
+simulation time in seconds. The default interval is 1 second (and must be finite
+and non-negative), and each engine step records at most one row. An interval
+shorter than `dt` still produces one row per step, headless runs flush a final
+row before stopping on irreversible arrest, and restarting a recording creates a
+new CSV file.
 
 `pa_co2` is arterial CO₂. `display_etco2` is the end-tidal CO₂ measurement with
 sensor effects, and `etco2_signal_valid` reports whether it is valid. When
@@ -170,8 +172,8 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `disarm_defibrillator()` | Cancels a charge or a pending synchronized shock |
 | `defibrillate(synchronized=False)` | Returns a `ShockResult`: `NOT_READY` without a charge, `NOT_DELIVERED` in synchronized mode without R waves, `PENDING` until the next R wave, or `DELIVERED`. `rng_seed` fixes outcomes |
 | `refill_vaporizer(level_ml=250.0)` | Refills the sevoflurane vaporizer liquid reservoir (0 to 250 mL) |
-| `start_vv_ecmo(...)`, `start_va_ecmo(...)`, `start_cpb(...)`, `stop_extracorporeal(reinfuse=False)` | Starts or stops VV ECMO, VA ECMO, or CPB with optional flow, sweep, cannulation, prime, and thermal settings (see [`engine.py`](../anasim/core/engine.py)) |
-| `set_ecmo_flow(l_min)`, `set_ecmo_sweep(l_min)`, `set_ecmo_fio2(fio2)`, `set_ecmo_sevo(percent)`, `add_cpb_reservoir_fluid(volume_ml, kind="crystalloid", hematocrit=0.55)` | Adjusts active circuit flow (0 to 8 L/min), sweep gas (0 to 16 L/min), sweep FiO₂ (0.21 to 1.0), oxygenator sevoflurane (0 to 8%), or adds 1 to 2,000 mL of `"crystalloid"`, `"saline"`, `"colloid"` (or `"albumin"`), or `"blood"` to the CPB reservoir; additional clamp, vent, cardioplegia, and heater-cooler setters live in [`engine.py`](../anasim/core/engine.py) |
+| `start_vv_ecmo(...)`, `start_va_ecmo(...)`, `start_cpb(...)`, `stop_extracorporeal(*, reinfuse=False, reinfuse_reservoir=False)` | Starts or stops VV ECMO, VA ECMO, or CPB with optional flow, sweep, cannulation, prime, and thermal settings (`reinfuse_reservoir=True` returns CPB reservoir blood while discarding tubing prime; see [`engine.py`](../anasim/core/engine.py)) |
+| `set_ecmo_flow(l_min)`, `set_ecmo_sweep(l_min)`, `set_ecmo_fio2(fio2)`, `set_ecmo_sevo(percent)`, `add_cpb_reservoir_fluid(volume_ml, kind="crystalloid", hematocrit=0.55)` | Adjusts active circuit flow (0 to 8 L/min), sweep gas (0 to 16 L/min), sweep FiO₂ (0.21 to 1.0), oxygenator sevoflurane (0 to 8%, requiring CPB or a microporous oxygenator when positive), or adds 1 to 2,000 mL of `"crystalloid"`, `"saline"`, `"colloid"` (or `"albumin"`), or `"blood"` to the CPB reservoir; additional clamp, vent, cardioplegia, and heater-cooler setters live in [`engine.py`](../anasim/core/engine.py) |
 | `draw_blood_gas(site="arterial")`, `measure_act()`, `measure_glucose()` | Draws a blood gas sample (ready after 120 s; sites `"arterial"`, `"right_radial"`, `"femoral"`, `"pre_oxy"`, `"post_oxy"`), whole-blood ACT (ready after 60 s), or point-of-care blood glucose (ready after 10 s, mg/dL) |
 | `set_ards_shunt(fraction)`, `start_protamine_reaction()`, `stop_protamine_reaction()`, `arm_protamine_reaction(armed=True)` | Sets additional right-to-left pulmonary shunt (0 to 0.90) or controls a Type III protamine pulmonary vasoconstriction reaction |
 | `attempt_intubation(technique="dl")`, `attempt_sga()`, `perform_fona()`, `set_oral_airway(placed)`, `set_two_hand_mask(active)`, `call_airway_help()` | Airway escalation (`"dl"`, `"vl"`, `"vl_bougie"`, `"fiberoptic"`), SGA rescue, eFONA, and mask adjuncts; instructor triggers `set_difficult_airway(profile)`, `arm_esophageal_intubation(armed=True)`, and `set_esophageal_intubation(active, ...)` (see [`engine.py`](../anasim/core/engine.py)) |

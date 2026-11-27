@@ -1015,7 +1015,7 @@ def test_airway_crisis_thoracic_embolism_and_neuraxial_commands_round_trip():
         assert not met and "Measure blood pressure again" in msg
 
 
-def test_audit_web_esophageal_blanking_mask_zero_cpap_ecmo_and_no_duplicate_t0():
+def test_web_esophageal_blanking_mask_zero_cpap_ecmo_and_no_duplicate_t0():
     """Verify esophageal gas blanking, Mask seal=0% disconnect projection, CPAP airway removal,
     extracorporeal_start fio2_percent/VA bypass_alarm_mode, and no duplicate t=0 trend after info()."""
     # 1. info() followed by snapshot() does not emit a duplicate t = 0 trend point.
@@ -1050,3 +1050,62 @@ def test_audit_web_esophageal_blanking_mask_zero_cpap_ecmo_and_no_duplicate_t0()
     cmd(ec, "extracorporeal_start", mode="va_ecmo", blood_flow=4.0, sweep_gas=3.5, fio2_percent=80, bypass_alarm_mode=True)
     assert ec.engine.extracorporeal.state.sweep_fio2 == pytest.approx(0.80)
     assert ec.engine.extracorporeal.state.bypass_alarm_mode is True
+
+
+def test_web_vent_withdrawal_cpb_reinfusion_mask_zero_and_sga_feedback():
+    """Verify VCV->CPAP and APL->0 ventilation withdrawal warnings, CPAP power-off silence,
+    Mask seal=0% capno/loop disconnect, CPB stop default reinfusion, ETT->SGA paralysis warning,
+    and inactive extracorporeal_settings rejection."""
+    # 1. Paralyzed VCV -> CPAP emits ventilation_stopped, whereas CPAP power-off does not.
+    s = WebSession({**PATIENT, "mode": "steady_state"})
+    s.engine.give_drug_bolus("roc", 70.0)
+    run_seconds(s, 30)
+    res_cpap = cmd(s, "vent", mode="CPAP", peep=5)
+    assert res_cpap.get("feedback", {}).get("code") == "ventilation_stopped"
+    res_off = cmd(s, "vent_power", on=False)
+    assert res_off.get("feedback") is None or res_off["feedback"]["code"] != "ventilation_stopped"
+
+    # 2. Bagging with APL -> 0 (via apl or bag_settings) while paralyzed emits ventilation_stopped.
+    cmd(s, "apl", cmh2o=20)
+    cmd(s, "bag_mask", active=True)
+    res_apl0 = cmd(s, "apl", cmh2o=0)
+    assert res_apl0.get("feedback", {}).get("code") == "ventilation_stopped"
+    cmd(s, "apl", cmh2o=20)
+    res_bag0 = cmd(s, "bag_settings", rr=12, tv=500, p_max=0)
+    assert res_bag0.get("feedback", {}).get("code") == "ventilation_stopped"
+
+    # 3. Switching ETT -> SGA while paralyzed preserves unsafe_airway_removal feedback.
+    s2 = WebSession({**PATIENT, "mode": "steady_state"})
+    s2.engine.give_drug_bolus("roc", 70.0)
+    run_seconds(s2, 30)
+    res_sga = cmd(s2, "airway", mode="SGA")
+    assert res_sga.get("feedback", {}).get("code") == "unsafe_airway_removal"
+
+    # 4. Mask seal = 0% clears EtCO2 and spirometry loop, and removing an unsealed mask gives no false withdrawal warning.
+    m = WebSession({**PATIENT, "mode": "awake"})
+    cmd(m, "airway", mode="Mask")
+    cmd(m, "mask_seal", percent=100)
+    run_seconds(m, 10)
+    cmd(m, "mask_seal", percent=0)
+    run_seconds(m, 5)
+    snap_m = m.snapshot()
+    assert snap_m["vitals"]["etco2"] is None
+    assert snap_m["loop"] == []
+    m.engine.give_drug_bolus("roc", 70.0)
+    run_seconds(m, 15)
+    cmd(m, "apl", cmh2o=20)
+    cmd(m, "bag_mask", active=True)
+    res_rm_unsealed = cmd(m, "airway", mode="None")
+    assert res_rm_unsealed is None or res_rm_unsealed.get("feedback", {}).get("code") != "ventilation_stopped"
+
+    # 5. extracorporeal_stop reinfuses CPB reservoir by default; inactive settings raise ValueError.
+    cpb = WebSession({**PATIENT, "mode": "steady_state"})
+    with pytest.raises(ValueError):
+        cmd(cpb, "extracorporeal_settings", blood_flow=3.0)
+    cmd(cpb, "extracorporeal_start", mode="cpb", blood_flow=4.0, sweep_gas=3.0)
+    run_seconds(cpb, 20)
+    res_before = cpb.engine.extracorporeal.state.reservoir_volume_ml
+    bv_before = cpb.engine.hemo.patient_blood_volume
+    assert res_before > 100.0
+    cmd(cpb, "extracorporeal_stop")
+    assert cpb.engine.hemo.patient_blood_volume > bv_before + 100.0

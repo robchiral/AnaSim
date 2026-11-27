@@ -172,11 +172,14 @@ class MammillaryPK:
     def k31(self) -> float:
         return self.cl3 * self.circulation / self.v3 if self.v3 > 0 else 0.0
 
-    def remove_blood(self, volume_l: float, baseline_blood_volume_l: float) -> None:
-        """Remove drug with shed blood from the vascular share of V1, at unit blood:plasma partitioning."""
+    def _blood_loss_keep_fraction(self, volume_l: float, baseline_blood_volume_l: float) -> float:
         vascular_share = min(self.v1_base, baseline_blood_volume_l) / baseline_blood_volume_l
         removed_volume = volume_l * vascular_share * self.v1_scale
-        self.state.c1 *= max(0.0, 1.0 - removed_volume / self.v1)
+        return max(0.0, 1.0 - removed_volume / self.v1)
+
+    def remove_blood(self, volume_l: float, baseline_blood_volume_l: float) -> None:
+        """Remove drug with shed blood from the vascular share of V1, at unit blood:plasma partitioning."""
+        self.state.c1 *= self._blood_loss_keep_fraction(volume_l, baseline_blood_volume_l)
 
     def update_hemodynamics(
         self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
@@ -729,6 +732,8 @@ class MorphinePK(MammillaryPK):
         self._hepatic_function = patient.hepatic_function
         self._renal_capacity = patient.renal_clearance_factor
         self._renal_perfusion = 1.0
+        self._baseline_temp = patient.baseline_temp
+        self._temp_c = patient.baseline_temp
         self._m6g_actual = 0.0
         self._m6g_normal = 0.0
         self._m6g_ce_actual = 0.0
@@ -739,9 +744,26 @@ class MorphinePK(MammillaryPK):
         """Excess active M6G effect-site concentration (morphine ng/mL equiv) in renal failure."""
         return max(0.0, self._m6g_ce_actual - self._m6g_ce_normal)
 
+    def has_mass(self) -> bool:
+        return (
+            super().has_mass()
+            or self._m6g_actual > 0.0
+            or self._m6g_normal > 0.0
+            or self._m6g_ce_actual > 0.0
+            or self._m6g_ce_normal > 0.0
+        )
+
+    def remove_blood(self, volume_l: float, baseline_blood_volume_l: float) -> None:
+        keep = self._blood_loss_keep_fraction(volume_l, baseline_blood_volume_l)
+        self.state.c1 *= keep
+        if self._m6g_actual > 0.0 or self._m6g_normal > 0.0:
+            self._m6g_actual *= keep
+            self._m6g_normal *= keep
+
     def reset(self) -> None:
         super().reset()
         self._renal_perfusion = 1.0
+        self._temp_c = self._baseline_temp
         self._m6g_actual = 0.0
         self._m6g_normal = 0.0
         self._m6g_ce_actual = 0.0
@@ -753,6 +775,7 @@ class MorphinePK(MammillaryPK):
         *, temp_met: float | None = None, temp_dist: float | None = None,
     ) -> None:
         self._renal_perfusion = max(0.0, renal_perfusion)
+        self._temp_c = temp_c
         super().update_hemodynamics(
             v_ratio, co_ratio, renal_perfusion,
             blood_volume_l=blood_volume_l, temp_c=temp_c,
@@ -768,8 +791,13 @@ class MorphinePK(MammillaryPK):
     def _m6g_step_factors(self, dt_min: float) -> tuple[float, float, float, float, float, float]:
         """Return (k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce) for dt_min."""
         circ = self.circulation
-        k_form = self._M6G_K_FORM_BASE * self._hepatic_function * circ
-        k_elim_ref = (math.log(2.0) / self._M6G_ELIM_T_HALF_MIN) * circ
+        clamped_t = clamp(self._temp_c, 18.0, 38.5)
+        # Favié 2019 (human neonatal HIE hypothermia, extrapolated to adults): parent morphine
+        # glucuronidation falls ~6.9%/°C (Q10 ~2.0) and M6G clearance falls ~4.9%/°C (Q10 ~1.65).
+        temp_form = 2.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
+        temp_elim = 1.65 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
+        k_form = self._M6G_K_FORM_BASE * self._hepatic_function * temp_form * circ
+        k_elim_ref = (math.log(2.0) / self._M6G_ELIM_T_HALF_MIN) * temp_elim * circ
         eff_gfr = self._M6G_NONRENAL_SHARE + (1.0 - self._M6G_NONRENAL_SHARE) * clamp(
             self._renal_capacity * self._renal_perfusion, 0.0, 1.0,
         )
@@ -938,6 +966,9 @@ class SuccinylcholinePK(MammillaryPK):
     def reset(self) -> None:
         super().reset()
         self.phase2_exposure = 0.0
+
+    def has_mass(self) -> bool:
+        return super().has_mass() or self.phase2_exposure > 1e-9
 
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         state = super().step(dt_sec, input_rate_per_sec)
@@ -1547,7 +1578,9 @@ class InsulinPK(MammillaryPK):
     Adapts Sherwin 1974 Fig. 1 Model A (porcine insulin in healthy adults,
     total-body-weight volumes V1 = 45, V2 = 17, V3 = 95 mL/kg; L01 = 0.251,
     L21 = 0.142, L31 = 0.042, L13 = 0.020 min^-1; MCR ~11.3 mL/kg/min) to lean
-    body mass. Total clearance uses a calibrated 55% hepatic, 27% renal, and 18%
+    body mass (keeping exogenous MCR per BSA roughly steady in obesity,
+    Polonsky 1988) and scales clearance across pregnancy (Catalano 1998).
+    Total clearance uses a calibrated 55% hepatic, 27% renal, and 18%
     peripheral split informed by Rabkin 1970 and Letiexhe 1993. Tracks exogenous
     regular insulin only; endogenous pancreatic secretion is integrated in
     GlucoseModel.
@@ -1563,7 +1596,7 @@ class InsulinPK(MammillaryPK):
         clearance_scale, renal_fraction = renal_capacity_scaling(
             patient, 0.27, hepatic_fraction=0.55,
         )
-        cl1 = 0.251 * v1_base * clearance_scale
+        cl1 = 0.251 * v1_base * clearance_scale * patient.pregnancy.insulin_clearance
         super().__init__(
             v1=_pregnancy_v1(patient, v1_base),
             cl1=cl1,

@@ -156,19 +156,21 @@ interactions:
   propofol clearance.
 - Core hypothermia slows non-renal metabolic clearance and intercompartmental
   or effect-site transfer across intravenous drugs down to 18 °C (Q10
-  extrapolated from 34 °C propofol data in Leslie 1995), with rocuronium slowing
-  extrapolated from vecuronium (Caldwell 2000) and hypothermic cardiopulmonary
-  bypass data (Smeulers 1995), while resting endogenous norepinephrine stays
-  invariant across core temperature shifts.
+  extrapolated from 34 °C propofol data in Leslie 1995). Morphine and
+  morphine-6-glucuronide clearance slow similarly (Q10 extrapolated to adults
+  from hypothermic neonatal encephalopathy data in Favié 2019), rocuronium
+  slowing is extrapolated from vecuronium (Caldwell 2000) and hypothermic
+  cardiopulmonary bypass data (Smeulers 1995), and resting endogenous
+  norepinephrine stays invariant across core temperature shifts.
 - Midazolam and propofol slow each other's clearance within clinically studied
   concentrations (Vuyk 2009; Lichtenbelt 2010).
 
 During severe low-flow states and cardiac arrest, drug delivery to organs,
 peripheral compartments, and effect sites falls with cardiac output. A drug
-given during arrest therefore waits for chest compressions to circulate it, and
-endogenous norepinephrine spillover stops without flow. Blood esterase
-metabolism of remifentanil, succinylcholine, and esmolol continues without
-flow, and sugammadex continues to bind rocuronium in plasma.
+given during arrest therefore waits for chest compressions to circulate it,
+sugammadex binding waits for circulatory mixing, and endogenous norepinephrine
+spillover stops without flow. Blood esterase metabolism of remifentanil,
+succinylcholine, and esmolol continues without flow.
 
 ## Target-controlled infusion
 
@@ -298,10 +300,13 @@ smaller potentiation based on vecuronium data (Fiset 1991); AnaSim applies both
 at peripheral and central muscles. Hypothermia slows rocuronium clearance and
 equilibration (extrapolated from vecuronium data in Caldwell 2000) and increases
 sensitivity below 32.5 °C (calibrated from 25 to 28 °C cardiopulmonary bypass
-data in Smeulers 1995). Sugammadex binds free rocuronium in plasma, accelerates
-saturable washout from the effect site (calibrated across 2 to 16 mg/kg reversal
-in Kleijn 2011 and Pühringer 2008), and clears the bound complex at the rate of
-sugammadex. A perijunctional rocuronium buffer reproduces transient rebound
+data in Smeulers 1995). Sugammadex binds free rocuronium in plasma, accelerates saturable washout from
+the effect site (calibrated across 2 to 16 mg/kg reversal in Kleijn 2011 and
+Pühringer 2008), and clears the bound complex at the rate of sugammadex. Severe
+renal impairment slows elimination of sugammadex and the bound complex sharply
+while preserving rapid reversal (Staals 2010), and acute renal hypoperfusion
+scales only the remaining renal share of clearance. A perijunctional rocuronium
+buffer reproduces transient rebound
 weakness when a sub-therapeutic sugammadex dose clears unbound plasma drug
 before peripheral stores empty (Eleveld 2007). Both drugs use measured
 creatinine clearance when provided, or estimate it from age and renal function;
@@ -495,9 +500,13 @@ ventricular afterload rise until left and right ventricular outputs match.
 Without circulation, left atrial pressure equilibrates with mean systemic
 filling pressure and pulmonary filtration and transcapillary refill stop; chest
 compressions partially restore left ventricular emptying. Under acute severe
-pulmonary vascular resistance elevation, volume overload above a right atrial
-pressure of 12 mmHg causes right ventricular overdistension and septal shift
-that impairs left ventricular filling and stroke volume.
+pulmonary vascular resistance elevation, transmural right atrial filling
+pressure above 12 mmHg causes right ventricular overdistension and septal shift
+that impairs left ventricular filling and stroke volume while conserving
+transpulmonary inflow. Under acute afterload, norepinephrine supports systemic
+perfusion and right ventricular output (canine acute PVR data in Ghignone
+1984), and dobutamine lowers pulmonary vascular resistance while raising stroke
+volume and cardiac index in massive pulmonary embolism (Jardin 1985b).
 
 ### Acidemia, electrolytes, and hypothermia
 
@@ -608,10 +617,12 @@ preserved during adrenergic blockade, acidemia, anaphylaxis, and septic shock.
 Dobutamine (Kates and Leier 1978) and milrinone (calibrated two-compartment
 kinetics matched to Baim 1983 and DailyMed 2026, largely renally cleared) raise
 stroke volume and HR while lowering systemic vascular resistance (Magnani 1977;
-Baim 1983). Dobutamine's heart-rate curve rises progressively across stress-dose
-infusions (Daly 1997), while milrinone adds stronger arterial, venous, and
-pulmonary dilation (post-bypass pulmonary vascular resistance reductions in
-Feneck 1992) that unloads high filling pressures. Because dobutamine, exogenous
+Baim 1983). Dobutamine's heart-rate curve rises progressively across stress-dose infusions
+(Daly 1997), and dobutamine lowers pulmonary vascular resistance while
+supporting right ventricular output during acute massive pulmonary embolism
+(Jardin 1985b). Milrinone adds stronger arterial, venous, and pulmonary
+dilation (post-bypass pulmonary vascular resistance reductions in Feneck 1992)
+that unloads high filling pressures. Because dobutamine, exogenous
 norepinephrine, epinephrine, and ephedrine act through beta receptors, beta
 blockade, heart-failure receptor downregulation (Fowler 1986), acidemia
 (Schotola 2012), anaphylaxis, and septic shock (Hernández 2013) blunt their
@@ -721,7 +732,8 @@ fluid bicarbonate adapts over hours of sustained PaCO₂ change. During severe
 hypotension, cerebral flow becomes pressure-limited, and restoring pressure
 returns flow up to the current CO₂ ceiling (Brian 1998).
 
-Cerebral oxygen demand changes with core temperature (roughly 7% per °C),
+Cerebral oxygen demand changes with core temperature down to 15 °C (Q10 of 2.3
+from adult deep hypothermic circulatory arrest measurements in McCullough 1999),
 anesthetic depth, and seizure activity, with flow-metabolism coupling raising
 blood flow when pressure and oxygen content allow. Propofol keeps cerebral blood
 flow coupled to metabolic demand, whereas sevoflurane adds modest luxury
@@ -915,13 +927,15 @@ diuresis at high blood volumes. Under anesthesia, roughly 11% of a 25 mL/kg
 acetated Ringer's bolus is excreted over 150 minutes (median 11% under
 isoflurane and 7% under propofol, with similar dilution and retention across
 agents; Ewaldsson and Hahn 2005); AnaSim calibrates lactated Ringer's excretion
-near 8% over 150 minutes. Normal saline is excreted more slowly than lactated
-Ringer's (Reid 2003). Dextrose solutions (D5W, D10W, and D50W) shift free water into cells as glucose
-is metabolized, expanding plasma volume less durably than balanced crystalloid
-and promoting faster renal water clearance (calibrated from 2.5% and 5% glucose
-versus acetated Ringer's in awake volunteers in Sjöstrand 2001 and extended to
-D10W). A larger fraction of 5% albumin stays intravascular
-initially, and a quarter of infused lipid emulsion volume remains in plasma.
+near 8% over 150 minutes. Normal saline is excreted more slowly than lactated Ringer's (Reid 2003).
+Dextrose solutions (D5W, D10W, and D50W) shift free water into cells through
+osmotic equilibration as glucose is metabolized, expanding plasma volume less
+durably than balanced crystalloid and promoting faster renal water clearance
+when awake (calibrated from awake 2.5% and 5% glucose studies in Sjöstrand 2001
+and intraoperative 2.5% glucose-electrolyte volume kinetics in Sjöstrand and
+Hahn 2004, and extended to D10W). A larger fraction of 5% albumin stays
+intravascular initially, and a quarter of infused lipid emulsion volume remains
+in plasma.
 Queued fluid, blood, lipid, bolus dextrose, and sodium bicarbonate infusions
 drain sequentially on separate intravenous channels.
 
@@ -1031,13 +1045,15 @@ modeled.
 [Glucose homeostasis](../anasim/physiology/glucose.py) shares one conserved
 extracellular glucose pool in [`FluidBalance`](../anasim/physiology/fluid_balance.py)
 across dextrose infusions, packed red cell transfusions (Rabcuka 2025),
-hemorrhage, osmotic water shifts, and metabolic fluxes. Exogenous intravenous
-regular insulin (`InsulinPK` in [`pk_models.py`](../anasim/patient/pk_models.py))
-adapts the three-compartment porcine-insulin model of Sherwin 1974 to lean body
-mass, using a calibrated 55% hepatic, 27% renal, and 18% peripheral clearance
-split informed by renal extraction in kidney disease (Rabkin 1970) and reduced
-clearance in compensated cirrhosis (Letiexhe 1993); low cardiac output and
-hypothermia also slow modeled clearance.
+hemorrhage, osmotic water shifts, and metabolic fluxes. Exogenous intravenous regular insulin (`InsulinPK` in
+[`pk_models.py`](../anasim/patient/pk_models.py)) adapts the three-compartment
+porcine-insulin model of Sherwin 1974 to lean body mass (keeping exogenous
+metabolic clearance per body surface area roughly steady in obesity, informed by
+Polonsky 1988) and expands clearance across pregnancy (longitudinal clamp data
+in Catalano 1998). Total clearance uses a calibrated 55% hepatic, 27% renal,
+and 18% peripheral split informed by renal extraction in kidney disease (Rabkin
+1970) and reduced clearance in compensated cirrhosis (Letiexhe 1993), and slows
+with low cardiac output and hypothermia.
 
 Endogenous and exogenous insulin act through a fast hepatic pool that suppresses
 endogenous glucose production and a slower remote interstitial pool that drives
@@ -1060,11 +1076,14 @@ reabsorption and a calibrated higher onset threshold in type 2 diabetes
 Below 68 mg/dL, counterregulatory glucagon and endogenous epinephrine rise to
 restore hepatic glucose production and limit peripheral uptake (healthy
 volunteer studies in Rizza 1979 and Mitrakou 1991), while supraphysiological
-insulin overdoses override this defense as a model calibration. Exogenous
-epinephrine raises glucose through transient glycogenolysis, lower peripheral
-clearance, and insulin suppression, with blunted glycemic sensitivity in older
-adults (awake volunteers in Clutter 1980 and Marker 1998). General anesthesia attenuates the cardiovascular response to hypoglycemic
-epinephrine surges as a model calibration. Sevoflurane suppresses
+insulin overdoses override this defense as a model calibration. Exogenous epinephrine raises glucose through transient glycogenolysis, lower
+peripheral clearance, and blunting of stimulated insulin secretion (holding
+insulin near basal levels despite hyperglycemia in Porte 1966, with additional
+calibrated basal suppression during high-dose epinephrine and non-septic shock
+in the model). Glycemic sensitivity to epinephrine is blunted in older adults
+(awake volunteers in Clutter 1980 and Marker 1998). General anesthesia
+attenuates the cardiovascular response to hypoglycemic epinephrine surges as a
+model calibration. Sevoflurane suppresses
 glucose-stimulated insulin secretion across 0.5 to 1.5 MAC (measured with
 nitrous oxide before incision in Tanaka 2005), and surgical stimulation blunts
 hepatic suppression during dextrose infusion (Schricker 2004, with added
@@ -1272,7 +1291,7 @@ obesity data in Pelosi 1998 and Behazin 2010) and calibrated lung conditions.
 Alveolar pressure (including trapped auto-PEEP during severe expiratory
 obstruction, rather than proximal pressure behind an obstructed airway)
 transmits to the pleural space in proportion to chest-wall-to-total elastance
-(Jardin 1985), setting the intrathoracic pressure transmitted to venous return.
+(Jardin 1985a), setting the intrathoracic pressure transmitted to venous return.
 
 Ventilator assistance lowers inspiratory muscle effort, though intrinsic PEEP
 remains a calibrated inspiratory threshold load on patient-triggered breaths
@@ -1313,17 +1332,18 @@ vasodilation limiting fever above a hypothalamic setpoint shifted upward by
 sepsis, whereas general anesthetics widen the interthreshold range by slightly
 raising the sweating threshold while markedly lowering cold-defense thresholds
 (Sessler 2000). Basal heat production scales with body weight to the 0.75
-power, and excess body fat lowers mean specific heat capacity. Temperature and
-sepsis alter metabolic heat production (scaling down toward a quarter of
-baseline in deep hypothermia), forced-air warming is modeled to shield 60% of
+power, and excess body fat lowers mean specific heat capacity. Temperature and sepsis alter metabolic heat production (scaling down toward a
+quarter of baseline in deep hypothermia). Forced-air warming shields 60% of
 body surface area from room loss during surgery while delivering convective
-heat (calibrated to full-body convective transfer in Giesbrecht 1994), surface
-cooling removes heat, and unwarmed intravenous fluids or refrigerated packed
-red cells cool the core unless the 37 °C fluid warmer is on. Thermoregulatory
-vasoconstriction limits peripheral heat loss below the vasoconstriction
-threshold, which shifts lower in older adults (Sessler 2000; Ozaki 1997), and
-heat production falls with oxygen delivery so core temperature drops faster
-during arrest.
+heat (calibrated to full-body convective transfer in Giesbrecht 1994), and
+surface cooling removes heat. Unwarmed intravenous fluids and refrigerated
+packed red cells cool the core unless the 37 °C fluid warmer is on, washing in
+gradually with circulatory flow during low-flow CPR (circulation-time scaling
+informed by canine CPR dye-transit data in Emerman 1988). Thermoregulatory
+vasoconstriction limits peripheral heat loss below a single vasoconstriction
+threshold shared by the thermal and hemodynamic models; this threshold shifts
+lower in older adults (Sessler 2000; Ozaki 1997). Heat production also falls
+with oxygen delivery, so core temperature drops faster during arrest.
 
 General anesthetics suppress thermoregulation, reduce metabolic heat
 production, and redistribute heat from the core to the periphery;
@@ -1334,8 +1354,12 @@ whereas ketamine largely preserves peripheral vasoconstriction and spares
 redistribution cooling (Ikeda 2001) and midazolam shifts thermoregulatory
 thresholds much less (Kurz 1995b). Neuraxial anesthesia likewise causes
 lower-body vasodilation and core-to-peripheral heat redistribution (epidural
-data in Matsukawa 1995b), lowers the central shivering threshold, and removes
-lower-body shivering muscle mass (Ozaki 1994). Opioids lower both
+data in Matsukawa 1995b) and removes lower-body shivering muscle mass. It
+slightly raises the sweating threshold (epidural and spinal data in Ozaki 1994)
+while lowering central vasoconstriction and shivering thresholds in tandem
+(spinal data in Kurz 1993; comparable epidural and spinal shifts in Ozaki
+1994), with a further drop in the shivering threshold in older adults (spinal
+data in Vassilieff 1995). Opioids lower both
 vasoconstriction and shivering thresholds (Kurz 1995c). First-hour
 redistribution cooling is smaller in heavier patients because of their higher
 mass-to-surface ratio (Kurz 1995a).
@@ -1893,7 +1917,8 @@ cardiac arrest or nonperfusing rhythms without arterial extracorporeal support,
 placement succeeds unless severe laryngospasm closes the vocal cords.
 
 [`clinical_actions.py`](../anasim/core/clinical_actions.py) also checks
-supraglottic airway and oral airway placement against patient responsiveness,
+supraglottic airway and oral airway placement against patient responsiveness
+(allowing both during deep non-drug coma),
 warns if emergency cricothyrotomy is performed without a difficult or failing
 airway, and skips extubation warnings when removing an esophageal tube. It
 raises a warning without blocking the action when:
@@ -1908,8 +1933,8 @@ raises a warning without blocking the action when:
   incomplete neuromuscular recovery (excluding non-fading dantrolene weakness)
 - assisted ventilation is stopped during apnea without active extracorporeal
   gas exchange (blood flow at least 1.5 L/min and positive sweep gas)
-- a defibrillator shock is delivered to a responsive patient with a perfusing
-  native rhythm
+- a defibrillator shock is delivered to a responsive patient with systemic
+  perfusion
 - protamine is administered during active ECMO or cardiopulmonary bypass
 - cardiopulmonary bypass is started with an activated clotting time below 400
   seconds

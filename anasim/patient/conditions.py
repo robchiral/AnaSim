@@ -48,6 +48,7 @@ class PregnancyFactors:
     ph: float = 7.4
     supine_output_loss: float = 0.0
     mac_factor: float = 1.0
+    insulin_clearance: float = 1.0
 
 
 def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
@@ -93,4 +94,6 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
         supine_output_loss=0.164 * compression,
         # Gin and Chan 1994: 28% lower isoflurane MAC at 8-12 wk; scaled to full effect by 14 wk and extended across volatiles through term.
         mac_factor=1.0 - 0.28 * early,
+        # Catalano 1998: insulin MCR rises +22% by 12-14 wk and +24% by 34-36 wk.
+        insulin_clearance=1.0 + 0.22 * early + 0.02 * late,
     )

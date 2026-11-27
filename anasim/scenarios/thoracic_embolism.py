@@ -41,11 +41,18 @@ def _setup_n2o_balanced(engine) -> None:
     comp.fin2 = max(0.0, 1.0 - comp.fio2 - comp.fin2o - fi_agent)
     p_n2o = 0.46
     n2o_st = engine.pk_n2o.state
-    n2o_st.p_alv = n2o_st.p_art = n2o_st.p_vrg = n2o_st.p_brain = n2o_st.p_mus = n2o_st.p_fat = p_n2o
+    n2o_st.p_alv = n2o_st.p_art = n2o_st.p_ven = n2o_st.p_vrg = n2o_st.p_brain = n2o_st.p_mus = n2o_st.p_fat = p_n2o
     n2o_st.mac = p_n2o * 100.0 / engine.pk_n2o.mac_at_temp(engine.state.temp_c)
+    engine.resp.equilibrate_oxygen(
+        comp.fio2,
+        1.0,
+        engine.vent.settings.peep,
+        fin2=comp.fin2,
+    )
     engine._tracheal_gas = projection_core.inspired_gas_mixture(engine)
     projection_core.sync_inspired_gas(engine)
     projection_core.sync_inhaled_agents(engine)
+    projection_core.sync_state_from_models(engine)
     if engine.etco2_readout.gas_valid:
         engine.etco2_readout.et_gases = (
             engine.state.et_o2,
@@ -85,10 +92,15 @@ def _require_monitored_map_ecmo(engine, threshold: float = 65.0) -> tuple[bool, 
     if not (engine.extracorporeal.is_va and engine.extracorporeal.state.blood_flow_l_min >= 2.0):
         return require_map_at_least(threshold)(engine)
     s = engine.state
-    if not engine.config.arterial_line_enabled and (
-        s.nibp_measurement_failed or s.nibp_timestamp is None or s.time - s.nibp_timestamp > 60.0
-    ):
-        return False, "Measure blood pressure again"
+    nonpulsatile_va = engine.hemo.state.sv <= 0.0 or (s.sbp - s.dbp) < 8.0
+    if not engine.config.arterial_line_enabled:
+        if nonpulsatile_va and s.nibp_measurement_failed:
+            # Oscillometric NIBP cannot detect nonpulsatile VA ECMO flow; fall back to arterial perfusion MAP.
+            if s.map < threshold:
+                return False, f"MAP: {format_unmet_int(s.map, low=threshold)}/{threshold:.0f}+"
+            return True, ""
+        if s.nibp_measurement_failed or s.nibp_timestamp is None or s.time - s.nibp_timestamp > 60.0:
+            return False, "Measure blood pressure again"
     map_val = monitor_value(engine, "map")
     if map_val < threshold:
         return False, f"MAP: {format_unmet_int(map_val, low=threshold)}/{threshold:.0f}+"

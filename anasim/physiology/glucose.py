@@ -104,6 +104,9 @@ class GlucoseModel:
         renal_function: float = 1.0,
         renal_clearance_factor: float = 1.0,
         hepatic_function: float = 1.0,
+        insulin_lean_mass_kg: float | None = None,
+        insulin_v1_l: float | None = None,
+        pregnancy_insulin_clearance: float = 1.0,
     ) -> None:
         self.lean_mass_kg = max(20.0, float(lean_mass_kg))
         self.baseline_glucose_mg_dl = float(baseline_glucose_mg_dl)
@@ -119,12 +122,16 @@ class GlucoseModel:
         self._standalone_ecf_l = max(1.0, float(ecf_l))
         self._standalone_glucose_mmol = (self.baseline_glucose_mg_dl / MG_DL_PER_MMOL_L) * self._standalone_ecf_l
 
-        # Calibrated organ insulin clearance split informed by Sherwin 1974, Rabkin 1970, and Letiexhe 1993.
+        # Calibrated organ insulin clearance split informed by Sherwin 1974, Rabkin 1970, and Letiexhe 1993,
+        # matched to InsulinPK lean mass (Polonsky 1988) and gestational MCR expansion (Catalano 1998).
         self._organ_cl_scale = (
             0.55 * self.hepatic_function + 0.27 * self.renal_clearance_factor + 0.18
         )
-        self._insulin_v1_l = 0.045 * self.lean_mass_kg
-        self._insulin_mcr_base_l_min = 0.251 * self._insulin_v1_l * self._organ_cl_scale
+        ins_lean_w = self.lean_mass_kg if insulin_lean_mass_kg is None else max(20.0, float(insulin_lean_mass_kg))
+        v1_base = 0.045 * ins_lean_w
+        self._insulin_v1_l = v1_base if insulin_v1_l is None else max(0.5, float(insulin_v1_l))
+        self._pregnancy_cl = max(0.5, float(pregnancy_insulin_clearance))
+        self._insulin_mcr_base_l_min = 0.251 * v1_base * self._organ_cl_scale * self._pregnancy_cl
 
         # Insulin sensitivity parameters.
         # Kolterman 1981: nonobese T2D -48% Rd_max, obese T2D -60% Rd_max; T2D ED50 shift is calibrated.
@@ -286,12 +293,17 @@ class GlucoseModel:
             self.state.insulin_mu_l = total_ins
 
     @property
+    def live_glucose_mg_dl(self) -> float:
+        """Current ECF blood glucose (mg/dL), reflecting any unstepped prime or fluid shifts."""
+        if self._fluids is not None:
+            return (max(0.0, self._fluids.glucose_mmol) / max(1.0, self._fluids.ecf_l)) * MG_DL_PER_MMOL_L
+        return self.state.glucose_mg_dl
+
+    @property
     def arterial_glucose_mg_dl(self) -> float:
         """Arterial/POC blood glucose (mg/dL); reads live ECF when perfusing and freezes in arrest."""
         if self._circulation >= 0.99:
-            if self._fluids is not None:
-                return (max(0.0, self._fluids.glucose_mmol) / max(1.0, self._fluids.ecf_l)) * MG_DL_PER_MMOL_L
-            return self.state.glucose_mg_dl
+            return self.live_glucose_mg_dl
         return self._arterial_glucose_mg_dl
 
     def _hepatic_insulin_suppression(self, hepatic_insulin_mu_l: float) -> float:
@@ -373,6 +385,7 @@ class GlucoseModel:
         surg_stress: float,
         oxygen_supply: float,
         temp_q10: float,
+        shock_stress: float = 0.0,
     ) -> float:
         # Hepatic suppression by fast hepatic insulin (Rizza 1981; Insel 1975).
         ins_supp = self._hepatic_insulin_suppression(hepatic_insulin_mu_l)
@@ -412,8 +425,9 @@ class GlucoseModel:
         # Sepsis doubles basal Ra (Revelly 2005); surgical/CPB stress raises EGP (Schricker 2004; Lehot 1992).
         sepsis_egp = 1.25 * self._rest_egp_mg_kg_min * clamp01(sepsis_severity) * hep_reserve
         surg_egp = 0.85 * clamp01(surg_stress) * hep_reserve
+        shock_egp = 0.45 * clamp01(shock_stress) * hep_reserve
 
-        return (basal_egp + (glucagon_egp + epi_egp) * counterreg_scale + sepsis_egp + surg_egp) * temp_q10 * oxy_gate
+        return (basal_egp + (glucagon_egp + epi_egp) * counterreg_scale + sepsis_egp + surg_egp + shock_egp) * temp_q10 * oxy_gate
 
     def sync_circulation(self, circulation: float, fluids=None) -> None:
         """Snapshot arterial glucose and insulin when perfusion drops before peripheral infusions drain."""
@@ -448,6 +462,7 @@ class GlucoseModel:
         renal_perfusion: float = 1.0,
         oxygen_supply: float = 1.0,
         circulation: float = 1.0,
+        shock_stress: float = 0.0,
     ) -> GlucoseState:
         """Advance coupled glucose, endogenous insulin, counterregulation, and glycosuria."""
         circ = clamp01(circulation)
@@ -474,6 +489,8 @@ class GlucoseModel:
         exo_ins = max(0.0, float(exo_insulin_cp))
         exo_epi = max(0.0, float(exo_epinephrine_ng_ml))
         sepsis = clamp01(sepsis_severity)
+        shock = clamp01(shock_stress)
+        non_septic_shock = shock * (1.0 - 0.75 * sepsis)
         stress_target = clamp01(max(surgical_stimulation, 1.0 if cpb_active else 0.0))
         cpb_stress_boost = 0.95 if cpb_active else 0.0
 
@@ -543,21 +560,32 @@ class GlucoseModel:
                 hypo_shutoff = 1.0
                 g_above = max(0.0, g_now - self._g_setpoint_mg_dl)
                 raw_stim = self._beta_stim_max * hill_function(g_above, 85.0, 2.0) if g_above > 0.0 else 0.0
-                # Epinephrine suppresses insulin secretion above ~0.40 ng/mL (basal in Clutter 1980, extended to stimulated).
+                # Epinephrine blunts stimulated insulin secretion (~72-81% in Porte 1966;
+                # Clutter 1980 threshold >0.40 ng/mL); non-septic shock applies parallel stress suppression.
                 epi_beta_supp = (
-                    0.75 * hill_function(max(0.0, total_epi - 0.40), 0.30, 1.5)
-                    if total_epi > 0.40
+                    0.80 * hill_function(max(0.0, total_epi - 0.35), 0.30, 1.5)
+                    if total_epi > 0.35
                     else 0.0
                 )
-                stim_factor = raw_stim * (1.0 - sevo_beta_supp) * (1.0 - epi_beta_supp)
+                shock_stim_supp = 0.80 * shock
+                stim_factor = raw_stim * (1.0 - sevo_beta_supp) * (1.0 - epi_beta_supp) * (1.0 - shock_stim_supp)
 
             # In sepsis, compensatory basal hyperinsulinemia tracks insulin resistance (Revelly 2005).
+            # In Porte 1966, 6 mcg/min epinephrine held insulin near basal levels despite hyperglycemia;
+            # additional calibrated basal suppression during high-dose epinephrine and non-septic shock
+            # keeps reduced clearance from causing paradoxical hyperinsulinemic hypoglycemia.
             # Multiply by temp_q10 * hypo_beta_scale so hypothermic beta-cell suppression drops
             # plasma insulin ~50% despite reduced clearance, rebounding on rewarming (Lehot 1992).
+            epi_basal_supp = (
+                0.35 * hill_function(max(0.0, total_epi - 0.35), 0.30, 1.5)
+                if total_epi > 0.35
+                else 0.0
+            )
+            basal_supp = max(0.25, (1.0 - epi_basal_supp) * (1.0 - 0.58 * non_septic_shock))
             sepsis_sec = 1.0 + 0.8 * sepsis
             secretion_mu_min = (
                 self._basal_secretion_mu_min
-                * (hypo_shutoff * sepsis_sec + stim_factor)
+                * (hypo_shutoff * sepsis_sec * basal_supp + stim_factor)
                 * temp_q10
                 * hypo_beta_scale
                 * circ
@@ -589,6 +617,7 @@ class GlucoseModel:
                 surg_stress=self._surg_stress,
                 oxygen_supply=oxygen_supply,
                 temp_q10=temp_q10,
+                shock_stress=non_septic_shock,
             ) + cpb_stress_boost * self._surg_stress * temp_q10 * (0.25 + 0.75 * clamp01(oxygen_supply))
             rd_rate = self._compute_rd_mg_kg_min(
                 g_now,

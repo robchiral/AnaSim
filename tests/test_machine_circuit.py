@@ -138,7 +138,8 @@ def test_engine_volatile_washin_washout(engine_factory):
     engine.step(1.0)
     assert engine.vaporizer.state.level == 0.0
     assert not engine.vaporizer.state.is_on
-    assert engine.vaporizer.state.setting == 0.0
+    assert engine.vaporizer.state.setting == 2.0
+    assert not engine.circuit.vaporizer_on
     engine.set_fgf(10.0, 0.0)
     for _ in range(150):  # 5 min washout
         engine.step(2.0)

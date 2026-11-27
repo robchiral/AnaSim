@@ -94,6 +94,7 @@ class RespState:
     pv_co2: float = 46.0
     pv_o2: float = 40.0
     venous_ph: float = 7.36
+    venous_ph_37: float = 7.36
     drive_central: float = 1.0
     muscle_factor: float = 1.0
     effort_rr: float = 12.0
@@ -301,6 +302,7 @@ class RespiratoryModel:
         self.baseline_hct = patient.baseline_hct
         self._oxygen_hb = self.baseline_hb
         self._arterial_hb = self.baseline_hb
+        self._pulm_hb = self.baseline_hb
         self.fluids: FluidBalance | None = None
         self._plasma_buffers: PlasmaBuffers | None = None
         self._extracellular_buffers: PlasmaBuffers | None = None
@@ -518,6 +520,7 @@ class RespiratoryModel:
         transport.resize_blood(new_vol)
         transport.extracellular_volume = fluids.interstitial_l
         v0, v1, v2 = transport.volumes
+        art_o2_scale = 1.0
         if venous_only and v2 > 0.0:
             total_target_o2 = sum(old_o2_amounts)
             venous_o2 = max(0.0, (total_target_o2 - v0 * old_o2_concs[0] - v1 * old_o2_concs[1]) / v2)
@@ -528,6 +531,7 @@ class RespiratoryModel:
             raw_sys_o2 = old_o2_amounts[1] + old_o2_amounts[2]
             if raw_sys_o2 > 0.0:
                 o2_scale = sys_target_o2 / raw_sys_o2
+                art_o2_scale = o2_scale
                 transport.oxygen = [
                     old_o2_concs[0],
                     old_o2_amounts[1] * o2_scale / v1 if v1 > 0.0 else old_o2_concs[1],
@@ -537,9 +541,42 @@ class RespiratoryModel:
                 transport.oxygen = [old_o2_concs[0], sys_target_o2 / (v1 + v2), sys_target_o2 / (v1 + v2)]
         else:
             transport.oxygen = [amt / v for amt, v in zip(old_o2_amounts, transport.volumes, strict=True)]
+        prev_oxygen_hb = self._oxygen_hb
         self._oxygen_hb = hb
         if not venous_only:
+            if abs(prev_oxygen_hb - self._arterial_hb) > 1e-6 and v2 > 0.0:
+                eff_art_hb = self._arterial_hb * art_o2_scale * (old_volumes[1] / v1) if v1 > 0.0 else self._arterial_hb
+                po2_1, sat_1 = self._po2_and_sat_from_content(
+                    transport.oxygen[1], eff_art_hb, self._blood_p50[1],
+                    self._blood_po2[1], self._o2_solubility_now,
+                )
+                target_c1 = _O2_PER_HB * hb * sat_1 + self._o2_solubility_now * po2_1
+                shift_1 = clamp(
+                    (transport.oxygen[1] - target_c1) * v1,
+                    -transport.oxygen[2] * v2,
+                    transport.oxygen[1] * v1,
+                )
+                if v1 > 0.0:
+                    transport.oxygen[1] -= shift_1 / v1
+                transport.oxygen[2] += shift_1 / v2
+            if not no_pulm_flow and abs(prev_oxygen_hb - self._pulm_hb) > 1e-6 and v2 > 0.0:
+                eff_pulm_hb = self._pulm_hb * (old_volumes[0] / v0) if v0 > 0.0 else self._pulm_hb
+                po2_0, sat_0 = self._po2_and_sat_from_content(
+                    transport.oxygen[0], eff_pulm_hb, self._blood_p50[0],
+                    self._blood_po2[0], self._o2_solubility_now,
+                )
+                target_c0 = _O2_PER_HB * hb * sat_0 + self._o2_solubility_now * po2_0
+                shift_0 = clamp(
+                    (transport.oxygen[0] - target_c0) * v0,
+                    -transport.oxygen[2] * v2,
+                    transport.oxygen[0] * v0,
+                )
+                if v0 > 0.0:
+                    transport.oxygen[0] -= shift_0 / v0
+                transport.oxygen[2] += shift_0 / v2
             self._arterial_hb = hb
+            if not no_pulm_flow:
+                self._pulm_hb = hb
 
         total_target_co2 = old_total_co2 - lost_carbon + added_carbon
         target_blood_co2 = keep_0 * old_carbon + blood_infuse_carbon + shift_co2 - urine_carbon
@@ -693,6 +730,7 @@ class RespiratoryModel:
         self._apneic_gas_deficit_l = 0.0
         self._pending_mech_absorption_btps_l = 0.0
         self._arterial_hb = hb
+        self._pulm_hb = hb
 
     def equilibrate_blood_gases(self, cardiac_output: float, production_l_min: float) -> None:
         """Seed blood and tissues for a specified maintenance history."""
@@ -1144,6 +1182,7 @@ class RespiratoryModel:
         state.pv_co2 = self._blood_pressures[2] * pco2_scale
         state.pv_o2 = self._blood_po2[2]
         state.venous_ph = self._blood_ph[2] + ph_shift
+        state.venous_ph_37 = self._blood_ph[2]
         self._p50 = self._blood_p50[1]
         self.buffer_base = self.gas_transport.base[1]
         if self.fluids is not None:
@@ -1633,6 +1672,7 @@ class RespiratoryModel:
                     for po2, saturation in zip(self._blood_po2, self._blood_saturations, strict=True)
                 ]
                 self._oxygen_hb = hb
+                self._pulm_hb = hb
             if hb != self._arterial_hb:
                 old_art_o2 = transport.oxygen[1]
                 new_art_o2 = (
@@ -1651,6 +1691,7 @@ class RespiratoryModel:
                     _O2_PER_HB * hb * self._blood_saturations[idx] + old_o2_solubility * self._blood_po2[idx]
                 )
             self._oxygen_hb = hb
+            self._pulm_hb = hb
         old_hb, old_hct = self._chemistry_composition
         # Fluid kinetics move Hb slightly every step; rebuild buffering for measurable changes.
         if abs(hb - old_hb) > 1e-6 * old_hb or abs(hct - old_hct) > 1e-6 * old_hct:
@@ -1887,7 +1928,12 @@ class RespiratoryModel:
             self.oxygen_deficit_l += (demand * (1.0 - supply)
                                       + lung_demand / self.rq * (1.0 - lung_supply)) * sub_dt / 60.0
             metabolic_production = systemic_production * supply
-            production = metabolic_production + max(0.0, exogenous_co2_ml_min) / 1000.0
+            exog_co2_gate = (
+                clamp01(cardiac_output / max(0.5, 0.3 * self.baseline_co_l_min))
+                if cardiac_output > 1e-6
+                else 0.0
+            )
+            production = metabolic_production + max(0.0, exogenous_co2_ml_min) / 1000.0 * exog_co2_gate
             consumption = metabolic_production / self.rq
             pulm_co_arg = None if pulmonary_flow is None else pulm_co
             vv_pulm_co2 = 0.0
@@ -1910,6 +1956,11 @@ class RespiratoryModel:
                     ecmo_st.effective_blood_flow_l_min = 0.0
                     ecmo_st.o2_transfer_ml_min = 0.0
                     ecmo_st.co2_removal_ml_min = 0.0
+                    ecmo_st.pre_oxy_po2 = float(self._blood_po2[2])
+                    ecmo_st.pre_oxy_so2 = float(self._blood_saturations[2] * 100.0)
+                    ecmo_st.post_oxy_po2 = ecmo_st.pre_oxy_po2
+                    ecmo_st.post_oxy_so2 = ecmo_st.pre_oxy_so2
+                    extracorporeal.clear_last_pass()
                 else:
                     ecmo_res = extracorporeal.step_gas_exchange(
                         sub_dt,
@@ -2139,7 +2190,12 @@ class RespiratoryModel:
 
         st = extracorporeal.state
         r = self.state
-        if not extracorporeal.is_arterial_support or ecmo_res is None or st.cannulation.value == "central":
+        if (
+            not extracorporeal.is_arterial_support
+            or ecmo_res is None
+            or st.cannulation.value == "central"
+            or (st.blood_flow_l_min <= 1e-6 and pulm_co <= 1e-6)
+        ):
             st.upper_body_sao2 = st.lower_body_sao2 = st.coronary_sao2 = r.sao2
             st.upper_body_pao2 = st.lower_body_pao2 = r.p_arterial_o2
             st.upper_body_paco2_37 = st.lower_body_paco2_37 = r.pa_co2_37

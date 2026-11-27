@@ -629,7 +629,7 @@ class WebSession:
 
     def _collect_loop(self, samples) -> None:
         """Add points of the breath in progress; a new breath makes it the previous loop."""
-        if self.engine.state.airway_mode == AirwayType.NONE:
+        if not circuit_connected(self.engine):
             self._reset_loop()
             if samples:
                 self._loop_sample = samples[-1]
@@ -991,9 +991,7 @@ class WebSession:
             return self._clinical_result(self.engine.perform_fona())
         prev = self.engine.state.airway_mode
         was_esophageal = prev == AirwayType.ETT and self.engine.airway_crisis.esophageal_intubation
-        was_assisted = (prev != AirwayType.NONE) and not was_esophageal and (
-            (self.engine.vent.is_on and self.engine.vent.settings.mode != "CPAP") or self.engine.bag_mask_active
-        )
+        was_assisted = circuit_connected(self.engine) and not was_esophageal and assisted_positive_pressure(self.engine)
         leaving_infraglottic = prev in (AirwayType.ETT, AirwayType.FONA)
         feedback = check_airway_removal(self.engine) if leaving_infraglottic else None
         if target == AirwayType.SGA:
@@ -1002,11 +1000,13 @@ class WebSession:
                 return self._clinical_result(sga_fb)
             if self.case_run is not None and prev == AirwayType.ETT and not was_esophageal:
                 self.case_run.record_transition("extubation")
-            return self._clinical_result(sga_fb or feedback)
+            if feedback is not None and sga_fb is not None and self.case_run is not None:
+                self.case_run.record_safety(sga_fb)
+            return self._clinical_result(feedback or sga_fb)
         if self.case_run is not None and prev == AirwayType.ETT and not was_esophageal:
             self.case_run.record_transition("extubation")
         self.engine.set_airway_mode(mode)
-        if target == AirwayType.NONE:
+        if not circuit_connected(self.engine):
             self._reset_loop()
         if feedback is None and target == AirwayType.NONE and was_assisted:
             feedback = check_ventilation_withdrawal(self.engine)
@@ -1109,6 +1109,8 @@ class WebSession:
 
     def _cmd_mask_seal(self, percent: float):
         self.engine.set_mask_seal(domain.bounded_number("mask seal", percent, 0.0, 100.0, unit="%") / 100.0)
+        if not circuit_connected(self.engine):
+            self._reset_loop()
 
     def _clinical_result(self, feedback: ActionFeedback | None, receipt: dict | None = None):
         """Record feedback for the debrief and return what the browser shows now."""
@@ -1152,17 +1154,21 @@ class WebSession:
 
     # Bag-mask and the ventilator are mutually exclusive.
     def _cmd_bag_mask(self, active: bool):
-        assisted = self.engine.vent.is_on or self.engine.bag_mask_active
+        assisted = assisted_positive_pressure(self.engine)
         if active and self.engine.vent.is_on:
             self.engine.set_vent_power(False)
         self.engine.set_bag_mask_ventilation(active)
         return self._assistance_result(assisted)
 
     def _cmd_bag_settings(self, rr: float, tv: float, p_max: float | None = None):
+        assisted = assisted_positive_pressure(self.engine)
         self.engine.set_bag_mask_settings(rr, domain.finite_number("bag tidal volume", tv) / 1000.0, p_max=p_max)
+        return self._assistance_result(assisted)
 
     def _cmd_apl(self, cmh2o: float):
+        assisted = assisted_positive_pressure(self.engine)
         self.engine.set_apl_valve(cmh2o)
+        return self._assistance_result(assisted)
 
     def _cmd_bag_breath(self):
         self.engine.deliver_manual_breath()
@@ -1171,7 +1177,7 @@ class WebSession:
         self.engine.trigger_o2_flush()
 
     def _cmd_vent_power(self, on: bool):
-        assisted = self.engine.vent.is_on or self.engine.bag_mask_active
+        assisted = assisted_positive_pressure(self.engine)
         if on and self.engine.bag_mask_active:
             self.engine.set_bag_mask_ventilation(False)
         self.engine.set_vent_power(on)
@@ -1181,7 +1187,7 @@ class WebSession:
         """Check apnea when the last source of assisted ventilation stops."""
         if self.engine.airway_crisis.esophageal_intubation:
             return self._clinical_result(None)
-        stopped = was_assisted and not (self.engine.vent.is_on or self.engine.bag_mask_active)
+        stopped = was_assisted and not assisted_positive_pressure(self.engine)
         return self._clinical_result(check_ventilation_withdrawal(self.engine) if stopped else None)
 
     def _cmd_vent(self, **fields):
@@ -1190,7 +1196,9 @@ class WebSession:
             raise ValueError(f"Unknown ventilator setting(s): {', '.join(sorted(unknown))}")
         if "ie" in fields and fields["ie"] not in IE_RATIOS:
             raise ValueError(f"Unsupported I:E ratio {fields['ie']!r}")
+        assisted = assisted_positive_pressure(self.engine)
         self.engine.vent.update_settings(**fields)
+        return self._assistance_result(assisted)
 
     def _cmd_drug_rate(self, key: str, rate: float):
         spec = get_drug_spec(key)
@@ -1396,8 +1404,13 @@ class WebSession:
             self.engine.start_cpb(**opts)
         return self._clinical_result(feedback)
 
-    def _cmd_extracorporeal_stop(self, reinfuse: bool = False):
-        self.engine.stop_extracorporeal(reinfuse=bool(reinfuse))
+    def _cmd_extracorporeal_stop(self, reinfuse: bool = False, reinfuse_reservoir: bool | None = None):
+        reinfuse_flag = bool(reinfuse)
+        if reinfuse_reservoir is None:
+            reinfuse_res = (not reinfuse_flag) and self.engine.extracorporeal.is_cpb
+        else:
+            reinfuse_res = bool(reinfuse_reservoir)
+        self.engine.stop_extracorporeal(reinfuse=reinfuse_flag, reinfuse_reservoir=reinfuse_res)
 
     def _cmd_extracorporeal_settings(self, **fields):
         allowed = {

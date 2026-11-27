@@ -121,11 +121,10 @@ class PulmonaryEmbolismModel:
         """Administer systemic thrombolysis (e.g. alteplase), accelerating PE clot lysis."""
         self._thrombolysis_bleed_level = 1.0
         if self.pe_obstruction > 0.0 or self.pe_active:
+            if self.pe_obstruction <= 1e-6 and self.pe_target_obstruction > 0.0:
+                self.pe_obstruction = min(0.15, 0.25 * self.pe_target_obstruction)
             self.thrombolysis_active = True
-            self.pe_target_obstruction = min(
-                self.pe_obstruction if self.pe_obstruction > 0.0 else self.pe_target_obstruction,
-                PE_RESIDUAL_AFTER_LYSIS,
-            )
+            self.pe_target_obstruction = min(0.5 * self.pe_obstruction, PE_RESIDUAL_AFTER_LYSIS)
 
     def start_vae(self, rate_ml_min: float = 55.0, *, initial_bolus_ml: float = 45.0) -> None:
         """Start continuous surgical venous air entrainment with an optional initial bolus."""
@@ -191,11 +190,13 @@ class PulmonaryEmbolismModel:
         # Pulmonary thromboembolism kinetics (drug delivery and clot lysis require circulation).
         if self.thrombolysis_active:
             if circ > 0.0:
-                target = min(self.pe_obstruction, PE_RESIDUAL_AFTER_LYSIS)
+                target = clamp(self.pe_target_obstruction, 0.0, PE_RESIDUAL_AFTER_LYSIS)
                 self.pe_obstruction += (target - self.pe_obstruction) * -math.expm1(
                     -dt * circ / PE_THROMBOLYSIS_TAU_S
                 )
-                if self.pe_obstruction <= PE_RESIDUAL_AFTER_LYSIS + 0.015:
+                frac = target / PE_RESIDUAL_AFTER_LYSIS if PE_RESIDUAL_AFTER_LYSIS > 0.0 else 0.0
+                done_thresh = target + 0.005 + 0.010 * frac
+                if self.pe_obstruction <= done_thresh:
                     self.pe_active = False
                     self.thrombolysis_active = False
         elif self.pe_active:

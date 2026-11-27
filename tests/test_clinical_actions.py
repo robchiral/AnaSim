@@ -224,6 +224,7 @@ def test_airway_removal_and_stopping_ventilation_use_unassisted_breathing():
     assert removed["feedback"]["code"] == "unsafe_airway_removal"
     assert engine.state.airway_mode.value == "Mask" and not engine.vent.is_on
 
+    command(session, "apl", cmh2o=20)
     command(session, "bag_mask", active=True)
     disconnected = command(session, "airway", mode="None")
     assert disconnected["feedback"]["code"] == "ventilation_stopped"
@@ -322,3 +323,24 @@ def test_sub_mac_volatile_blocks_unparalyzed_intubation_and_light_sedation_warns
     assert 0.1 < loss_of_response(light_par) < 0.5
     fb_par = check_intubation(light_par)
     assert fb_par is not None and not fb_par.blocked and fb_par.code == "intubation_awareness"
+
+
+def test_check_shock_warns_awake_va_ecmo_vf_and_oral_airway_allows_deep_coma(engine_factory, advance_time):
+    """Awake VA ECMO patient in VF retains perfused cortex and gets an awake-shock warning;
+    deep non-drug coma (severe hypercapnia or low cortical function) accepts an oral airway without gagging."""
+    from anasim.core.clinical_actions import check_oral_airway
+
+    va = engine_factory(config=SimulationConfig(mode="awake", dt=0.5, rng_seed=1), start=True)
+    va.start_va_ecmo(blood_flow_l_min=4.5, sweep_gas_l_min=4.0, prime_volume_ml=0.0)
+    va.set_rhythm(RhythmType.VFIB)
+    advance_time(va, 10.0, dt=0.5)
+    fb_shock = check_shock(va)
+    assert fb_shock is not None and fb_shock.code == "shock_while_responsive"
+
+    coma = engine_factory(config=SimulationConfig(mode="awake", dt=0.5, rng_seed=1), start=True)
+    coma.cerebral.co2_narcosis = 0.95
+    assert check_oral_airway(coma) is None
+
+    anoxic = engine_factory(config=SimulationConfig(mode="awake", dt=0.5, rng_seed=1), start=True)
+    anoxic.cerebral.cortical_injury = 0.90
+    assert check_oral_airway(anoxic) is None

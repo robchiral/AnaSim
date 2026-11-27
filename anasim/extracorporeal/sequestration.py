@@ -44,7 +44,7 @@ SEQUESTRATION_SPECS: dict[str, SequestrationSpec] = {
     # Morales Castro 2025: transient in-vivo clearance surge plateauing ~8 h.
     "propofol": SequestrationSpec(adsorption_cl_l_min=0.42, capacity_mass=180.0, coat_tau_s=12000.0),
     # Shekar 2012: fentanyl 3% recovery at 24 h ex vivo; Morales Castro 2025 in-vivo surge.
-    "fentanyl": SequestrationSpec(adsorption_cl_l_min=0.45, capacity_mass=350.0, coat_tau_s=14400.0),
+    "fentanyl": SequestrationSpec(adsorption_cl_l_min=0.48, capacity_mass=350.0, coat_tau_s=14400.0),
     # Shekar 2012; Lemaitre 2015: midazolam 54% at 30 min, 11-13% at 24 h ex vivo.
     "midazolam": SequestrationSpec(adsorption_cl_l_min=0.28, capacity_mass=18000.0, coat_tau_s=14400.0),
     # Lipophilic cardiac/anesthetic agents: calibrated extrapolations for PVC/PMP binding.

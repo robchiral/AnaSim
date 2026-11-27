@@ -24,6 +24,12 @@ def age_vasoconstriction_shift(age: float) -> float:
     return 0.55 * clamp01((age - 45.0) / 30.0)
 
 
+def age_shivering_shift(age: float) -> float:
+    """Calibrated elderly shivering threshold drop (°C; informed by Vassilieff 1995 spinal data,
+    where >=80 yr patients shivered 0.9 °C lower with cephalad spread contributing the remainder)."""
+    return 0.65 * clamp01((age - 60.0) / 25.0)
+
+
 def cold_vasoparesis(temp_c: float) -> float:
     """Smooth-muscle vasoconstriction attenuation during moderate-to-severe hypothermia."""
     return clamp(1.0 - 0.18 * max(0.0, 32.5 - temp_c), 0.2, 1.0)
@@ -68,6 +74,7 @@ class ThermalModel:
         self._base_ref_temp = max(patient.baseline_temp, 37.0)
         self.patient_age = patient.age
         self._age_vc_shift = age_vasoconstriction_shift(patient.age)
+        self._age_shiver_shift = age_shivering_shift(patient.age)
         self.redistributed_heat_j = 0.0  # Core heat moved to the periphery
         self.depth_index = 0.0
         self.shiver_level = 0.0
@@ -88,6 +95,45 @@ class ThermalModel:
         specific_heat_j_per_ml_c = 3.85 if is_blood else 4.186
         self._pending_fluid_heat_j += volume_ml * specific_heat_j_per_ml_c * (infusate_temp_c - core_temp_c)
 
+    def vasoconstriction_threshold(
+        self,
+        opioid_effect: float = 0.0,
+        neuraxial_vc_shift_c: float = 0.0,
+        *,
+        depth_index: float | None = None,
+    ) -> float:
+        """Central thermoregulatory vasoconstriction threshold (°C).
+
+        General anesthesia shifts the threshold steeply (Sessler 2000; Ozaki 1997;
+        Kurz 1995c), whereas neuraxial block produces a modest ~0.4-0.5 °C shift
+        (Kurz 1993) that preserves the constriction-to-shivering interval.
+        """
+        ga_depth = clamp01(self.depth_index if depth_index is None else depth_index)
+        return (
+            self._base_ref_temp
+            - 0.3
+            - (2.4 + self._age_vc_shift) * ga_depth
+            - SHIVER_REMI_DROP_MAX * clamp01(opioid_effect)
+            - max(0.0, neuraxial_vc_shift_c)
+        )
+
+    def shivering_threshold(
+        self,
+        opioid_effect: float = 0.0,
+        neuraxial_shiver_shift_c: float = 0.0,
+        *,
+        depth_index: float | None = None,
+    ) -> float:
+        """Central shivering threshold (°C; Kurz 1993, Ozaki 1994, Vassilieff 1995)."""
+        ga_depth = clamp01(self.depth_index if depth_index is None else depth_index)
+        return (
+            SHIVER_BASE_THRESHOLD
+            - SHIVER_DEPTH_DROP_MAX * ga_depth
+            - SHIVER_REMI_DROP_MAX * clamp01(opioid_effect)
+            - max(0.0, neuraxial_shiver_shift_c)
+            - max(self._age_shiver_shift, self._age_vc_shift * ga_depth)
+        )
+
     def target_shivering(
         self, temp_c: float, bis: float, opioid_effect: float, muscle_factor: float,
         unconscious: float = 0.0, *, perfusing: bool = True,
@@ -97,13 +143,7 @@ class ThermalModel:
         """Equilibrium shivering intensity (0-1) from cold, emergence, opioids, muscle strength, and perfusion."""
         if not perfusing or temp_c <= 31.0:
             return 0.0
-        depth_factor = clamp01(self.depth_index)
-        threshold = (
-            SHIVER_BASE_THRESHOLD
-            - SHIVER_DEPTH_DROP_MAX * depth_factor
-            - SHIVER_REMI_DROP_MAX * opioid_effect
-            - max(0.0, neuraxial_shiver_shift_c)
-        )
+        threshold = self.shivering_threshold(opioid_effect, neuraxial_shiver_shift_c)
         temp_deficit = max(0.0, threshold - temp_c)
         cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
         if temp_c < 33.0:
@@ -175,7 +215,10 @@ class ThermalModel:
                          opioid_effect: float = 0.0,
                          extracorporeal_heat_w: float = 0.0,
                          extracorporeal_active: bool = False,
-                         neuraxial_redistribution_depth: float = 0.0) -> float:
+                         neuraxial_redistribution_depth: float = 0.0,
+                         neuraxial_vc_shift_c: float = 0.0,
+                         neuraxial_sweat_shift_c: float = 0.0,
+                         circulation: float | None = None) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
         A forced-air warmer target of 0 °C is off. When extracorporeal support
@@ -184,26 +227,22 @@ class ThermalModel:
         post-bypass core afterdrop (Rajek 1998; Rajek 2000) emerge naturally.
         """
         tuning = self.tuning
-        depth_factor = clamp01(max(self.depth_index, neuraxial_redistribution_depth))
+        ga_depth = clamp01(self.depth_index)
+        redist_depth = clamp01(max(self.depth_index, neuraxial_redistribution_depth))
 
         aerobic_gate = clamp(oxygen_supply_fraction, 0.12, 1.0)
         production = (
             self.heat_production_basal * max(0.25, self.metabolic_factor) * aerobic_gate
             + self.extra_heat_w
         )
-        conductance = self.awake_conductance + (self._anesthetized_conductance - self.awake_conductance) * depth_factor
+        conductance = self.awake_conductance + (self._anesthetized_conductance - self.awake_conductance) * redist_depth
         # Phase-3 thermoregulatory vasoconstriction (Sessler 2000; opioid shift in
-        # Kurz 1995c; age shift in Ozaki 1997): below the vasoconstriction threshold
-        # (~34.3 °C at 1 MAC in young adults without opioids), cutaneous constriction
-        # limits further passive heat loss to establish a thermal plateau.
+        # Kurz 1995c; age shift in Ozaki 1997; neuraxial shift in Kurz 1993): below
+        # the vasoconstriction threshold, cutaneous constriction limits passive heat
+        # loss to establish a thermal plateau.
         vasoconst = 0.0
         if perfusing:
-            vasoconst_threshold = (
-                self._base_ref_temp
-                - 0.3
-                - (2.4 + self._age_vc_shift) * depth_factor
-                - SHIVER_REMI_DROP_MAX * clamp01(opioid_effect)
-            )
+            vasoconst_threshold = self.vasoconstriction_threshold(opioid_effect, neuraxial_vc_shift_c)
             if temp_c < vasoconst_threshold:
                 vasoconst = clamp01(vasoconst_threshold - temp_c) * cold_vasoparesis(temp_c)
                 conductance += (self._plateau_conductance - conductance) * vasoconst
@@ -214,16 +253,17 @@ class ThermalModel:
         heat_loss = conductance * exposed_fraction * (temp_c - tuning.ambient_temp_c)
 
         # Active sweating and cutaneous vasodilation limit fever above the sweating
-        # threshold (setpoint raised by sepsis; sweating threshold raised by anesthesia, Sessler 2000).
+        # threshold (setpoint raised by sepsis; threshold raised by GA, Sessler 2000,
+        # and slightly by neuraxial block, Ozaki 1994).
         sweating_w = 0.0
         if perfusing:
             febrile_setpoint = self._base_ref_temp + 1.8 * clamp01(sepsis_severity)
-            sweat_threshold = febrile_setpoint + 0.25 + 1.2 * depth_factor
+            sweat_threshold = febrile_setpoint + 0.25 + 1.2 * ga_depth + max(0.0, neuraxial_sweat_shift_c)
             if temp_c > sweat_threshold:
                 sweating_w = (
                     140.0
                     * self._bsa_scale
-                    * (1.0 - 0.45 * depth_factor)
+                    * (1.0 - 0.45 * ga_depth)
                     * (temp_c - sweat_threshold)
                 )
 
@@ -232,13 +272,13 @@ class ThermalModel:
         # Vasoconstriction on lightening traps it peripherally until normothermic awake recovery,
         # and zero-flow arrest halts convective redistribution.
         if perfusing:
-            deficit_gap = self.redistribution_target_j(depth_factor) - self.redistributed_heat_j
+            deficit_gap = self.redistribution_target_j(redist_depth) - self.redistributed_heat_j
             if deficit_gap > 0.0:
                 redistribution_w = deficit_gap / tuning.redistribution_tau_s
                 self.redistributed_heat_j += redistribution_w * dt
             else:
                 redistribution_w = 0.0
-                if depth_factor < 0.1 and temp_c >= self.baseline_temp - 0.5 and self.redistributed_heat_j > 0.0:
+                if redist_depth < 0.1 and temp_c >= self.baseline_temp - 0.5 and self.redistributed_heat_j > 0.0:
                     self.redistributed_heat_j *= math.exp(-dt / (2.0 * tuning.redistribution_tau_s))
                     if self.redistributed_heat_j < 1.0:
                         self.redistributed_heat_j = 0.0
@@ -255,15 +295,31 @@ class ThermalModel:
             if surface_cooling
             else 0.0
         )
-        if perfusing:
-            fluid_heat_j = self._pending_fluid_heat_j
-            self._pending_fluid_heat_j = 0.0
+        circ = (1.0 if perfusing else 0.0) if circulation is None else clamp01(circulation)
+        if circ > 0.02 and self._pending_fluid_heat_j != 0.0 and dt > 0.0:
+            # Continuous circulation-scaled thermal wash-in (tau ~15 s at normal CO,
+            # ~45-60 s during CPR informed by canine Emerman 1988) avoids single-step ROSC cliffs.
+            flush = -math.expm1(-dt * circ / 15.0)
+            fluid_heat_j = self._pending_fluid_heat_j * flush
+            self._pending_fluid_heat_j -= fluid_heat_j
+            if abs(self._pending_fluid_heat_j) < 1.0:
+                fluid_heat_j += self._pending_fluid_heat_j
+                self._pending_fluid_heat_j = 0.0
         else:
             fluid_heat_j = 0.0
 
         if extracorporeal_active and not self._extracorporeal_thermal_engaged:
-            # Initialize peripheral temperature slightly below core when anesthetized (~1 °C gradient).
-            self.peripheral_temp_c = float(temp_c - 0.8 * depth_factor)
+            # Seed peripheral temperature at the two-compartment steady-state gradient
+            # so normothermic extracorporeal engagement has zero equilibrium drift.
+            k_cp_init = (
+                (24.0 + 28.0 * redist_depth * (1.0 - 0.65 * vasoconst)) * self._bsa_scale
+                if perfusing
+                else 10.0 * self._bsa_scale
+            )
+            grad_eq = (
+                0.80 * conductance * exposed_fraction * max(0.0, temp_c - tuning.ambient_temp_c)
+            ) / max(1.0, k_cp_init)
+            self.peripheral_temp_c = float(clamp(temp_c - grad_eq, 15.0, temp_c))
             self._extracorporeal_thermal_engaged = True
 
         if not self._extracorporeal_thermal_engaged:
@@ -289,9 +345,17 @@ class ThermalModel:
                 vasoconst,
                 0.75 * periph_cold_vc if extracorporeal_active else 0.20 * periph_cold_vc,
             )
-            k_cp = (24.0 + 28.0 * depth_factor * (1.0 - 0.65 * eff_vc)) * self._bsa_scale
+            k_cp = (24.0 + 28.0 * redist_depth * (1.0 - 0.65 * eff_vc)) * self._bsa_scale
         else:
             k_cp = 10.0 * self._bsa_scale
+        # Impedance-match peripheral environmental conductance so steady-state series heat loss
+        # matches 1-compartment normothermic equilibrium without sweating drift.
+        periph_cond_eff = 0.80 * conductance * exposed_fraction
+        periph_cond = (
+            (periph_cond_eff * k_cp) / (k_cp - periph_cond_eff)
+            if k_cp > periph_cond_eff + 0.5
+            else periph_cond_eff
+        )
         min_temp = 18.0
         t_core = float(temp_c)
         t_periph = float(self.peripheral_temp_c)
@@ -301,7 +365,7 @@ class ThermalModel:
         for _ in range(n_sub):
             q_cp = k_cp * (t_core - t_periph)
             core_env_loss = 0.20 * conductance * exposed_fraction * (t_core - tuning.ambient_temp_c)
-            periph_env_loss = 0.80 * conductance * exposed_fraction * (t_periph - tuning.ambient_temp_c)
+            periph_env_loss = periph_cond * (t_periph - tuning.ambient_temp_c)
             # Forced-air warming heats peripheral tissues directly and strongly reduces
             # post-CPB afterdrop (Rajek 2000: 0.5 °C vs 1.2 °C passive insulation).
             periph_warming = (

@@ -799,13 +799,20 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.base_excess = float(resp_state.base_excess)
     state.lactate = float(engine.lactate.concentration)
     fluids = engine.hemo.fluids
-    state.sodium = fluids.concentration("sodium")
-    state.potassium = fluids.concentration("potassium")
-    state.chloride = fluids.concentration("chloride")
-    state.ionized_calcium = fluids.ionized_calcium(resp_state.ph_37)
+    if fluids._circulation <= 0.02:
+        state.sodium = fluids.arterial_sodium
+        state.potassium = fluids.arterial_potassium
+        state.chloride = fluids.arterial_chloride
+        state.ionized_calcium = fluids.arterial_ionized_calcium(resp_state.ph_37)
+        state.glucose = float(engine.glucose.arterial_glucose_mg_dl)
+    else:
+        state.sodium = fluids.concentration("sodium")
+        state.potassium = fluids.concentration("potassium")
+        state.chloride = fluids.concentration("chloride")
+        state.ionized_calcium = fluids.ionized_calcium(resp_state.ph_37)
+        state.glucose = float(engine.glucose.state.glucose_mg_dl)
     state.albumin_g_l = fluids.plasma_albumin_g_l
     state.phosphate = fluids.concentration("phosphate")
-    state.glucose = float(engine.glucose.state.glucose_mg_dl)
     state.insulin_mu_l = float(engine.glucose.state.insulin_mu_l)
     state.alveolar_co2 = float(resp_state.p_alveolar_co2)
     state.pao2 = float(resp_state.p_arterial_o2)
@@ -1175,7 +1182,7 @@ def project_runtime_physiology(engine: SimulationEngine, snapshot: PhysiologySte
 
 def _pit_paw_baseline(engine: SimulationEngine) -> float:
     hemo_cfg = engine.hemo.config
-    # Alveolar-to-pleural pressure transmission follows Ecw / (EL + Ecw) (Jardin 1985):
+    # Alveolar-to-pleural pressure transmission follows Ecw / (EL + Ecw) (Jardin 1985a):
     # stiff lungs transmit less alveolar pressure to the thorax, stiff chest walls transmit more.
     aeration = engine.aeration
     cw_stiff = max(0.5, aeration.chest_wall_stiffness)
@@ -1290,8 +1297,11 @@ def step_coronary_from_state(
     state = engine.state
     hemo = engine.hemo
     ecmo = engine.extracorporeal
-    coronary_sbp = state.sbp
-    coronary_dbp = state.dbp
+    # Use deterministic reference arterial pressures rather than monitor-rendered
+    # waveform landmarks so physiology is invariant to update_monitors and monitor RNG.
+    ref_sbp, ref_dbp = reference_arterial_pressures(engine, hemo_state)
+    coronary_sbp = ref_sbp
+    coronary_dbp = ref_dbp
     nonpulsatile_perfusion = False
     aortic_cross_clamp = False
     cardioplegia_arrest = False
@@ -1316,15 +1326,23 @@ def step_coronary_from_state(
         coronary_dbp = max(coronary_dbp, cpr_dbp) if hemo_state.intrinsic_co > 0.0 else cpr_dbp
     elif not nonpulsatile_perfusion and (hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0):
         coronary_sbp = coronary_dbp = hemo_state.venous_pressure
-    intrinsic_sbp = (
-        0.0
-        if hemo_state.intrinsic_co <= 0.05
-        else state.sbp * (clamp01(hemo_state.intrinsic_map / max(1.0, state.map)) if cpr_driving else 1.0)
-    )
+    if hemo_state.intrinsic_co <= 0.05 or hemo_state.rhythm_type in PULSELESS_RHYTHMS:
+        intrinsic_sbp = 0.0
+    elif cpr_driving:
+        intrinsic_sbp, _ = engine.arterial_waveform.reference_pressures(
+            hemo_state.intrinsic_map,
+            hemo_state.sv,
+            hemo_state.hr,
+            pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+            static_pressure=hemo_state.venous_pressure,
+        )
+    else:
+        intrinsic_sbp = ref_sbp
+    art_hb = float(hemo.hb_conc if hemo.fluids._circulation >= 0.99 else engine.resp._arterial_hb)
     coronary = hemo.coronary
     before = (coronary.ischemia, coronary.shock_stunning, coronary.injury, coronary.energy_failure)
     coronary.step(
-        dt, state.hr, coronary_sbp, coronary_dbp, max(state.lap, hemo_state.venous_pressure), hemo.hb_conc,
+        dt, hemo_state.hr, coronary_sbp, coronary_dbp, max(hemo_state.lap, hemo_state.venous_pressure), art_hb,
         coronary_sao2, hemo.myocardial_hypoxia,
         fibrillating=hemo_state.rhythm_type == RhythmType.VFIB, compressions=cpr_driving,
         venous_pressure=hemo_state.venous_pressure,
@@ -1388,7 +1406,11 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     perf_init, _ = monitor_core._peripheral_perfusion(hemo_state, base_co, base_svr, temp_factor)
     pp_init = state.sbp - state.dbp
     pp_gate = clamp01((pp_init - MIN_PULSE_PRESSURE_MMHG) / 4.0) if math.isfinite(pp_init) else 0.0
-    eff_compressions = hemo_state.compressions and hemo_state.pump_flow <= 0.0
+    ecmo = engine.extracorporeal
+    pump_override = hemo_state.pump_flow > 0.0 or (
+        ecmo.is_arterial_support and (ecmo.state.aortic_cross_clamp or ecmo.state.cardioplegia_arrest)
+    )
+    eff_compressions = hemo_state.compressions and not pump_override
     spo2_perf = (
         0.0
         if eff_compressions or hemo_state.intrinsic_co < ARREST_CO_L_MIN or pp_gate <= 0.0
@@ -1398,8 +1420,10 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     engine.spo2_mon.signal_valid = spo2_usable
     state.spo2_signal_valid = spo2_usable
     if state.spo2_signal_valid:
-        state.display_spo2 = float(state.spo2)
-        engine.spo2_mon.display_saturation = float(state.spo2)
+        spo2_src = ecmo.state.upper_body_sao2 if ecmo.is_arterial_support else state.sao2
+        state.spo2 = float(spo2_src)
+        state.display_spo2 = float(spo2_src)
+        engine.spo2_mon.display_saturation = float(spo2_src)
     else:
         engine.spo2_mon.display_saturation = None
         state.spo2 = state.display_spo2 = 0.0

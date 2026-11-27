@@ -53,17 +53,17 @@ class CrystalloidKinetics:
             if mcfp_mmHg > 8.0 and eff_map < 60.0
             else 0.0
         )
-        # Dextrose solutions shift free water into ICF as glucose clears (calibrated from
-        # 2.5% and 5% glucose vs acetated Ringer's in awake volunteers, Sjöstrand 2001:
-        # faster plasma dilution runoff and ~1.8x urine for D5W; extended to D10W).
+        # Dextrose free-water ICF shift is handled thermodynamically by FluidBalance
+        # osmotic equilibration as glucose clears (Sjöstrand 2001; Sjöstrand and Hahn 2004); hypotonic
+        # free water adds ADH-suppressed water diuresis above balanced crystalloid.
         dex = self.dextrose_fraction
-        k12 = (0.0956 * (eff_map / 81.3)**2.34 + k12_venous) * (1.0 + 0.45 * dex)
+        k12 = 0.0956 * (eff_map / 81.3)**2.34 + k12_venous
         k21 = 0.0506 * flow_scale
-        kb = 0.0052 * flow_scale * (1.0 + 3.0 * dex)
+        kb = 0.0052 * flow_scale
         raw_k10 = (
             0.0065 * (eff_map / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale * flow_scale
             * (1.0 - (1.0 - SALINE_ELIMINATION) * self.saline_fraction)
-            * (1.0 + 0.75 * dex)
+            * (1.0 + 0.55 * dex)
         ) if urinary_elimination else 0.0
         k10 = min(raw_k10, _MAX_CRYSTALLOID_K10_PER_MIN)
         central = min(self.central_ml, max(0.0, available_ml))

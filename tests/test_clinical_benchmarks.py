@@ -1438,3 +1438,189 @@ def test_kanaya_2002_propofol_enhances_ephedrine_over_sevoflurane(engine_factory
 
     assert rises["propofol"] > rises["sevo"] + 3.0
     assert rises["propofol"] > rises["awake"] + 3.0
+
+
+def test_porte_1966_polonsky_1988_catalano_1998_stress_glucose_and_insulin_clearance(engine_factory):
+    """Porte 1966 (n=5 human epi 6 mcg/min): epinephrine blunts stimulated insulin while raising
+    glucose (with calibrated basal suppression at high dose/shock). Polonsky 1988 (n=14 lean vs
+    15 obese) and Catalano 1998 (n=16 pregnancy): exogenous insulin clearance per BSA stays roughly
+    steady in obesity and rises ~22-24% in pregnancy."""
+    from anasim.core.runtime import step_simulation
+
+    # Porte 1966 + calibrated high-dose basal suppression: 6 mcg/min epinephrine raises glucose without insulin rise.
+    epi = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True, age=35.0, weight=70.0, height=175.0, sex="male",
+    )
+    glu0, ins0 = epi.state.glucose, epi.state.insulin_mu_l
+    epi.set_drug_rate("epi", 6.0)
+    for _ in range(1800):
+        step_simulation(epi, 1.0, update_monitors=False)
+        epi.state.time += 1.0
+    assert epi.state.glucose > glu0 + 25.0
+    assert epi.state.insulin_mu_l < ins0 * 0.80
+
+    # Hemorrhagic shock suppresses insulin and produces stress hyperglycemia without hypoglycemia.
+    shock = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True, age=35.0, weight=70.0, height=175.0, sex="male",
+    )
+    shock.hemo.add_volume(-1500.0)
+    for _ in range(1800):
+        step_simulation(shock, 1.0, update_monitors=False)
+        shock.state.time += 1.0
+    assert shock.state.glucose > glu0 + 3.0
+    assert shock.state.insulin_mu_l < ins0
+
+    # Polonsky 1988 & Catalano 1998: exogenous insulin clearance scaling in obesity and term pregnancy.
+    eng_np = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+                            age=30.0, weight=65.0, height=165.0, sex="female")
+    eng_pg = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+                            age=30.0, weight=65.0, height=165.0, sex="female", gestational_age_weeks=36.0)
+    assert eng_np.patient.pregnancy.insulin_clearance == 1.0
+    assert 1.20 <= eng_pg.patient.pregnancy.insulin_clearance <= 1.28
+    assert eng_pg.pk["insulin"].cl1 > eng_np.pk["insulin"].cl1 * 1.18
+    obese = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+                           age=40.0, weight=135.0, height=175.0, sex="male")
+    lean = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+                          age=40.0, weight=70.0, height=175.0, sex="male")
+    assert obese.pk["insulin"].cl1 / obese.patient.bsa == pytest.approx(
+        lean.pk["insulin"].cl1 / lean.patient.bsa, rel=0.25,
+    )
+
+
+def test_kurz_1993_vassilieff_1995_mccullough_1999_thermoregulation_and_dhca(engine_factory):
+    """Kurz 1993 (n=7 T9-T10 spinal), Ozaki 1994, and Vassilieff 1995 (n=15 <80 yr vs n=10 >=80 yr):
+    spinal anesthesia shifts VC/shivering/sweating thresholds preserving the VC-shivering interval,
+    and age >=80 lowers the shivering threshold. McCullough 1999 (n=37 DHCA): human cerebral Q10=2.3
+    down to 15 °C progressively extends cortical survival during circulatory arrest."""
+    from anasim.core.enums import RhythmType
+    from anasim.core.runtime import step_simulation
+
+    # Kurz 1993, Ozaki 1994, & Vassilieff 1995: neuraxial thresholds and elderly shivering shift.
+    young = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True, age=35.0)
+    elderly = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True, age=84.0)
+    for eng in (young, elderly):
+        eng.give_spinal("bupivacaine", 12.5, baricity="hyperbaric")
+        for _ in range(900):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+    assert 0.30 <= young.neuraxial.vasoconst_threshold_shift_c <= 0.60
+    assert 0.35 <= young.neuraxial.shiver_threshold_shift_c <= 0.70
+    assert 0.15 <= young.neuraxial.sweat_threshold_shift_c <= 0.40
+    vc_y = young.thermal.vasoconstriction_threshold(0.0, young.neuraxial.vasoconst_threshold_shift_c)
+    sh_y = young.thermal.shivering_threshold(0.0, young.neuraxial.shiver_threshold_shift_c)
+    sh_e = elderly.thermal.shivering_threshold(0.0, elderly.neuraxial.shiver_threshold_shift_c)
+    assert vc_y - sh_y >= 0.50
+    assert sh_y - sh_e >= 0.55
+
+    # McCullough 1999: cerebral Q10 = 2.3 down to 15 °C extends safe arrest at 20 °C and 15 °C vs 25 °C.
+    from anasim.physiology.cerebral import CerebralModel
+
+    anoxic_exposures = {}
+    injuries = {}
+    for temp in (30.0, 25.0, 20.0, 15.0):
+        cer = CerebralModel(baseline_hb=12.0, baseline_paco2=40.0, baseline_map=80.0)
+        for _ in range(1500):  # 25 min DHCA (inside McCullough 1999 31-min safe window at 15 °C)
+            cer.step(1.0, 8.0, 12.0, 98.0, 40.0, 7.4, temp_c=temp, flow_ceiling=0.0)
+        anoxic_exposures[temp] = cer.anoxic_s
+        injuries[temp] = cer.cortical_injury
+    assert anoxic_exposures[15.0] < anoxic_exposures[20.0] < anoxic_exposures[25.0] < anoxic_exposures[30.0]
+    assert injuries[15.0] == 0.0 and injuries[30.0] > 0.90
+    # Engine-level CPB circulatory arrest at 18 °C stays deeply hypothermic and protects cortex over 15 min.
+    dhca = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    dhca.start_cpb(blood_flow_l_min=4.5, sweep_gas_l_min=3.0, prime_volume_ml=0.0, water_target_c=18.0)
+    dhca.step(1.0)
+    dhca.state.temp_c = 18.0
+    dhca.thermal.peripheral_temp_c = 18.0
+    dhca.set_ecmo_flow(0.0)
+    dhca.set_rhythm(RhythmType.ASYSTOLE)
+    for _ in range(900):
+        step_simulation(dhca, 1.0, update_monitors=False)
+        dhca.state.time += 1.0
+    assert dhca.state.temp_c <= 18.5
+    assert dhca.cerebral.cortical_injury < 0.05
+
+
+def test_jardin_1985b_ghignone_1984_staals_2010_favie_2019_rv_pk_and_dextrose(engine_factory):
+    """Jardin 1985b (n=9 human massive PE): dobutamine increases CO/SV and lowers PVR and RAP;
+    Ghignone 1984 (canine acute PVR): NE supports MAP and CO. Staals 2010 (n=13 ESRD vs 13 control):
+    ESRD sharply slows sugammadex clearance while preserving rapid sustained reversal. Favié 2019
+    (N=244 neonatal HIE): hypothermia lowers morphine/M6G clearance. Sjöstrand 2001 and Sjöstrand
+    and Hahn 2004: D5W shifts free water into ICF."""
+    from anasim.core.runtime import step_simulation
+
+    # Jardin 1985b & Ghignone 1984 (canine): massive PE dobutamine & NE support.
+    pe_ctrl = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    pe_ctrl.start_pulmonary_embolism(0.70)
+    for _ in range(120):
+        step_simulation(pe_ctrl, 1.0, update_monitors=False)
+        pe_ctrl.state.time += 1.0
+    pe_dobu = copy.deepcopy(pe_ctrl)
+    pe_ne = copy.deepcopy(pe_ctrl)
+    pe_dobu.set_drug_rate("dobu", 8.0)
+    pe_ne.set_drug_rate("nore", 8.0)
+    for model in (pe_ctrl, pe_dobu, pe_ne):
+        for _ in range(240):
+            step_simulation(model, 1.0, update_monitors=False)
+            model.state.time += 1.0
+    assert pe_dobu.state.co > pe_ctrl.state.co * 1.15
+    assert pe_dobu.state.sv > pe_ctrl.state.sv * 1.10
+    assert pe_dobu.hemo._last_pvr < pe_ctrl.hemo._last_pvr * 0.90
+    assert pe_dobu.hemo._last_rap_tm < pe_ctrl.hemo._last_rap_tm
+    assert pe_ne.state.map > pe_ctrl.state.map + 10.0
+    assert pe_ne.state.co > pe_ctrl.state.co * 1.10
+
+    # Staals 2010: ESRD sharply slows sugammadex clearance while maintaining sustained reversal.
+    esrd_eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1),
+        start=True, age=60.0, weight=70.0, height=170.0, sex="male", renal_function=0.05,
+    )
+    norm_p = Patient(age=60.0, weight=70.0, height=170.0, sex="male", renal_function=1.0)
+    tof_norm = TOFModel(norm_p)
+    assert esrd_eng.tof_pd.sugammadex.cl1 < tof_norm.sugammadex.cl1 * 0.15
+    esrd_eng.give_drug_bolus("roc", 42.0)
+    for _ in range(180):
+        step_simulation(esrd_eng, 1.0, update_monitors=False)
+        esrd_eng.state.time += 1.0
+    esrd_eng.give_drug_bolus("sugammadex", 280.0)
+    for _ in range(300):
+        step_simulation(esrd_eng, 1.0, update_monitors=False)
+        esrd_eng.state.time += 1.0
+    assert esrd_eng.state.tof >= 90.0
+    for _ in range(1800):
+        step_simulation(esrd_eng, 2.0, update_monitors=False)
+        esrd_eng.state.time += 2.0
+    assert esrd_eng.state.tof >= 90.0
+
+    # Favié 2019 (neonatal HIE Q10): hypothermia slows morphine and M6G clearance.
+    from anasim.patient.pk_models import MorphinePK
+
+    m_warm = MorphinePK(norm_p)
+    m_cold = MorphinePK(norm_p)
+    m_warm.update_hemodynamics(1.0, 1.0, 1.0, temp_c=37.0)
+    m_cold.update_hemodynamics(1.0, 1.0, 1.0, temp_c=33.5)
+    m_warm.state.c1 += 10000.0 / m_warm.v1
+    m_cold.state.c1 += 10000.0 / m_cold.v1
+    for _ in range(3600):
+        m_warm.step(1.0, 0.0)
+        m_cold.step(1.0, 0.0)
+    assert m_cold.state.c1 > m_warm.state.c1 * 1.05
+    assert m_cold._m6g_step_factors(1.0)[1] < m_warm._m6g_step_factors(1.0)[1] * 0.86
+
+    # Sjöstrand 2001; Sjöstrand and Hahn 2004: D5W produces lower sustained intravascular expansion and higher ICF shift than LR.
+    lr = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0), start=True,
+    )
+    d5w = copy.deepcopy(lr)
+    icf0 = d5w.hemo.fluids.icf_l
+    bv0 = lr.hemo.blood_volume
+    lr.give_fluid(1000.0)
+    d5w.give_d5w(1000.0)
+    for model in (lr, d5w):
+        for _ in range(3600):
+            step_simulation(model, 1.0, update_monitors=False)
+            model.state.time += 1.0
+    assert d5w.hemo.fluids.icf_l > icf0 + 0.35
+    assert d5w.hemo.blood_volume < lr.hemo.blood_volume
+    assert d5w.hemo.blood_volume >= bv0 - 250.0

@@ -991,3 +991,149 @@ test("pneumoperitoneum controls bind IAP selector and toggle, and sync stimulati
   await elements.get("c-pneumo-iap").onchange();
   assert.deepEqual(sent[1], ["pneumoperitoneum", { active: true, iap_mmhg: 12 }]);
 });
+
+test("ecmoEditor submits extracorporeal_settings via SettingsEditor and syncNeuraxial preserves draft rate", async () => {
+  class MockEl extends EventTarget {
+    constructor(tag = "input", value = "") {
+      super();
+      this.tag = tag;
+      this.type = tag === "input" ? "number" : tag;
+      this.value = value;
+      this.disabled = false;
+      this.hidden = false;
+      this.open = false;
+      this.checked = false;
+      this.textContent = "";
+      this.className = "";
+      this.attrs = {};
+      this.dataset = {};
+      this.children = [];
+      this.classList = { toggle() {} };
+    }
+    setAttribute(k, v) { this.attrs[k] = v; }
+    getAttribute(k) { return this.attrs[k] ?? null; }
+    replaceChildren(...kids) { this.children = kids; }
+    append(...kids) { this.children.push(...kids); }
+    closest() { return null; }
+    querySelectorAll() { return []; }
+    reportValidity() { return true; }
+    edit(val) {
+      this.value = val;
+      this.dispatchEvent(new Event("input"));
+    }
+  }
+  const makeEl = (tag = "input", value = "") => new MockEl(tag, value);
+  const elements = new Map([
+    ["ecmo-module", makeEl("details")],
+    ["ecmo-summary", makeEl("output")],
+    ["ecmo-start-panel", makeEl("div")],
+    ["ecmo-active-panel", makeEl("div")],
+    ["ecmo-readout", makeEl("p")],
+    ["c-ecmo-settings", makeEl("div")],
+    ["c-ecmo-flow", makeEl("input", "4.0")],
+    ["c-ecmo-sweep", makeEl("input", "3.0")],
+    ["c-ecmo-fio2", makeEl("input", "80")],
+    ["c-ecmo-water", makeEl("input", "37.0")],
+    ["c-ecmo-lv-vent", makeEl("input", "0.5")],
+    ["c-ecmo-sevo", makeEl("input", "1.5")],
+    ["c-ecmo-venous-clamp", makeEl("input", "100")],
+    ["c-ecmo-bg-strategy", makeEl("select", "alpha_stat")],
+    ["c-ecmo-hc", makeEl("button")],
+    ["c-cpb-cross-clamp", makeEl("button")],
+    ["c-cpb-cardioplegia", makeEl("button")],
+    ["c-cpb-alarm-mode", makeEl("button")],
+    ["c-ecmo-stop", makeEl("button")],
+    ["ecmo-lv-vent-row", makeEl("div")],
+    ["ecmo-sevo-row", makeEl("div")],
+    ["ecmo-venous-row", makeEl("div")],
+    ["ecmo-bg-row", makeEl("div")],
+    ["ecmo-cpb-controls", makeEl("div")],
+    ["c-epidural-drug", makeEl("select", "bupivacaine")],
+    ["c-epidural-conc", makeEl("input", "0.25")],
+    ["c-epidural-vol", makeEl("input", "10")],
+    ["c-epidural-epi", makeEl("input")],
+    ["c-epidural-bolus", makeEl("button")],
+    ["c-epidural-rate", makeEl("input", "8")],
+    ["c-epidural-rate-label", makeEl("label")],
+    ["c-epidural-rate-apply", makeEl("button")],
+    ["c-epidural-stop", makeEl("button")],
+    ["c-spinal-drug", makeEl("select", "bupivacaine")],
+    ["c-spinal-dose", makeEl("input", "12.5")],
+    ["c-spinal-baricity", makeEl("select", "hyperbaric")],
+    ["c-spinal-give", makeEl("button")],
+    ["c-neuraxial-check", makeEl("button")],
+    ["c-neuraxial-readout", makeEl("p")],
+    ["neuraxial-summary", makeEl("output")],
+    ["neuraxial-module", makeEl("details")],
+  ]);
+  globalThis.document = {
+    activeElement: null,
+    getElementById: id => elements.get(id) ?? null,
+    createElement: () => ({ children: [{}, {}], remove() {} }),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.destroyed = false;
+  controls.ended = false;
+  controls.feedbackTimers = new Map();
+  controls.settingEditors = [];
+  controls.send = async (name, args) => { sent.push([name, args]); return true; };
+  controls.performAction = async (_btn, name, args) => { sent.push([name, args]); return {}; };
+  controls.bindExtracorporeal();
+  const cpbState = {
+    active: true, mode: "cpb", flow: 4.0, target_flow: 4.0, sweep: 3.0, fio2: 80,
+    water_target_c: 37.0, heater_cooler_on: true, lv_vent: 0.0, sevo: 0.0,
+    venous_clamp: 100, blood_gas_strategy: "alpha_stat", bypass_alarm_mode: false,
+  };
+  controls.state = { extracorporeal: cpbState };
+  controls.syncExtracorporeal(cpbState);
+  elements.get("c-ecmo-flow").edit("4.5");
+  elements.get("c-ecmo-sweep").edit("3.5");
+  elements.get("c-ecmo-fio2").edit("90");
+  elements.get("c-ecmo-water").edit("34.0");
+  elements.get("c-ecmo-sevo").edit("1.5");
+  elements.get("c-ecmo-venous-clamp").edit("85");
+  elements.get("c-ecmo-bg-strategy").edit("ph_stat");
+  await controls.ecmoEditor.submit();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][0], "extracorporeal_settings");
+  assert.equal(sent[0][1].blood_flow, 4.5);
+  assert.equal(sent[0][1].sweep_gas, 3.5);
+  assert.equal(sent[0][1].fio2_percent, 90);
+  assert.equal(sent[0][1].water_target_c, 34.0);
+  assert.equal(sent[0][1].sweep_sevo, 1.5);
+  assert.equal(sent[0][1].venous_clamp, 85);
+  assert.equal(sent[0][1].blood_gas_strategy, "ph_stat");
+
+  // VA ECMO lv_vent also submits through SettingsEditor.submit().
+  const vaState = { ...cpbState, mode: "va_ecmo", lv_vent: 0.0 };
+  controls.state = { extracorporeal: vaState };
+  controls.syncExtracorporeal(vaState);
+  elements.get("c-ecmo-lv-vent").edit("0.8");
+  await controls.ecmoEditor.submit();
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1][1].lv_vent, 0.8);
+  controls.ecmoEditor.destroy();
+
+  // syncNeuraxial preserves typed draft rate before placement and clears it immediately when neuraxial stops.
+  controls.bindNeuraxial();
+  elements.get("c-epidural-rate").value = "12";
+  elements.get("c-epidural-rate").oninput();
+  controls.syncNeuraxial({
+    active: false, epidural_catheter: false, epidural_rate: 0.0,
+    epidural_drug: "bupivacaine", epidural_conc: 0.125, mode: "none",
+  });
+  assert.equal(elements.get("c-epidural-rate").value, "12");
+  controls.syncNeuraxial({
+    active: true, epidural_catheter: true, epidural_rate: 8.0,
+    epidural_drug: "bupivacaine", epidural_conc: 0.125, mode: "epidural",
+  });
+  assert.equal(elements.get("c-epidural-rate").value, "12");
+  controls.syncNeuraxial({
+    active: false, epidural_catheter: false, epidural_rate: 0.0,
+    epidural_drug: "bupivacaine", epidural_conc: 0.125, mode: "none",
+  });
+  assert.equal(elements.get("c-epidural-rate").value, "0");
+});

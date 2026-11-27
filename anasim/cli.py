@@ -61,6 +61,8 @@ def run_headless(args):
             for i in range(steps):
                 engine.step(sim_config.dt)
                 if engine.irreversible_arrest:
+                    if engine.recorder and engine.recorder.is_recording:
+                        engine.recorder.log(engine.state, force=True)
                     break
                 if i % 100 == 0:
                     state = engine.state

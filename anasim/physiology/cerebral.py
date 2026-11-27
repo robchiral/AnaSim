@@ -13,7 +13,6 @@ alongside permanent coma after 5 equivalent anoxic minutes.
 
 import math
 
-from anasim.core.constants import TEMP_METABOLIC_COEFFICIENT
 from anasim.core.utils import clamp, clamp01
 from anasim.physiology.blood_gas_math import temperature_pco2_scale
 
@@ -90,15 +89,15 @@ class CerebralModel:
         pressure = clamp01((cpp - self._ccp_shift) / self._cpp_span)
         cpr_cap = clamp01(flow_ceiling) if flow_ceiling is not None else None
         oxygen = max(0.0, hb * saturation) * self._inv_ref_o2
-        # CMRO2 scales with temperature Q10 (~7%/°C), anesthetic suppression, and
-        # cerebral hypermetabolic stress (seizures). Hypothermia slows both acute
-        # oxygen store depletion and ischemic injury; normothermic anesthesia
-        # preserves the ~11 s arrest EEG flattening (de Vries 1998) and does not
-        # shift the cellular ischemic threshold (barbiturate focal-ischemia data in Astrup 1981).
-        temp_q10 = TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 22.0, 42.0)) if temp_c != 37.0 else 1.0
-        ischemic_rate = max(0.20, temp_q10 * (1.0 + 0.80 * clamp01(metabolic_stress)))
+        # CMRO2 scales with temperature Q10 = 2.3 down to deep hypothermic circulatory arrest
+        # at 15 °C (McCullough 1999: human cerebral Q10 2.3, 95% CI 2.08-2.53; ~16% CMRO2
+        # and ~31 min safe arrest at 15 °C), plus anesthetic suppression and seizure stress.
+        # Normothermic anesthesia preserves ~11 s arrest EEG flattening (de Vries 1998) and
+        # does not shift the cellular ischemic threshold (barbiturate data in Astrup 1981).
+        temp_q10 = 2.3 ** ((clamp(temp_c, 15.0, 42.0) - 37.0) / 10.0) if temp_c != 37.0 else 1.0
+        ischemic_rate = max(0.15, temp_q10 * (1.0 + 0.80 * clamp01(metabolic_stress)))
         cmro2 = max(
-            0.20,
+            0.15,
             ischemic_rate * (1.0 - 0.35 * clamp01(anesthetic_depth)),
         )
         # Kaisti 2003: propofol preserves CBF-CMRO2 coupling (constant OEF),
@@ -138,7 +137,7 @@ class CerebralModel:
 
         supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
         if supply_ratio != self.tissue_oxygen:
-            o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)
+            o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.16, temp_q10)
             self.tissue_oxygen += (supply_ratio - self.tissue_oxygen) * -math.expm1(-dt / o2_tau)
         # During passive CPR, hypothermia/anesthesia reduce CMRO2 and protect against
         # anoxic injury without restoring cortical wakefulness or spontaneous tidal breathing.

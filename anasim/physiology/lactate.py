@@ -200,11 +200,13 @@ class LactateModel:
         cleared_infused = infused_before + infused - self.infused_mmol
         self.cleared_infused_mmol += cleared_infused
         self.last_cleared_infused_mmol = cleared_infused
-        rest_decay, rest_retained = self._midpoint_factors(
-            self._resting_pool_mmol, basal_now, self._normoxic_capacity * temp_q10, self.km_mmol, minutes
-        )
+        rest_minutes = minutes * clamp01(capacity / max(1e-12, self._normoxic_capacity * temp_q10))
         resting_before = self._resting_pool_mmol
-        self._resting_pool_mmol = resting_before * rest_decay + basal_now * rest_retained
+        if rest_minutes > 0.0:
+            rest_decay, rest_retained = self._midpoint_factors(
+                resting_before, basal_now, self._normoxic_capacity * temp_q10, self.km_mmol, rest_minutes
+            )
+            self._resting_pool_mmol = resting_before * rest_decay + basal_now * rest_retained
         excess_before = max(0.0, before - resting_before)
         excess_after = max(0.0, self.endogenous_mmol - self._resting_pool_mmol)
         removed = (excess_after - excess_before) - cleared_infused

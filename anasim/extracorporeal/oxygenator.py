@@ -123,6 +123,7 @@ class MembraneOxygenator:
         temp_p50_now: float,
         pco2_scale: float,
         o2_sol: float,
+        pre_pco2_37: float = 0.0,
     ) -> tuple[float, float, float, float, float, float]:
         """Advance blood through one crossflow stage; return (co2, o2, pco2_37, ph_37, po2, sat)."""
         if qb_eff <= 1e-9 or qs_stage <= 1e-9:
@@ -163,11 +164,17 @@ class MembraneOxygenator:
             # 1) Solve CO2 transfer for exiting PCO2_37 at current O2 saturation.
             # f(P37) = qb_eff * (co2_in - C(P37)) * CO2_L_PER_MMOL - k_co2 * (P37 * pco2_scale - pg_co2_in) = 0
             # Note: C(P37) increases monotonically with P37, so f(P37) decreases monotonically.
-            low_p = 1.0
-            high_p = max(150.0, pco2_guess * 2.0, (pg_co2_in / max(0.2, pco2_scale)) + 20.0)
+            low_p = 0.05
+            high_p = max(
+                150.0,
+                pre_pco2_37 * 1.15 + 20.0,
+                pco2_guess * 2.0,
+                (pg_co2_in / max(0.2, pco2_scale)) + 20.0,
+            )
+            bracketed_hi = False
             p_curr = clamp(pco2_37, low_p, high_p)
             ph_curr = ph_37
-            for _ in range(18):
+            for _ in range(24):
                 blood = chemistry.solve(p_curr, sat_out, base_in, ph_curr)
                 ph_curr = blood.ph
                 co2_c = blood.total_co2
@@ -182,9 +189,14 @@ class MembraneOxygenator:
                     low_p = p_curr
                 else:
                     high_p = p_curr
+                    bracketed_hi = True
                 dres_dp = -(qb_eff * dc_dp * _CO2_L_PER_MMOL + k_co2 * pco2_scale)
                 cand = p_curr - res / dres_dp
-                p_curr = cand if low_p < cand < high_p else 0.5 * (low_p + high_p)
+                if res > 0.0 and not bracketed_hi and cand >= high_p and high_p < 4000.0:
+                    high_p = min(4000.0, max(high_p * 2.0, cand * 1.25))
+                    p_curr = min(cand, high_p)
+                else:
+                    p_curr = cand if low_p < cand < high_p else 0.5 * (low_p + high_p)
             pco2_37 = p_curr
             ph_37 = ph_curr
             blood_co2 = chemistry.solve(pco2_37, sat_out, base_in, ph_37)
@@ -301,6 +313,7 @@ class MembraneOxygenator:
         po2_g = self._last_out_po2
         area_stage = area / self.STAGES
         qs_stage = qs / self.STAGES
+        stage_in_pco2 = pre_pco2_37
         for _ in range(self.STAGES):
             co2_s, o2_s, pco2_g, ph_g, po2_g, _ = self._solve_stage(
                 qb_eff,
@@ -320,7 +333,9 @@ class MembraneOxygenator:
                 temp_p50_now,
                 pco2_scale,
                 o2_sol,
+                stage_in_pco2,
             )
+            stage_in_pco2 = pco2_g
 
         # Recombine non-shunted and shunted blood streams by exact content conservation.
         co2_out = (1.0 - shunt) * co2_s + shunt * co2_in_mmol_l

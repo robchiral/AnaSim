@@ -135,9 +135,14 @@ def check_sga_placement(engine: SimulationEngine) -> ActionFeedback | None:
 
 def check_oral_airway(engine: SimulationEngine) -> ActionFeedback | None:
     """Block oropharyngeal airway placement in an awake reactive patient."""
-    unconscious, _ = _responsiveness(engine)
+    drug_unconscious, _ = _drug_responsiveness(engine)
     strength = central_muscle_strength(engine)
-    if not _in_arrest(engine) and unconscious < 0.15 and strength > 0.5:
+    if (
+        not _in_arrest(engine)
+        and not _deep_non_drug_coma(engine)
+        and drug_unconscious < 0.15
+        and strength > 0.5
+    ):
         return ActionFeedback(
             "awake_opa",
             "Patient gags; oral airway requires unconsciousness.",
@@ -204,8 +209,7 @@ def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | N
 
 
 def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
-    hemo = engine.hemo.state
-    if hemo.rhythm_type in PULSELESS_RHYTHMS or not is_perfusing(engine, hemo):
+    if _in_arrest(engine):
         return None
     unconscious, _ = _responsiveness(engine)
     if unconscious < 0.5:

@@ -71,6 +71,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Meissner et al. (2025). *Br J Anaesth*. [Morphine and hydromorphone population PK](https://pubmed.ncbi.nlm.nih.gov/39592363/).
 - Olofsen et al. (2026). *Br J Anaesth*. [Morphine and hydromorphone PD for each endpoint](https://pubmed.ncbi.nlm.nih.gov/41656122/), [supplement](https://ars.els-cdn.com/content/image/1-s2.0-S0007091225009134-mmc1.docx), and [correction](https://pubmed.ncbi.nlm.nih.gov/42150960/).
 - Osborne et al. (1993). *Clin Pharmacol Ther*. [Morphine and morphine-6-glucuronide PK in kidney failure](https://pubmed.ncbi.nlm.nih.gov/8354025/).
+- Favié et al. (2019). *PLoS One*. [Morphine and glucuronide PK during therapeutic hypothermia in neonatal encephalopathy](https://pubmed.ncbi.nlm.nih.gov/30763356/).
 
 ### Midazolam and etomidate
 
@@ -192,6 +193,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Pühringer et al. (2008). *Anesthesiology*. [Sugammadex dose finding for immediate reversal of high-dose rocuronium](https://pubmed.ncbi.nlm.nih.gov/18648227/).
 - Lowry et al. (1998). *Anesth Analg*. [Rocuronium onset and recovery under sevoflurane, isoflurane, and propofol](https://pubmed.ncbi.nlm.nih.gov/9768798/).
 - Eleveld et al. (2007). *Anesth Analg*. [Temporary rebound of neuromuscular block after low-dose sugammadex](https://pubmed.ncbi.nlm.nih.gov/17312212/).
+- Staals et al. (2010). *Br J Anaesth*. [Rocuronium and sugammadex PK in severe to end-stage renal failure](https://pubmed.ncbi.nlm.nih.gov/20007792/).
 - Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
 - Sasakawa et al. (2016). *J Anesth*. [Predictive ability of six rocuronium PK models](https://pubmed.ncbi.nlm.nih.gov/27098255/).
 - Varrique et al. (2016). *J Pharm Pharmacol*. [Rocuronium PK/PD in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/27545305/).
@@ -279,6 +281,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Segeroth et al. (2023). *Eur Heart J Cardiovasc Imaging*. [Pulmonary transit time](https://pubmed.ncbi.nlm.nih.gov/36662127/).
 - Koganov et al. (1997). *Crit Care Med*. [PEEP raises pulmonary vascular resistance](https://pubmed.ncbi.nlm.nih.gov/9187594/).
 - Carlsson et al. (1985). *Acta Anaesthesiol Scand*. [Hypoxic pulmonary vasoconstriction](https://pubmed.ncbi.nlm.nih.gov/3993324/).
+- Jardin et al. (1985b). *Crit Care Med*. [Hemodynamic effects of dobutamine in massive pulmonary embolism](https://pubmed.ncbi.nlm.nih.gov/4064710/).
+- Ghignone et al. (1984). *Anesthesiology*. [Volume expansion versus norepinephrine in canine acute right ventricular afterload elevation](https://pubmed.ncbi.nlm.nih.gov/6198941/).
 
 ## Cardiovascular drugs
 
@@ -367,6 +371,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Battisti-Charbonney et al. (2011). *J Physiol*. [Cerebrovascular response to CO₂ in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
 - Willie et al. (2015). *J Cereb Blood Flow Metab*. [Brain blood flow and oxygen delivery in breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
 - Kaisti et al. (2003). *Anesthesiology*. [Regional cerebral blood flow and oxygen consumption under sevoflurane and propofol](https://pubmed.ncbi.nlm.nih.gov/12960544/).
+- McCullough et al. (1999). *Ann Thorac Surg*. [Cerebral metabolic suppression during hypothermic circulatory arrest in adults](https://pubmed.ncbi.nlm.nih.gov/10391334/).
 - Westlake et al. (1955). *Q J Med*. [CO₂ narcosis in emphysema](https://pubmed.ncbi.nlm.nih.gov/14395425/).
 - Sieker and Hickam (1956). *Medicine (Baltimore)*. [Clinical syndrome of CO₂ intoxication](https://pubmed.ncbi.nlm.nih.gov/13407339/).
 - Turnbull et al. (2008). *Anaesthesia*. [End-tidal CO₂ and BIS](https://pubmed.ncbi.nlm.nih.gov/18412642/).
@@ -393,6 +398,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
 - Meaney et al. (2013). *Circulation*. [CPR quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
 - Michael et al. (1984). *Circulation*. [Epinephrine augmentation of cerebral and myocardial perfusion during CPR](https://pubmed.ncbi.nlm.nih.gov/6697465/).
+- Emerman et al. (1988). *Crit Care Med*. [Injection site and circulation times during canine cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/3273155/).
 - Cantineau et al. (1994b). *Am J Emerg Med*. [Epinephrine and end-tidal CO₂ during prehospital CPR](https://pubmed.ncbi.nlm.nih.gov/8179728/).
 - Kim et al. (2025). *Resuscitation*. [Real-time arterial pressure responses to epinephrine during CPR](https://pubmed.ncbi.nlm.nih.gov/40250548/).
 - Deakin et al. (2007). *Resuscitation*. [Passive ventilation during compression-only CPR](https://pubmed.ncbi.nlm.nih.gov/17507138/).
@@ -436,6 +442,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Adrogué and Madias (1981). *Am J Med*. [Plasma potassium changes during acute acid-base disturbances](https://pubmed.ncbi.nlm.nih.gov/7025622/).
 - Orringer et al. (1977). *N Engl J Med*. [Lactic acidosis and plasma potassium after generalized seizures](https://pubmed.ncbi.nlm.nih.gov/19702/).
 - Sjöstrand et al. (2001). *Br J Anaesth*. [Volume kinetics of intravenous glucose solutions](https://pubmed.ncbi.nlm.nih.gov/11878683/).
+- Sjöstrand and Hahn (2004). *Br J Anaesth*. [Volume kinetics of 2.5% glucose during laparoscopic surgery](https://pubmed.ncbi.nlm.nih.gov/14977794/).
 - Hillier et al. (1999). *Am J Med*. [Experimental hyperglycemia correction factor for serum sodium](https://pubmed.ncbi.nlm.nih.gov/10225241/).
 - Singer et al. (1955). *Medicine (Baltimore)*. [Acid-base balance and distribution after intravenous sodium bicarbonate](https://pubmed.ncbi.nlm.nih.gov/14355369/).
 - Cooper et al. (1990). *Ann Intern Med*. [Bicarbonate does not improve hemodynamics in critically ill patients with lactic acidosis](https://pubmed.ncbi.nlm.nih.gov/2156475/).
@@ -453,6 +460,9 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Kolterman et al. (1981). *J Clin Invest*. [Hepatic and peripheral insulin resistance in type 2 diabetes](https://pubmed.ncbi.nlm.nih.gov/7287908/).
 - Rabkin et al. (1970). *N Engl J Med*. [Renal uptake and excretion of insulin in renal disease](https://pubmed.ncbi.nlm.nih.gov/5409813/).
 - Letiexhe et al. (1993). *J Clin Endocrinol Metab*. [Insulin secretion, clearance, and action in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/8077319/).
+- Polonsky et al. (1988). *J Clin Invest*. [Insulin secretion and clearance in lean and obese humans](https://pubmed.ncbi.nlm.nih.gov/3276729/).
+- Catalano et al. (1998). *Diabetes Care*. [Longitudinal pancreatic beta-cell function and insulin clearance across human pregnancy](https://pubmed.ncbi.nlm.nih.gov/9540023/).
+- Porte et al. (1966). *J Clin Invest*. [Epinephrine suppression of insulin secretion in humans](https://pubmed.ncbi.nlm.nih.gov/5901508/).
 - DeFronzo et al. (1980). *Am J Physiol*. [Graded insulin doses and splanchnic and peripheral potassium uptake](https://pubmed.ncbi.nlm.nih.gov/6990783/).
 - Alvestrand et al. (1984). *Am J Physiol*. [Preserved insulin-mediated potassium uptake in chronic uremia](https://pubmed.ncbi.nlm.nih.gov/6364842/).
 - Allon and Copkney (1990). *Kidney Int*. [Albuterol and insulin with dextrose for hyperkalemia in hemodialysis patients](https://pubmed.ncbi.nlm.nih.gov/2266671/).
@@ -577,6 +587,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Matsukawa et al. (1995a). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
 - Matsukawa et al. (1995b). *Anesthesiology*. [Heat flow and redistribution during epidural anesthesia](https://pubmed.ncbi.nlm.nih.gov/7486181/).
 - Ozaki et al. (1994). *Anesthesiology*. [Thermoregulatory thresholds during epidural and spinal anesthesia](https://pubmed.ncbi.nlm.nih.gov/8053576/).
+- Kurz et al. (1993). *Anesth Analg*. [Thermoregulatory response thresholds during spinal anesthesia](https://pubmed.ncbi.nlm.nih.gov/8214655/).
+- Vassilieff et al. (1995). *Anesthesiology*. [Reduced shivering threshold during spinal anesthesia in elderly patients](https://pubmed.ncbi.nlm.nih.gov/8533907/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 - Kurz et al. (1995a). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
 - Kurz et al. (1995b). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
@@ -603,7 +615,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Pelosi et al. (1998). *Anesth Analg*. [Body mass index, FRC, and compliance under anesthesia](https://pubmed.ncbi.nlm.nih.gov/9728848/).
 - Behazin et al. (2010). *J Appl Physiol*. [Respiratory restriction and pleural pressures in morbid obesity](https://pubmed.ncbi.nlm.nih.gov/19910329/).
 - Lourens et al. (2000). *Intensive Care Med*. [Expiratory time constants in mechanically ventilated COPD patients](https://pubmed.ncbi.nlm.nih.gov/11193266/).
-- Jardin et al. (1985). *Chest*. [Airway-to-pleural pressure transmission and lung and chest-wall compliance](https://pubmed.ncbi.nlm.nih.gov/3902386/).
+- Jardin et al. (1985a). *Chest*. [Airway-to-pleural pressure transmission and lung and chest-wall compliance](https://pubmed.ncbi.nlm.nih.gov/3902386/).
 - Dräger. [Evita 4 SW 4.n instructions for use](https://www.draeger.com/Content/Documents/Content/IfU_Evita_4_SW_4.n_EN_9039485.pdf).
 - Feigenwinter and Zbinden (1991). *Anaesthesist*. [Circle-system resistance](https://pubmed.ncbi.nlm.nih.gov/1952036/).
 

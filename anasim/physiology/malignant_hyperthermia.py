@@ -6,7 +6,7 @@ are calibrated to a teaching course.
 
 import math
 
-from anasim.core.utils import clamp, hill_function
+from anasim.core.utils import clamp, clamp01, hill_function
 
 
 def dantrolene_twitch_fraction(concentration: float) -> float:
@@ -44,6 +44,7 @@ class MalignantHyperthermia:
         self.severity = 0.0
         self._controlled = False
         self._suppression_dwell_s = 0.0
+        self._anoxic_reserve = 1.0
 
     @property
     def active(self) -> bool:
@@ -55,19 +56,31 @@ class MalignantHyperthermia:
         self._susceptible = self._active
         self._controlled = False
         self._suppression_dwell_s = 0.0
+        if not self._active:
+            self._anoxic_reserve = 1.0
 
     @property
     def susceptible(self) -> bool:
         return self._susceptible
 
     def step(self, dt: float, *, sevo_mac: float, succinylcholine_cp: float,
-             dantrolene_ce: float) -> None:
+             dantrolene_ce: float, oxygen_supply: float = 1.0) -> None:
         if not self._active and not self._susceptible and self.severity == 0.0:
             self._controlled = False
             return
         if not self._active and self._susceptible and (sevo_mac > 0.05 or succinylcholine_cp > 0.01):
             self._active = True
             self._controlled = False
+        oxy = clamp01(oxygen_supply)
+        if dt > 0.0:
+            if oxy < 0.15 and (self._active or self.severity > 0.0):
+                # Finite skeletal-muscle anaerobic glycogen/ATP budget during complete zero-flow anoxia.
+                anoxic_frac = 1.0 - oxy / 0.15
+                self._anoxic_reserve *= math.exp(-dt * max(0.2, self.severity) * anoxic_frac / 180.0)
+                if self._anoxic_reserve < 1e-4:
+                    self._anoxic_reserve = 0.0
+            elif self._anoxic_reserve < 1.0:
+                self._anoxic_reserve += (1.0 - self._anoxic_reserve) * -math.expm1(-dt / 120.0)
         if self._active:
             # Active volatile anesthetic (>0.25 MAC) and succinylcholine
             # competitively oppose dantrolene at RyR1, preventing crisis control
@@ -97,7 +110,8 @@ class MalignantHyperthermia:
                 recovery = max(recovery, 1.0 / 180.0)
             else:
                 tau_on = 180.0 if exposed else 600.0
-                growth = (1.0 / tau_on) * (1.0 - inhibition)
+                anoxic_gate = self._anoxic_reserve + (1.0 - self._anoxic_reserve) * clamp01((oxy - 0.15) / 0.15)
+                growth = (1.0 / tau_on) * (1.0 - inhibition) * anoxic_gate
         else:
             self._controlled = False
             exposed = False
@@ -117,7 +131,7 @@ class MalignantHyperthermia:
     @property
     def extra_heat_w_per_kg(self) -> float:
         """Anaerobic glycolysis and SR calcium-cycling heat beyond aerobic metabolism."""
-        return 6.5 * self.severity**2
+        return 6.5 * (self.severity ** 2) * self._anoxic_reserve
 
     @property
     def chest_wall_stiffness(self) -> float:

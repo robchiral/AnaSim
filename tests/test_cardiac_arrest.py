@@ -1,5 +1,6 @@
 import copy
 import math
+from dataclasses import replace
 from itertools import pairwise
 
 import numpy as np
@@ -238,9 +239,10 @@ def test_coronary_injury_alone_refreshes_cached_cardiac_output(awake_engine):
     before = hemo.state
 
     # Hold the supply shortfall at the current ischemia while injury accumulates.
-    step_coronary_from_state(awake_engine, 0.0, before, 98.0)
+    perfusing = replace(before, map=85.0, intrinsic_map=85.0, sv=55.0, hr=75.0, co=4.125, intrinsic_co=4.125)
+    step_coronary_from_state(awake_engine, 0.0, perfusing, 98.0)
     sao2 = 98.0 * (1.0 - coronary.ischemia) / coronary.supply_demand_ratio
-    step_coronary_from_state(awake_engine, 1.0, before, sao2)
+    step_coronary_from_state(awake_engine, 1.0, perfusing, sao2)
 
     assert coronary.ischemia == 0.875 and coronary.energy_failure == 0.75
     assert coronary.injury > 0.0

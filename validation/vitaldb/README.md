@@ -1,8 +1,9 @@
 # VitalDB comparisons
 
-These scripts compare AnaSim's ventilation, gas exchange, propofol and BIS,
-sevoflurane uptake, and hemodynamics with VitalDB recordings used for model
-development and calibration. Run them from the repository root after completing
+These scripts compare AnaSim's ventilation, gas exchange, anesthetic PK/PD
+(propofol and sevoflurane BIS and uptake), hemodynamics, laparoscopy, blood
+gases, and core temperature with VitalDB recordings used for model development
+and calibration. Run them from the repository root after completing
 the [contributor setup](../../CONTRIBUTING.md#setup). Uncached tracks download
 into `validation/vitaldb/.vitaldb_cache/`.
 
@@ -170,5 +171,5 @@ Summary of additional scripts (model minus recorded, or recorded vs model):
 | Pulse pressure and CVP (`vitaldb_pulse_pressure`) | `n=512` NIBP, `45` A-line, `7` CVP | Awake NIBP aged `>=70` yr `75.0` vs `75.1` mmHg (`+0.1`); intraop radial A-line `56.0` vs `44.1` mmHg (peripheral amplification); CVP `5.0` vs `3.7` mmHg |
 | Vasopressor infusions (`vitaldb_vasopressors`) | `n=11` (`2` NE, `9` PE) | Modeled MAP gain over zero-pressor counterfactual: NE `+9.8` mmHg (HR `-0.3` bpm); PE `+11.7` mmHg (HR `-0.7` bpm) |
 | Laparoscopy vs open (`vitaldb_laparoscopy`) | `n=399` (`277` open, `122` lap) | Net lap minus open: compliance `-18.7%` (`-25.2%` total), VCO₂ proxy `+32.6%`, EtCO₂ `+4.3` mmHg, untreated MAP `+8.2` mmHg |
-| Intraoperative ABGs (`vitaldb_labs`) | `n=94` ABGs | `PaO2` err `-17.2` (`-34.6` to `1.3`; `+7.5` at PEEP `>=4` vs `-45.1` at PEEP `<=2`); `PaCO2 - EtCO2` err `-0.1` open, widened `+2.3` mmHg in unmodeled lap (`7.0` vs `5.1`) |
+| Intraoperative ABGs (`vitaldb_labs`) | `n=94` ABGs | `PaO2` err `-17.2` (`-34.6` to `1.3`; `+7.5` at PEEP `>=4` vs `-45.1` at PEEP `<=2`); `PaCO2 - EtCO2` err `-0.1` open, `-2.3` mmHg in unmodeled lap (`7.0` vs `5.1`) |
 | Core temperature (`vitaldb_temperature`) | `n=360` | 60-min `dT` `-0.24 °C` (`-0.27` to `-0.21`) vs `-0.31 °C` warmed and `-1.25 °C` unwarmed; BMI `<22` / `22-26.9` / `>=27`: recorded `-0.27`, `-0.24`, `-0.19 °C` vs warmed model `-0.40`, `-0.30`, `-0.14 °C` |

@@ -862,23 +862,24 @@ export class Controls {
     if (settingsBox && fields.length) {
       this.ecmoEditor = this.editSettings(fields, () => {
         const ec = this.state?.extracorporeal;
+        if (!ec?.active) return true;
         const payload = {};
         const addNum = (id, key, current, digits) => {
           const el = $(id);
-          if (!el || el.disabled) return;
+          if (!el) return;
           const val = readNumber(el);
-          if (!ec || val !== round(current, digits)) payload[key] = val;
+          if (val !== round(current, digits)) payload[key] = val;
         };
-        addNum("c-ecmo-flow", "blood_flow", ec?.target_flow, 2);
-        addNum("c-ecmo-sweep", "sweep_gas", ec?.sweep, 2);
-        addNum("c-ecmo-fio2", "fio2_percent", ec?.fio2, 0);
-        addNum("c-ecmo-water", "water_target_c", ec?.water_target_c, 1);
-        if (ec?.mode === "va_ecmo") addNum("c-ecmo-lv-vent", "lv_vent", ec.lv_vent, 2);
-        if (ec?.mode === "cpb") {
+        addNum("c-ecmo-flow", "blood_flow", ec.target_flow, 2);
+        addNum("c-ecmo-sweep", "sweep_gas", ec.sweep, 2);
+        addNum("c-ecmo-fio2", "fio2_percent", ec.fio2, 0);
+        addNum("c-ecmo-water", "water_target_c", ec.water_target_c, 1);
+        if (ec.mode === "va_ecmo") addNum("c-ecmo-lv-vent", "lv_vent", ec.lv_vent, 2);
+        if (ec.mode === "cpb") {
           addNum("c-ecmo-sevo", "sweep_sevo", ec.sevo, 1);
           addNum("c-ecmo-venous-clamp", "venous_clamp", ec.venous_clamp, 0);
           const bgEl = $("c-ecmo-bg-strategy");
-          if (bgEl && !bgEl.disabled && bgEl.value !== ec.blood_gas_strategy) {
+          if (bgEl && bgEl.value !== ec.blood_gas_strategy) {
             payload.blood_gas_strategy = bgEl.value;
           }
         }
@@ -1011,6 +1012,7 @@ export class Controls {
     module.ontoggle = () => this.onViewChanged?.();
     this.lastNeuraxialCheckTime = null;
     this.epiduralRateDraft = false;
+    this.hadNeuraxial = false;
     clearTimeout(this.feedbackTimers?.get("neuraxial"));
     this.feedbackTimers?.delete("neuraxial");
     for (const id of [
@@ -1137,6 +1139,11 @@ export class Controls {
       summary.hidden = parts.length === 0;
       setText(summary, parts.join(" · "));
     }
+    const hasNeuraxial = Boolean(nx.active || nx.epidural_rate > 0 || nx.epidural_catheter);
+    if (this.hadNeuraxial && !hasNeuraxial) {
+      this.epiduralRateDraft = false;
+    }
+    this.hadNeuraxial = hasNeuraxial;
     const epiRate = $("c-epidural-rate");
     if (epiRate && !this.epiduralRateDraft) setValue(epiRate, round(nx.epidural_rate ?? 0, 1));
     if ($("c-epidural-stop")) $("c-epidural-stop").hidden = !(nx.epidural_rate > 0);
@@ -1158,9 +1165,6 @@ export class Controls {
         readout.hidden = true;
         setText(readout, "");
       }
-    }
-    if (!nx.active && nx.epidural_rate === 0 && !nx.epidural_catheter) {
-      this.epiduralRateDraft = false;
     }
   }
 
@@ -1562,6 +1566,7 @@ export class Controls {
     }
     const pneumo = $("c-pneumoperitoneum");
     const pneumoIap = $("c-pneumo-iap");
+    if (pneumoIap) pneumoIap.value = "14";
     if (pneumo) {
       pneumo.onclick = () => this.send("pneumoperitoneum", {
         active: !this.state?.pneumoperitoneum?.active,
@@ -1861,6 +1866,9 @@ export class Controls {
     if ($("c-pneumoperitoneum") && c.pneumoperitoneum) {
       const pActive = Boolean(c.pneumoperitoneum.active);
       setPressed($("c-pneumoperitoneum"), pActive, pActive ? "Desufflate abdomen" : "Start CO₂ insufflation");
+      if (pActive && $("c-pneumo-iap") && c.pneumoperitoneum.target_iap !== undefined) {
+        setValue($("c-pneumo-iap"), String(round(c.pneumoperitoneum.target_iap, 0)));
+      }
     }
     if ($("c-pe") && c.embolism) {
       setPressed($("c-pe"), Boolean(c.embolism.pe_active),
@@ -1899,11 +1907,11 @@ export class Controls {
     if (c.airway_crisis?.esophageal_active) airway.push("Esophageal ETT");
     if (c.pneumothorax?.active) airway.push("Tension PTX");
     this.syncEventSection("airway", airway);
-    // The disabled profile select already names the active stimulation.
+    // The disabled profile select already names active stimulation; list IAP when pneumoperitoneum is active.
     const stim = [];
     if (c.disturbance.active) stim.push($("c-disturbance").selectedOptions[0].text);
     if (c.pneumoperitoneum?.active) stim.push(`IAP ${round(c.pneumoperitoneum.iap, 0)} mmHg`);
-    this.syncEventSection("stimulation", stim, false);
+    this.syncEventSection("stimulation", stim, Boolean(c.pneumoperitoneum?.active));
     this.syncEventSection("equipment", c.o2_connected ? [] : ["O₂ supply disconnected"]);
   }
 }

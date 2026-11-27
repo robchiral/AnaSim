@@ -4,7 +4,7 @@ import math
 from typing import TYPE_CHECKING
 
 from anasim.core.constants import ARREST_CO_L_MIN
-from anasim.core.enums import RhythmType
+from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 from anasim.machine.ventilator import VOLUME_TARGETED
 from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG, ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
@@ -63,21 +63,46 @@ def _hold(waves: list, value, elapsed: float, substeps: int, substep_dt: float) 
         waves.append(value)
 
 
+def is_nibp_pulsatile(engine: SimulationEngine) -> bool:
+    """Return whether current hemodynamics are pulsatile enough for a valid NIBP reading."""
+    state = engine.state
+    hemo_state = engine.hemo.state
+    pp = state.sbp - state.dbp
+    return (
+        hemo_state.rhythm_type not in PULSELESS_RHYTHMS
+        and not hemo_state.compressions
+        and hemo_state.intrinsic_co >= ARREST_CO_L_MIN
+        and math.isfinite(pp)
+        and pp >= 8.0
+        and state.map >= 20.0
+    )
+
+
 def seed_nibp_reading(engine: SimulationEngine) -> None:
-    """Seed NIBP with an initial reading and start cycling immediately."""
+    """Seed NIBP with an initial reading when pulsatile and start cycling immediately."""
     state = engine.state
     map_val = state.map
     sbp_val = state.sbp
     dbp_val = state.dbp
     ts = state.time
-    engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
-    engine.nibp.measurement_failed = False
-    engine.nibp.failed_timestamp = None
-    state.nibp_sys = float(sbp_val)
-    state.nibp_dia = float(dbp_val)
-    state.nibp_map = float(map_val)
-    state.nibp_timestamp = float(ts)
-    state.nibp_measurement_failed = False
+    pulsatile = is_nibp_pulsatile(engine)
+    state.nibp_cuff_pressure = 0.0
+    if pulsatile:
+        engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
+        engine.nibp.measurement_failed = False
+        engine.nibp.failed_timestamp = None
+        state.nibp_sys = float(sbp_val)
+        state.nibp_dia = float(dbp_val)
+        state.nibp_map = float(map_val)
+        state.nibp_timestamp = float(ts)
+        state.nibp_measurement_failed = False
+    else:
+        engine.nibp.latest_reading = NIBPReading(0.0, 0.0, 0.0, None)
+        engine.nibp.measurement_failed = True
+        engine.nibp.failed_timestamp = float(ts)
+        state.nibp_sys = state.nibp_dia = state.nibp_map = 0.0
+        state.nibp_timestamp = None
+        state.nibp_measurement_failed = True
     engine._next_nibp_time = state.time + engine.nibp.interval
     engine.nibp.trigger()
     state.nibp_is_cycling = True
@@ -144,10 +169,11 @@ def compute_capno_value(
     et_gases = None if esophageal else (state.et_o2, state.et_sevo, state.et_n2o, state.et_mac)
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
+        sealed_y = circuit_connected(engine)
         readout.interrupt(
             dt,
-            disconnected=state.airway_mode == AirwayType.NONE,
-            idle_airway=state.airway_mode == AirwayType.NONE and not (engine.vent.is_on or engine.bag_mask_active),
+            disconnected=not sealed_y,
+            idle_airway=not sealed_y and not (engine.vent.is_on or engine.bag_mask_active),
         )
         waves = [0.0] * substeps
     else:
@@ -420,7 +446,6 @@ def step_monitors(
         else state.sao2
     )
     cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, spo2_sao2)
-    connected = state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
     seal_scale = mask_seal_factor(engine)
     kept = delivered_fraction(engine) if sealed else 0.0
@@ -429,9 +454,14 @@ def step_monitors(
     )
 
     update_nibp(engine, dt, engine.hemo.state)
+    roc_t1 = (
+        1.0 - engine.tof_pd.twitch_block(state.roc_ce, state.mac_sevo, state.mac_n2o)
+        if (state.roc_ce > 1e-9 or state.neostigmine_ce > 1e-9)
+        else 1.0
+    )
     deep_block_ratio = (
         state.roc_ce / max(1e-6, engine.tof_pd._ec50(state.mac_sevo, state.mac_n2o))
-        if engine.nmb.mode == "ptc" and state.roc_ce > 0.0
+        if engine.nmb.mode == "ptc" and state.roc_ce > 0.0 and roc_t1 < 0.05
         else 0.0
     )
     engine.nmb.step(
@@ -486,7 +516,7 @@ def step_monitors(
             vte_percent = None if math.isnan(delivered) else 100.0 * delivered / vent.settings.tv
     if state.display_bis < 65.0:
         engine._bis_anesthetized = True
-    elif not connected and state.display_bis >= 80.0:
+    elif not sealed and state.display_bis >= 80.0:
         engine._bis_anesthetized = False
     bis_int = display_int(state.display_bis)
     if bis_int <= engine.alarms.thresholds["BIS_max"]:
@@ -531,19 +561,19 @@ def step_monitors(
     )
     etco2_alarm = (
         display_int(state.display_etco2)
-        if (connected or vent.is_on or engine.bag_mask_active) and not engine.etco2_readout.awaiting_first_breath
+        if (sealed or vent.is_on or engine.bag_mask_active) and not engine.etco2_readout.awaiting_first_breath
         else None
     )
     ppeak_val = display_int(state.paw_peak)
     ppeak_limit = engine.alarms.thresholds["Ppeak_max"]
     vent_pressure_alarm = (
-        connected
+        sealed
         and vent.is_on
         and vent.pressure_limited
         and display_int(vent.monitors.paw_peak) >= min(ppeak_limit, display_int(vent.settings.p_max))
     )
     bag_pressure_alarm = (
-        connected
+        sealed
         and not vent.is_on
         and engine.bag_mask_active
         and vent.pressure_limited

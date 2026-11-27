@@ -44,9 +44,9 @@ class Vaporizer:
             self.state.level -= liquid_ml
             return self.state.setting
 
-        # The remaining liquid is delivered over this step.
+        # The remaining liquid is delivered over this step; keep the dial setting
+        # so refilling resumes delivery at the dialed concentration.
         vapor_vol_l_min *= self.state.level / liquid_ml
         self.state.level = 0.0
         self.state.is_on = False
-        self.state.setting = 0.0
         return 100.0 * vapor_vol_l_min / (fgf_l_min + vapor_vol_l_min)

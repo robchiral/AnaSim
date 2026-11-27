@@ -20,6 +20,7 @@ from anasim.core.action_log import (
     ACTION_VAPORIZER,
     ActionLog,
 )
+from anasim.core.enums import RhythmType
 from anasim.core.monitors import display_int
 from anasim.core.projection import (
     dantrolene_twitch_fraction,
@@ -618,7 +619,11 @@ def _preroll_trend_point(
         map_val = None
         map_time = None
     etco2 = round(float(state.display_etco2), 1) if (state.etco2_signal_valid and math.isfinite(state.display_etco2)) else None
-    hr = round(float(state.display_hr), 1) if math.isfinite(state.display_hr) else None
+    hr = (
+        None
+        if engine.hemo.state.rhythm_type == RhythmType.VFIB
+        else (round(float(state.display_hr), 1) if math.isfinite(state.display_hr) else None)
+    )
     bis = round(float(state.display_bis), 1) if math.isfinite(state.display_bis) else None
     return {
         "time": round(rel_time, 3),
@@ -651,8 +656,12 @@ def preroll_scenario(
     fast_duration = max(0.0, duration_s - settle)
     nibp_interval = max(60.0, float(engine.nibp.interval))
 
+    from anasim.core.monitors import is_nibp_pulsatile
+
     trends: list[dict] = []
-    last_nibp: tuple[float, float] | None = (float(engine.state.map), -duration_s)
+    last_nibp: tuple[float, float] | None = (
+        (float(engine.state.map), -duration_s) if is_nibp_pulsatile(engine) else None
+    )
     next_nibp_elapsed = nibp_interval
     next_sample_elapsed = 0.0
 
@@ -662,7 +671,7 @@ def preroll_scenario(
             return
         rel_time = elapsed - duration_s
         if elapsed >= next_nibp_elapsed - 1e-6:
-            last_nibp = (float(engine.state.map), rel_time)
+            last_nibp = (float(engine.state.map), rel_time) if is_nibp_pulsatile(engine) else None
             next_nibp_elapsed += nibp_interval
         if elapsed >= next_sample_elapsed - 1e-6:
             trends.append(_preroll_trend_point(engine, rel_time, last_nibp=last_nibp))
@@ -724,6 +733,7 @@ def preroll_scenario(
         engine.pending_infusions.clear()
         hemo = engine.hemo
         hemo._hyperosmolar_load = 0.0
+        hemo._pending_hyperosmolar_load = 0.0
         hemo._hyperosmolar_svr_factor = 1.0
         hemo.total_crystalloid_in_ml = 0.0
         hemo.total_colloid_in_ml = 0.0

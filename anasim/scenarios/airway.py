@@ -28,12 +28,12 @@ def _setup_failed_laryngoscopy(engine) -> None:
     def _induce_step(eng, elapsed: float) -> None:
         if abs(elapsed - 30.0) < 1.1 and eng.actions.total(ACTION_DRUG_BOLUS, "roc") <= 0.0:
             eng.give_drug_bolus("fentanyl", round(1.5 * wt))
-            eng.give_drug_bolus("propofol", round(2.0 * wt))
-            eng.give_drug_bolus("roc", round(0.9 * wt))
             if eng.config.tci_enabled:
-                eng.set_drug_target("propofol", 2.8)
+                eng.set_drug_target("propofol", 3.1)
             else:
+                eng.give_drug_bolus("propofol", round(2.0 * wt))
                 eng.set_drug_rate("propofol", 75.0)
+            eng.give_drug_bolus("roc", round(0.9 * wt))
             eng.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
 
     preroll_scenario(engine, 130.0, dt=1.0, settle_s=15.0, on_step=_induce_step)
@@ -245,12 +245,12 @@ def _setup_esophageal_intubation(engine) -> None:
     def _induce_step(eng, elapsed: float) -> None:
         if abs(elapsed - 30.0) < 1.1 and eng.actions.total(ACTION_DRUG_BOLUS, "roc") <= 0.0:
             eng.give_drug_bolus("fentanyl", round(1.5 * wt))
-            eng.give_drug_bolus("propofol", round(2.4 * wt))
-            eng.give_drug_bolus("roc", round(0.9 * wt))
             if eng.config.tci_enabled:
-                eng.set_drug_target("propofol", 3.5)
+                eng.set_drug_target("propofol", 3.7)
             else:
+                eng.give_drug_bolus("propofol", round(2.4 * wt))
                 eng.set_drug_rate("propofol", 100.0)
+            eng.give_drug_bolus("roc", round(0.9 * wt))
             eng.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
 
     preroll_scenario(engine, 130.0, dt=1.0, settle_s=15.0, on_step=_induce_step)

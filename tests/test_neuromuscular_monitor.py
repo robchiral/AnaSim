@@ -136,3 +136,19 @@ def test_ptc_mode_timing_and_lockout(engine_factory, advance_time):
     assert 0 <= reading.count <= 15
     with pytest.raises(ValueError, match="60"):
         engine.nmb.measure(engine.state.time)
+
+
+def test_ptc_reports_zero_under_succinylcholine_with_subthreshold_residual_rocuronium(engine_factory, advance_time):
+    """Depolarizing succinylcholine block with low residual rocuronium (roc T1 >= 5%) does not
+    produce false non-zero PTC counts from rocuronium deep_block_ratio."""
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    # Seed tiny residual rocuronium (below 95% block) and paralyze with succinylcholine.
+    eng.give_drug_bolus("roc", 5.0)
+    advance_time(eng, 60.0, dt=0.5)
+    eng.give_drug_bolus("succinylcholine", 100.0)
+    advance_time(eng, 45.0, dt=0.5)
+    eng.nmb.set_mode("ptc", eng.state.time)
+    advance_time(eng, 65.0, dt=0.5)
+    assert eng.nmb.reading is not None
+    assert eng.nmb.reading.mode == "ptc"
+    assert eng.nmb.reading.count == 0

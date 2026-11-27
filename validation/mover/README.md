@@ -31,9 +31,11 @@ seven used by these scripts (`BP`, `HR`, `Gas`, `O2`, `Temp`, `Blood`,
 
 ## Running the validation scripts
 
-Running any script builds a compact local Parquet index under
-`validation/mover/.mover_cache/` (gitignored) and writes deidentified aggregate
-reports to `results/`.
+Run from the repository root after completing the
+[contributor setup](../../CONTRIBUTING.md#setup) with the `validation`
+dependency group (which provides `duckdb`). Running any script builds a compact
+local Parquet index under `validation/mover/.mover_cache/` (gitignored) and
+writes deidentified aggregate reports to `results/`.
 
 ```bash
 python -m validation.mover.mover_data

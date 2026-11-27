@@ -239,7 +239,8 @@ class ArterialWaveformRenderer:
         shape = self._build_shape(60.0 / hr_f, hr_f)
         compliance = self.compliance_at(max(mean_pressure, floor_p))
         requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
-        return min(requested_pp, mean_pressure / shape.mean), shape.mean
+        pp_budget = max(0.0, mean_pressure - floor_p) + 0.05 * min(mean_pressure, floor_p)
+        return min(requested_pp, pp_budget / shape.mean), shape.mean
 
     def reference_pulse_pressure(
         self,
@@ -296,7 +297,8 @@ class ArterialWaveformRenderer:
         shape = self._build_shape(sample.rr_interval_s, sample.measured_hr)
         compliance = self.compliance_at(max(mean_pressure, floor_p))
         requested_pp = float(stroke_volume_ml) * pulse_pressure_factor / compliance
-        self._reference_pp = min(requested_pp, mean_pressure / shape.mean)
+        pp_budget = max(0.0, mean_pressure - floor_p) + 0.05 * min(mean_pressure, floor_p)
+        self._reference_pp = min(requested_pp, pp_budget / shape.mean)
         self._diastolic = max(floor_p, mean_pressure - self._reference_pp * shape.mean)
         self._mean_pressure = self._diastolic + self._reference_pp * shape.mean
         self._systolic = self._diastolic + self._reference_pp

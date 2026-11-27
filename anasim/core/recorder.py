@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
+from anasim.patient.domain import finite_number
+
 from .state import SimulationState
 
 if TYPE_CHECKING:
@@ -38,8 +40,12 @@ class DataRecorder:
         self.file: TextIO | None = None
         self.writer: Writer | None = None
         self.is_recording = False
-        self.sample_interval_sec = max(0.0, sample_interval_sec)
+        interval = finite_number("sample_interval_sec", sample_interval_sec)
+        if interval < 0.0:
+            raise ValueError("sample_interval_sec must not be negative")
+        self.sample_interval_sec = interval
         self._next_sample_time: float | None = None
+        self._last_logged_time: float | None = None
 
     def __deepcopy__(self, memo):
         clone = DataRecorder(
@@ -73,6 +79,7 @@ class DataRecorder:
             writer.writerow(STATE_FIELD_NAMES)
             file.flush()
             self._next_sample_time = None
+            self._last_logged_time = None
             self.is_recording = True
         except (OSError, csv.Error, ValueError) as error:
             self._fail("start", error)
@@ -85,13 +92,23 @@ class DataRecorder:
             message += f". Cleanup also failed: {cleanup_error}"
         raise RecordingError(message) from error
 
-    def log(self, state: SimulationState):
+    def log(self, state: SimulationState, *, force: bool = False):
         if not self.is_recording or self.writer is None or self.file is None:
             return
 
         tolerance = 1e-9 * max(1.0, abs(state.time))
-        if (self.sample_interval_sec > 0.0 and self._next_sample_time is not None
-                and state.time + tolerance < self._next_sample_time):
+        if (
+            force
+            and self._last_logged_time is not None
+            and abs(state.time - self._last_logged_time) <= tolerance
+        ):
+            return
+        if (
+            not force
+            and self.sample_interval_sec > 0.0
+            and self._next_sample_time is not None
+            and state.time + tolerance < self._next_sample_time
+        ):
             return
 
         values = (getattr(state, name) for name in STATE_FIELD_NAMES)
@@ -103,19 +120,22 @@ class DataRecorder:
             self.file.flush()
         except (OSError, ValueError) as error:
             self._fail("flush", error)
+        self._last_logged_time = state.time
         if self._next_sample_time is None or self.sample_interval_sec == 0.0:
             self._next_sample_time = state.time + self.sample_interval_sec
         else:
             # Keep the original schedule when a step crosses a sample deadline.
             # Skip missed deadlines rather than inventing historical state rows.
             intervals = math.floor((state.time + tolerance - self._next_sample_time) / self.sample_interval_sec) + 1
-            self._next_sample_time += intervals * self.sample_interval_sec
+            if intervals > 0:
+                self._next_sample_time += intervals * self.sample_interval_sec
 
     def stop(self):
         file = self.file
         self.file = None
         self.writer = None
         self.is_recording = False
+        self._last_logged_time = None
         if file is None:
             return
         errors = []

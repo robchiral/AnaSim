@@ -33,6 +33,7 @@ def add_volume(
     hematocrit = bounded_number("hematocrit", hematocrit, 0.0, MAX_HEMATOCRIT)
     if amount_ml == 0:
         return
+    prev_co = model._prev_co
     model._cached_state = None
     if abs(amount_ml) > 10.0:
         model._prev_co = None
@@ -105,7 +106,10 @@ def add_volume(
             # 8.4% NaHCO3 (2000 mOsm/L) causes brief rate-dependent hyperosmolar
             # arteriolar vasodilation when pushed rapidly (canine Huseby and Gumprecht 1981;
             # transient 1-min dip in porcine Zaballos 2019).
-            model._hyperosmolar_load += amount_ml / max(1000.0, model.blood_volume_0)
+            delta_load = amount_ml / max(1000.0, model.blood_volume_0)
+            circ = model.circulation_fraction(prev_co)
+            model._hyperosmolar_load += delta_load * circ
+            model._pending_hyperosmolar_load += delta_load * (1.0 - circ)
 
         if retained_ml > 0 and not suppress_tde and model.patient.heart_failure != "hfref":
             reserve = 0.35 if model.patient.heart_failure == "hfpef" else 1.0
@@ -113,6 +117,7 @@ def add_volume(
 
     model.blood_volume = max(BLOOD_VOLUME_MIN + max(0.0, model.extracorporeal_volume_ml), model.blood_volume)
     model._update_hb_conc()
+    model._cached_state = None
 
 
 def step_intravascular_volume(
@@ -233,7 +238,7 @@ def step_intravascular_volume(
     # Lung water filters from blood above the Starling/oncotic LAP threshold and
     # returns over hours; hypoalbuminemia (<34 g/L) lowers colloid osmotic pressure
     # and inflammatory states (sepsis/anaphylaxis) increase alveolar-capillary permeability.
-    eff_lap = model._effective_lap()
+    eff_lap = model._effective_lap_tm()
     plasma_alb_g_l = (
         model.fluids.plasma_albumin_g / model.fluids.plasma_l if model.fluids.plasma_l > 0.0 else 42.0
     )

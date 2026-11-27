@@ -1258,3 +1258,17 @@ def test_peep_change_preserves_effort_empty_bellows_collapses_peep_and_engine_mu
     mutex.deliver_manual_breath()
     assert not mutex._manual_breath_requested
     assert len(mutex.actions.records) == n_actions
+
+
+def test_patient_effort_rapid_rr_surge_keeps_knots_monotonic():
+    """Rapidly raising respiratory drive mid-breath keeps PatientEffort._knots non-decreasing."""
+    lung = RespiratoryMechanics()
+    effort = lung.effort
+    effort.set_drive(6.0, 0.5)
+    effort.start(lung, 0.0)
+    effort.advance(0.6, lung, 0.0)
+    # Surge RR sharply mid-contraction so desired_period < ti + release.
+    effort.set_drive(45.0, 0.4)
+    for _ in range(40):
+        effort.advance(0.05, lung, 0.0)
+        assert list(effort._knots) == sorted(effort._knots)

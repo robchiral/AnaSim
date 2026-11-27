@@ -119,6 +119,11 @@ def _initialize_awake(engine: SimulationEngine) -> None:
                 hb_g_dl=hb, hematocrit=hct, blood_volume_ml=bv,
                 unconscious=awake_unconscious,
             )
+        transport = engine.resp.gas_transport
+        transport.consumed_o2_l = 0.0
+        transport.produced_l = 0.0
+        transport.exhaled_l = 0.0
+        transport.oxygen_from_air_l = 0.0
     runtime_core.update_pk_covariates(engine, engine.hemo.state.co)
 
 

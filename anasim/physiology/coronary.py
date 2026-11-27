@@ -112,7 +112,7 @@ class CoronaryModel:
         sbp_val = self._nonneg_pressure(sbp)
         dbp_val = self._nonneg_pressure(dbp)
         active_sbp = sbp_val if intrinsic_sbp is None else self._nonneg_pressure(intrinsic_sbp)
-        temp_q10 = clamp(TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 18.0, 38.0)), 0.20, 1.15)
+        temp_q10 = clamp(TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 18.0, 42.0)), 0.20, 1.50)
         if cardioplegia_arrest:
             # Cold diastolic cardioplegic arrest lowers basal myocardial VO2 >85-90%
             # and extends safe cross-clamp tolerance well past 60-90 min (Nissinen 2009; Al-Sarraf 2011).
@@ -127,7 +127,8 @@ class CoronaryModel:
             activation_hr = hr / self._reference_hr
             if compressions and activation_hr > 1.5:
                 activation_hr += clamp01((35.0 - active_sbp) / 15.0) * (1.5 - activation_hr)
-            demand = max(work, (0.35 + 0.30 * activation_hr) * temp_q10)
+            fever_work_scale = 0.75 + 0.25 * max(1.0, temp_q10)
+            demand = max(work * fever_work_scale, (0.35 + 0.30 * activation_hr) * temp_q10)
         if aortic_cross_clamp:
             pressure = 0.0
             diastolic_fraction = 1.0

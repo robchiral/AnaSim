@@ -315,8 +315,10 @@ class ExtracorporealSystem:
         return value if isinstance(value, BloodGasManagement) else BloodGasManagement(str(value))
 
     def set_blood_flow(self, l_min: float) -> None:
+        if not self.is_active:
+            raise ValueError("Extracorporeal blood flow can only be adjusted during active support")
         self.state.target_blood_flow_l_min = bounded_number("extracorporeal blood flow", l_min, 0.0, 8.0, unit="L/min")
-        if self.is_active and not self.is_cpb:
+        if not self.is_cpb:
             self.state.blood_flow_l_min = self.state.target_blood_flow_l_min
             self.state.effective_blood_flow_l_min = self.state.blood_flow_l_min * (1.0 - self.state.recirculation_fraction)
 
@@ -341,23 +343,42 @@ class ExtracorporealSystem:
         return st.blood_flow_l_min
 
     def set_sweep_gas(self, l_min: float) -> None:
+        if not self.is_active:
+            raise ValueError("Sweep gas flow can only be adjusted during active support")
         self.state.sweep_gas_l_min = bounded_number("sweep gas flow", l_min, 0.0, 16.0, unit="L/min")
 
     def set_sweep_fio2(self, fio2: float) -> None:
+        if not self.is_active:
+            raise ValueError("Sweep FiO2 can only be adjusted during active support")
         self.state.sweep_fio2 = bounded_number("sweep FiO2", fio2, 0.21, 1.0)
 
     def set_sweep_fco2(self, fco2: float) -> None:
+        if not self.is_active:
+            raise ValueError("Sweep FCO2 can only be adjusted during active support")
         self.state.sweep_fco2 = bounded_number("sweep FCO2", fco2, 0.0, 0.10)
 
     def set_sweep_sevo(self, percent: float) -> None:
-        self.state.sweep_sevo_percent = bounded_number("oxygenator sevoflurane", percent, 0.0, 8.0, unit="%")
+        if not self.is_active:
+            raise ValueError("Oxygenator sevoflurane can only be adjusted during active support")
+        val = bounded_number("oxygenator sevoflurane", percent, 0.0, 8.0, unit="%")
+        if val > 0.0 and not self.is_cpb and self.state.membrane_type != MembraneType.MICROPOROUS:
+            raise ValueError("Oxygenator sevoflurane vaporizer requires CPB or a microporous oxygenator")
+        self.state.sweep_sevo_percent = val
 
     def set_membrane_area(self, area_m2: float) -> None:
+        if not self.is_active:
+            raise ValueError("Membrane area can only be adjusted during active support")
         area = bounded_number("membrane area", area_m2, 0.2, 3.0, unit="m^2")
         self.state.membrane_area_m2 = area
         self.oxygenator.area_m2 = area
 
+    def clear_last_pass(self) -> None:
+        """Clear cached last oxygenator gas pass (e.g. when circuit flow stops)."""
+        self._last_pass = None
+
     def set_heater_cooler(self, on: bool, target_c: float | None = None) -> None:
+        if not self.is_active:
+            raise ValueError("Heater-cooler can only be adjusted during active support")
         self.state.heater_cooler_on = bool(on)
         if target_c is not None:
             self.state.water_target_c = bounded_number("heater-cooler target", target_c, 18.0, 38.5, unit="°C")

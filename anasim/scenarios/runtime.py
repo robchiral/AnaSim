@@ -135,6 +135,8 @@ class CaseRun:
 
     def record_transition(self, action: str) -> None:
         """Evaluate outcomes tied to this action at the moment it occurs."""
+        if self.report is not None:
+            return
         for outcome in self.scenario.outcomes:
             if outcome.on_action == action:
                 if outcome.check(self.engine):
@@ -143,9 +145,13 @@ class CaseRun:
                     self.achieved_at.pop(outcome.id, None)
 
     def record_safety(self, feedback: ActionFeedback) -> None:
+        if self.report is not None:
+            return
         self.safety.append({"time": self.elapsed, "code": feedback.code, "text": feedback.message})
 
     def act(self, action_id: str) -> None:
+        if self.report is not None:
+            raise ValueError("The case has ended")
         action = next((a for a in self.scenario.actions if a.id == action_id), None)
         if action is None:
             raise ValueError(f"Unknown case action: {action_id!r}")
@@ -166,6 +172,8 @@ class CaseRun:
         return not outcome.check(self.engine)
 
     def request_hint(self) -> str:
+        if self.report is not None:
+            return self.hint or ""
         self.observe(force=True)
         if any(event.cue for event in self.scenario.events) and not self.observations:
             text = "Watch the monitors as the case progresses."
@@ -194,7 +202,7 @@ class CaseRun:
             used = action.id in self.used_actions
             if used or action.available(self.engine):
                 listed.append({"id": action.id, "label": action.completed_label if used else action.label,
-                               "enabled": not used})
+                               "enabled": self.report is None and not used})
         return listed
 
     def finish(self, reason: str) -> dict:

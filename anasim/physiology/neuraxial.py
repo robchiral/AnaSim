@@ -105,16 +105,23 @@ class NeuraxialModel:
         return clamp(max(self._spinal_level, self._epidural_level), 0.0, 30.0)
 
     @property
-    def is_spinal_dominant(self) -> bool:
-        return self._spinal_level >= self._epidural_level and self._spinal_level >= 0.5
+    def _spinal_weight(self) -> float:
+        """Smooth spinal-vs-epidural dominance blend (0-1) preventing CSE regression cliffs."""
+        s_sp = self._spinal_level
+        s_ep = self._epidural_level
+        if s_sp < 0.5:
+            return 0.0
+        if s_ep < 0.5:
+            return 1.0
+        return clamp01((s_sp - s_ep + 1.5) / 3.0)
 
     @property
     def density(self) -> float:
         if self.sensory_level < 0.5:
             return 0.0
-        if self.is_spinal_dominant:
-            return 1.0
-        return clamp(self._epidural_density, 0.20, 0.70)
+        w = self._spinal_weight
+        ep_density = clamp(self._epidural_density, 0.20, 0.70)
+        return w * 1.0 + (1.0 - w) * ep_density
 
     @property
     def sympathetic_level(self) -> float:
@@ -130,10 +137,10 @@ class NeuraxialModel:
         s = self.sensory_level
         if s < 0.5:
             return 0.0
-        if self.is_spinal_dominant:
-            return max(0.0, s - 2.8)
+        w = self._spinal_weight
         dilute_lag = 8.5 * clamp01((0.42 - self._epidural_density) / 0.15)
-        return max(0.0, s - (4.6 + dilute_lag))
+        ep_lag = 4.6 + dilute_lag
+        return max(0.0, s - (w * 2.8 + (1.0 - w) * ep_lag))
 
     @property
     def bromage_score(self) -> int:
@@ -224,11 +231,28 @@ class NeuraxialModel:
         return clamp01(0.95 * self.vasomotor_symp_fraction * (0.45 + 0.55 * self.density))
 
     @property
-    def shiver_threshold_shift_c(self) -> float:
-        """Lowered central shivering threshold (°C) under neuraxial block (Ozaki 1994)."""
+    def _afferent_thermal_scale(self) -> float:
         if self.sensory_level < 0.5:
             return 0.0
-        return 0.60 * clamp01(self.sensory_level / 13.0) * (0.45 + 0.55 * self.density)
+        # Ozaki 1994: dense surgical epidurals and spinals at the same sensory level
+        # produce comparable afferent cold-block threshold shifts.
+        afferent = 0.55 + 0.45 * clamp01(self.density / 0.60)
+        return clamp01(self.sensory_level / 15.0) * afferent
+
+    @property
+    def vasoconst_threshold_shift_c(self) -> float:
+        """Lowered central vasoconstriction threshold (°C) under neuraxial block (Kurz 1993)."""
+        return 0.55 * self._afferent_thermal_scale
+
+    @property
+    def sweat_threshold_shift_c(self) -> float:
+        """Raised central sweating threshold (°C) under neuraxial block (Ozaki 1994; calibrated)."""
+        return 0.35 * self._afferent_thermal_scale
+
+    @property
+    def shiver_threshold_shift_c(self) -> float:
+        """Lowered central shivering threshold (°C) under neuraxial block (Kurz 1993; Ozaki 1994)."""
+        return 0.65 * self._afferent_thermal_scale
 
     @property
     def shiver_muscle_keep(self) -> float:

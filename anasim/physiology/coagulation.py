@@ -84,17 +84,38 @@ class CoagulationModel:
         self.reaction_active = False
         self.reaction_severity = 0.0
 
+    @classmethod
+    def neutralize_step_mg(
+        cls,
+        m_hep_mg_eq: float,
+        m_prot_mg: float,
+        v_mix_l: float,
+        dt_min: float,
+        circulation: float = 1.0,
+    ) -> float:
+        """Exact second-order heparin-protamine mass neutralized (mg protamine eq) over dt_min."""
+        if m_hep_mg_eq <= 0.0 or m_prot_mg <= 0.0 or dt_min <= 0.0 or circulation <= 0.0:
+            return 0.0
+        rate = cls.BINDING_RATE_L_MG_MIN * clamp01(circulation) / max(0.5, v_mix_l)
+        x = min(m_hep_mg_eq, m_prot_mg)
+        y = max(m_hep_mg_eq, m_prot_mg)
+        delta = y - x
+        if delta <= 1e-9 * y:
+            rxh = rate * x * dt_min
+            return x * rxh / (1.0 + rxh)
+        om_e = -math.expm1(-rate * delta * dt_min)
+        return (x * y * om_e) / (delta + x * om_e)
+
     def record_protamine_bolus(self, amount_mg: float, v1_l: float, *, circulation: float = 1.0) -> None:
         """Register an acute IV protamine bolus into the Type I rate-dependent exposure pool."""
         if amount_mg <= 0.0:
             return
         self.cumulative_protamine_mg += amount_mg
         delta_conc = amount_mg / max(1.0, v1_l)
-        if circulation <= 0.0:
-            self._pending_bolus_vaso_ug_ml += delta_conc
-            return
-        self._vaso_exposure_ug_ml += delta_conc
-        if self.reaction_armed:
+        circ = clamp01(circulation)
+        self._vaso_exposure_ug_ml += delta_conc * circ
+        self._pending_bolus_vaso_ug_ml += delta_conc * (1.0 - circ)
+        if self.reaction_armed and circ >= 0.05:
             self.reaction_active = True
             self.reaction_armed = False
 
@@ -119,13 +140,14 @@ class CoagulationModel:
             else 0.0
         )
 
-        # Excess free protamine paradox (in-vitro blood data in Mochizuki 1998): ratios >1.3:1
-        # leave free protamine that independently prolongs ACT and impairs platelet aggregation.
-        prot_act = 95.0 * hill_function(prot, 26.0, 1.8) if prot > 0.5 else 0.0
+        # Excess free protamine paradox (in-vitro blood data in Mochizuki 1998): only protamine
+        # above stoichiometric heparin neutralization independently prolongs ACT.
+        excess_prot = max(0.0, prot - hep * (1000.0 / HEPARIN_UNITS_PER_MG_PROTAMINE))
+        prot_act = 95.0 * hill_function(excess_prot, 26.0, 1.8) if excess_prot > 0.5 else 0.0
 
         # Early hemodilution shift (Bull 1975) and calibrated mild hypothermia ACT prolongation,
         # blended smoothly so un-heparinized baseline ACT stays exact without a step jump.
-        anticoag_blend = clamp01(max(hep / 0.15, prot / 1.5))
+        anticoag_blend = clamp01(max(hep / 0.15, excess_prot / 1.5))
         hct_drop = max(0.0, min(0.32, baseline_hct) - hematocrit)
         dilution_act = 120.0 * hct_drop * anticoag_blend if hct_drop > 0.0 and anticoag_blend > 0.0 else 0.0
         cold_dt = max(0.0, 35.0 - temp_c)
@@ -175,7 +197,7 @@ class CoagulationModel:
             self._pending_bolus_vaso_ug_ml = max(0.0, self._pending_bolus_vaso_ug_ml - transfer)
             if self._pending_bolus_vaso_ug_ml < 1e-6:
                 self._pending_bolus_vaso_ug_ml = 0.0
-            if self.reaction_armed:
+            if self.reaction_armed and self._vaso_exposure_ug_ml > 0.25:
                 self.reaction_active = True
                 self.reaction_armed = False
 
@@ -201,13 +223,16 @@ class CoagulationModel:
             st.bleeding_multiplier = 1.0
             return st
 
-        if self.reaction_armed and (protamine_rate_mg_s > 0.0 or protamine_pk.state.c1 > 0.5):
+        if self.reaction_armed and (
+            (protamine_rate_mg_s > 0.0 and circ >= 0.05)
+            or protamine_pk.state.c1 * circ > 0.5
+        ):
             self.reaction_active = True
             self.reaction_armed = False
 
-        # Substep when both heparin and protamine are interacting so stoichiometric binding stays exact.
+        # Substep when both heparin and protamine are interacting so PK and second-order binding stay dt-invariant.
         interacting = has_hep and has_prot
-        substeps = max(1, math.ceil(dt / 0.5)) if (interacting and dt > 0.5) else 1
+        substeps = max(1, math.ceil(dt / 0.25)) if (interacting and dt > 0.25) else 1
         h = dt / substeps
         h_min = h / 60.0
 
@@ -224,14 +249,15 @@ class CoagulationModel:
             # whereas rapid boluses spike _vaso_exposure_ug_ml sharply.
             if protamine_rate_mg_s > 0.0:
                 self.cumulative_protamine_mg += protamine_rate_mg_s * h
-                infusion_delta = (protamine_rate_mg_s * h) / max(1.0, protamine_pk.v1)
-                self._vaso_exposure_ug_ml += 0.35 * infusion_delta
+                infusion_delta = 0.35 * (protamine_rate_mg_s * h) / max(1.0, protamine_pk.v1)
+                self._vaso_exposure_ug_ml += infusion_delta * circ
+                self._pending_bolus_vaso_ug_ml += infusion_delta * (1.0 - circ)
             if h > 0.0 and self._vaso_exposure_ug_ml > 0.0:
-                self._vaso_exposure_ug_ml *= math.exp(-h / 110.0)
+                self._vaso_exposure_ug_ml *= math.exp(-h * circ / 110.0)
                 if self._vaso_exposure_ug_ml < 1e-5:
                     self._vaso_exposure_ug_ml = 0.0
 
-            # Second-order mass-conserving heparin-protamine neutralization in plasma.
+            # Exact second-order mass-conserving heparin-protamine neutralization in plasma.
             bound_this_substep = 0.0
             if heparin_pk.state.c1 > 0.0 and protamine_pk.state.c1 > 0.0 and h_min > 0.0:
                 v_hep = max(0.5, heparin_pk.v1)
@@ -239,9 +265,7 @@ class CoagulationModel:
                 m_hep_mg_eq = (heparin_pk.state.c1 * v_hep) / HEPARIN_UNITS_PER_MG_PROTAMINE
                 m_prot_mg = protamine_pk.state.c1 * v_prot
                 v_mix = 0.5 * (v_hep + v_prot)
-                # Analytical-style capped step prevents overshoot or negative concentrations.
-                raw_bound = self.BINDING_RATE_L_MG_MIN * circ * (m_hep_mg_eq * m_prot_mg / v_mix) * h_min
-                d_mg = min(m_hep_mg_eq, m_prot_mg, raw_bound)
+                d_mg = self.neutralize_step_mg(m_hep_mg_eq, m_prot_mg, v_mix, h_min, circ)
                 if d_mg > 0.0:
                     heparin_pk.state.c1 = max(
                         0.0, heparin_pk.state.c1 - (d_mg * HEPARIN_UNITS_PER_MG_PROTAMINE) / v_hep
@@ -253,7 +277,7 @@ class CoagulationModel:
                 inst_complex_rate = bound_this_substep / h_min
                 tau_c = 15.0 if inst_complex_rate > self._complex_rate_mg_min else 90.0
                 self._complex_rate_mg_min += (inst_complex_rate - self._complex_rate_mg_min) * (
-                    -math.expm1(-h / tau_c)
+                    -math.expm1(-h * circ / tau_c)
                 )
                 if self._complex_rate_mg_min < 1e-5:
                     self._complex_rate_mg_min = 0.0
@@ -264,7 +288,7 @@ class CoagulationModel:
             if target_sev != self.reaction_severity:
                 tau_r = 25.0 if target_sev > self.reaction_severity else 180.0
                 self.reaction_severity += (target_sev - self.reaction_severity) * (
-                    -math.expm1(-dt / tau_r)
+                    -math.expm1(-dt * circ / tau_r)
                 )
                 if self.reaction_severity < 1e-4 and not self.reaction_active:
                     self.reaction_severity = 0.0

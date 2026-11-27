@@ -48,6 +48,10 @@ class SimulationConfig:
         self.dt = finite_number("dt", self.dt)
         if self.dt <= 0 or self.dt > 2.0:
             raise ValueError("dt must be between 0 (exclusive) and 2.0 seconds")
+        if self.maintenance_fluid_ml_hr is not None:
+            self.maintenance_fluid_ml_hr = finite_number("maintenance_fluid_ml_hr", self.maintenance_fluid_ml_hr)
+            if self.maintenance_fluid_ml_hr < 0.0:
+                raise ValueError("maintenance_fluid_ml_hr must not be negative")
         for field_name, supported in CONFIG_CHOICES.items():
             value = getattr(self, field_name)
             if not isinstance(value, str) or value not in supported:

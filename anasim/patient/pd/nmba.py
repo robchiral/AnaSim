@@ -10,6 +10,7 @@ from anasim.patient.patient import Patient
 from anasim.patient.pk_models import (
     MammillaryPK,
     _pregnancy_v1,
+    renal_capacity_scaling,
     rocuronium_adjusted_weight,
 )
 
@@ -80,13 +81,14 @@ def _sugammadex_pk(patient: Patient) -> MammillaryPK:
     # hold the peak above that weight so V1 does not shrink at high body mass.
     w_v1 = min(w, (1.0 + 0.00354 * 74.5) / (2.0 * 0.00354))
     crcl = patient.creatinine_clearance()
+    _, renal_fraction = renal_capacity_scaling(patient, 0.95)
     return MammillaryPK(
         v1=_pregnancy_v1(patient, 4.42 * (w_v1 / 70.0) * (1.0 - 0.00354 * (w_v1 - 74.5))),
         cl1=0.093 * (2.0 * crcl / (crcl + 119.0)) ** 1.29 * (1.0 + 0.00378 * (w - 74.5)),
         v2=6.35 * size * math.exp(-0.00305 * (crcl - 119.0)),
         cl2=0.206 * size**0.75,
         ke0=1.0,
-        renal_fraction=0.95,
+        renal_fraction=renal_fraction,
         cl1_co_exponent=0.0,
         distribution_co_exponent=0.0,
     )
@@ -207,15 +209,14 @@ class TOFModel:
         x_sug = np.array([sug.state.c1, sug.state.c2], dtype=float)
         x_cplx = np.array([cplx.state.c1, cplx.state.c2], dtype=float)
         v_roc, v_sug = roc.v1, sug.v1
-        dt_min = 1.0 / 60.0
         ce_peri = self._ce_peri
         sug_given = self._sugammadex_given
         for second in range(1, max_seconds + 1):
             x_roc = t_roc @ x_roc
             r_c1, s_c1, c_c1 = float(x_roc[0]), float(x_sug[0]), float(x_cplx[0])
-            if s_c1 > 0.0 or c_c1 > 0.0:
+            if delivery_time > 0.0 and (s_c1 > 0.0 or c_c1 > 0.0):
                 x_roc[0], x_sug[0], x_cplx[0] = self._step_plasma_binding(
-                    r_c1, s_c1, c_c1, v_roc, v_sug, dt_min,
+                    r_c1, s_c1, c_c1, v_roc, v_sug, delivery_time,
                 )
             x_sug = t_sug @ x_sug
             x_cplx = t_cplx @ x_cplx
@@ -284,8 +285,9 @@ class TOFModel:
         if cp == 0.0 and self.ce == 0.0 and self.ce_central == 0.0 and not sug_active and not cplx_active:
             return self.compute_tof_from_ce(0.0, mac_sevo, mac_n2o)
         dt_min = dt_sec / 60.0
-        if sugammadex.state.c1 > 0.0 or complex_.state.c1 > 0.0:
-            self._bind_in_plasma(dt_min, roc)
+        delivery_time = dt_min * roc.circulation
+        if delivery_time > 0.0 and (sugammadex.state.c1 > 0.0 or complex_.state.c1 > 0.0):
+            self._bind_in_plasma(delivery_time, roc)
             cp = roc.state.c1
             sug_active = sug_active or sugammadex.state.c1 > 0.0
             cplx_active = cplx_active or complex_.state.c1 > 0.0
@@ -304,7 +306,6 @@ class TOFModel:
         # sub-therapeutic sugammadex doses (Eleveld 2007) while preserving
         # Kleijn 2011 2/4/16 mg/kg reversal times.
         removal = self._sugammadex_removal(s_c1)
-        delivery_time = dt_min * roc.circulation
         self._ce_peri, back_flux = self._step_peri_and_backflux(
             self.ce, self._ce_peri, roc.state.c2, s_c1, delivery_time,
             sug_given=self._sugammadex_given,

@@ -1007,3 +1007,84 @@ def test_va_ecmo_harlequin_completes_on_hfref_nonpulsatile_flow():
     assert session.snapshot()["scenario"]["complete"] is True
     debrief = json.loads(session.command("case_finish"))["debrief"]
     assert all(o["achieved"] for o in debrief["outcomes"])
+
+
+def test_pe_nonpulsatile_va_ecmo_tci_airway_caserun_finish_and_paused_stop_sync(engine_factory):
+    """Verify PE rescue completes under nonpulsatile VA ECMO without an arterial line,
+    failed_laryngoscopy/esophageal_intubation respect tci_enabled=True, CaseRun ignores post-finish
+    ticks/actions, and stop_events/stop_neuraxial/stop_pulmonary_embolism sync state immediately."""
+    from anasim.core.enums import RhythmType
+
+    # 1. PE stabilization succeeds on nonpulsatile VA ECMO when arterial_line_enabled=False and NIBP fails.
+    pe_sess = WebSession({"scenario_id": "pulmonary_embolism", "arterial_line_enabled": False})
+    assert pe_sess.scenario is not None
+    eng = pe_sess.engine
+    step = _step(pe_sess.scenario, "STABILIZE_PE")
+    eng.set_airway_mode("ETT")
+    eng.set_vent_power(True)
+    eng.start_pulmonary_embolism(0.75)
+    eng.start_va_ecmo(blood_flow_l_min=4.5, sweep_gas_l_min=4.0, prime_volume_ml=0.0)
+    eng.set_rhythm(RhythmType.VFIB)
+    eng.state.map = 75.0
+    eng.state.sbp = eng.state.dbp = 75.0
+    eng.state.nibp_measurement_failed = True
+    eng.state.sao2 = eng.state.display_spo2 = 98.0
+    eng.state.spo2_signal_valid = True
+    eng.state.etco2 = eng.state.display_etco2 = 34.0
+    eng.state.etco2_signal_valid = True
+    met, _ = step.check_requirements(eng)
+    assert met is True
+
+    # 2. Airway crisis scenarios honor tci_enabled=True without dual manual+TCI induction.
+    for sid in ("failed_laryngoscopy", "esophageal_intubation"):
+        s_tci = WebSession({"scenario_id": sid, "tci_enabled": True})
+        assert s_tci.engine.tci["propofol"].target > 0.0
+        assert s_tci.engine.state.propofol_ce > 1.5
+
+    # 3. CaseRun freezes after finish() (no further actions, transitions, safety logs, hints, or timers).
+    from anasim.core.clinical_actions import ActionFeedback
+
+    s_fin = WebSession({"scenario_id": "failed_laryngoscopy"})
+    assert s_fin.case_run is not None
+    cr = s_fin.case_run
+    debrief = cr.finish("Case ended by user")
+    t_before = cr.elapsed
+    hypo_before = cr.hypotension_s
+    hypox_before = cr.hypoxemia_s
+    safety_before = len(cr.safety)
+    s_fin.engine.state.map = 30.0
+    s_fin.engine.state.sao2 = 70.0
+    cr.before_step()
+    cr.observe(10.0)
+    cr.record_transition("extubation")
+    cr.record_safety(ActionFeedback("test_warn", "test", False))
+    assert cr.elapsed == t_before
+    assert cr.hypotension_s == hypo_before and cr.hypoxemia_s == hypox_before
+    assert len(cr.safety) == safety_before
+    assert cr.request_hint() == ""
+    assert all(not a["enabled"] for a in cr.snapshot()["actions"])
+    with pytest.raises(ValueError):
+        cr.act("nonexistent_or_ended")
+    assert debrief is not None
+
+    # 4. stop_pulmonary_embolism, stop_neuraxial, and stop_events immediately refresh paused state.
+    p = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    p.start_pulmonary_embolism(0.6)
+    p.step(1.0)
+    p.stop_pulmonary_embolism()
+    assert p.hemo._embolic_pvr_factor == pytest.approx(1.0)
+    assert p.aeration.crisis_shunt == pytest.approx(0.0)
+
+    p.give_spinal("bupivacaine", 12.5)
+    p.step(60.0)
+    p.stop_neuraxial()
+    assert p.hemo._neuraxial_svr_factor == pytest.approx(1.0)
+    assert p.state.neuraxial_mode == "none"
+
+    p.start_pneumothorax(1.0)
+    p.start_venous_air_embolism(60.0, initial_bolus_ml=60.0)
+    p.step(5.0)
+    p.stop_events()
+    assert p.aeration.pleural_collapse == 0.0
+    assert p.aeration.crisis_shunt == 0.0
+    assert p.state.muscle_rigidity is False

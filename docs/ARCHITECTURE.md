@@ -40,14 +40,14 @@ Each call to `SimulationEngine.step()` runs these stages in order:
    renal perfusion, core temperature, and drug interactions, then step
    target-controlled infusion (TCI) controllers.
 4. Update airway complications, the vaporizer, and the breathing circuit.
-5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drugs and
-   neuromuscular block, anticoagulation, circuit drug sequestration, and
-   toxicity, malignant hyperthermia, pneumothorax, embolism, and
-   pneumoperitoneum, then apply their effects on metabolism, heat, chest-wall
+5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drugs,
+   neuromuscular block, anticoagulation, and circuit drug sequestration. Then
+   advance toxicity, malignant hyperthermia, pneumothorax, embolism, and
+   pneumoperitoneum, and apply their effects on metabolism, heat, chest-wall
    stiffness, lung collapse, and shunt.
-6. Advance respiratory mechanics, lung and oxygenator gas exchange, glucose
-   homeostasis, CPB reservoir drainage, hemodynamics, cardiac rhythm, and
-   regional VA ECMO mixing.
+6. Advance respiratory mechanics, lung and oxygenator gas exchange, glucose and
+   lactate metabolism, CPB reservoir drainage, hemodynamics and fluid balance,
+   cardiac rhythm, and regional arterial ECMO/CPB gas mixing.
 7. Copy physiology outputs into `SimulationState`, then update cerebral
    oxygenation and function, monitor measurements, and alarms.
 8. Update core temperature, check for cardiac arrest, and clear any completed
@@ -107,9 +107,10 @@ and action log back to 0:00.
 
 Each scenario defines a briefing, timed or monitor-gated events, case actions
 such as requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
-[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) fires events, tracks
-guided steps or independent-mode outcomes, hides instructor event controls, and
-compiles the debrief. Ending a case, completing the final guided step, or
+[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) fires events, evaluates
+case outcomes, tracks safety events and hints, and compiles the debrief, while
+`WebSession` manages guided step progression and disables instructor event
+controls during a case. Ending a case, completing the final guided step, or
 reaching irreversible cardiac arrest pauses the simulation, stops recording,
 and locks treatment controls and the debrief. Open simulations also stop
 recording and disable treatment controls at irreversible arrest.

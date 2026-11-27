@@ -141,3 +141,46 @@ def test_deepcopy_during_active_recording_and_json_alarm_serialization(awake_eng
     second_path = recorder.file_path
     recorder.stop()
     assert first_path != second_path
+
+
+def test_cli_headless_writes_final_arrest_row_on_irreversible_arrest(tmp_path, monkeypatch):
+    """Headless CLI flushes the final irreversible-arrest row between intervals without duplicating boundary rows."""
+    from anasim.core.engine import SimulationEngine
+
+    orig_start = SimulationEngine.start
+
+    def _start_asystole(self):
+        orig_start(self)
+        self.set_rhythm("ASYSTOLE")
+
+    monkeypatch.setattr(SimulationEngine, "start", _start_asystole)
+
+    # Off-grid sample interval: final irreversible arrest row is flushed between 30 s intervals.
+    dir_off = tmp_path / "off_grid"
+    run_headless(SimpleNamespace(
+        config=None, duration=900.0, record=True, record_dir=str(dir_off), record_interval=30.0,
+    ))
+    csv_files = list(dir_off.glob("*.csv"))
+    assert len(csv_files) == 1
+    with open(csv_files[0], newline="") as f:
+        rows = list(csv.DictReader(f))
+    times = [float(r["time"]) for r in rows]
+    assert len(times) == len(set(times))
+    assert rows[-1]["cardiac_arrest"] in ("True", "1")
+    assert times[-1] > 300.0
+    assert (times[-1] - times[-2]) < 30.0
+
+    # On-grid sample interval (dt = 0.01, interval = 0.0): no duplicate final row.
+    dir_on = tmp_path / "on_grid"
+    cfg_path = tmp_path / "fast.json"
+    cfg_path.write_text('{"dt": 1.0}')
+    run_headless(SimpleNamespace(
+        config=str(cfg_path), duration=900.0, record=True, record_dir=str(dir_on), record_interval=1.0,
+    ))
+    csv_on = list(dir_on.glob("*.csv"))
+    assert len(csv_on) == 1
+    with open(csv_on[0], newline="") as f:
+        rows_on = list(csv.DictReader(f))
+    times_on = [float(r["time"]) for r in rows_on]
+    assert len(times_on) == len(set(times_on))
+    assert rows_on[-1]["cardiac_arrest"] in ("True", "1")
