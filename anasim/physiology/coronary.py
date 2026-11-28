@@ -98,6 +98,7 @@ class CoronaryModel:
              nonpulsatile_perfusion: bool = False,
              aortic_cross_clamp: bool = False,
              cardioplegia_arrest: bool = False,
+             cardioplegia_protection: float = 1.0,
              temp_c: float = 37.0) -> None:
         """Advance ischemia toward the supply shortfall; saturation is in percent.
 
@@ -184,8 +185,9 @@ class CoronaryModel:
         severity = clamp01((max(self.ischemia, hypoxia) - 0.5) / 0.5)
         # Cold cardioplegic protection sustains ~90-120 min cross-clamp tolerance at 28 °C
         # (LCOS rises above 90 min in Al-Sarraf 2011; mortality jumps past 150 min in Nissinen 2009),
-        # while hypothermic non-cardioplegic arrest slows ATP depletion with Q10.
-        depletion_scale = clamp(0.064 * temp_q10, 0.015, 0.12) if cardioplegia_arrest else temp_q10
+        # while incomplete coverage (e.g., antegrade delivery behind severe CAD) leaves residual depletion.
+        prot_scale = 1.0 + 2.2 * (1.0 - clamp01(cardioplegia_protection))
+        depletion_scale = clamp(0.064 * temp_q10 * prot_scale, 0.015, 0.40) if cardioplegia_arrest else temp_q10
         if severity > 0.0 or self.energy_reserve < 1.0:
             self.energy_reserve = clamp01(
                 self.energy_reserve

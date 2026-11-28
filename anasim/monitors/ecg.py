@@ -48,18 +48,22 @@ def _t_wave(preceding_rr_s: float, wide: float) -> tuple[float, float]:
 
 
 def displayed_rhythm(
-    rhythm: RhythmType, conduction_failure: float, sodium_block: float = 0.0, *, hr: float | None = None,
+    rhythm: RhythmType, conduction_failure: float, sodium_block: float = 0.0,
+    *, hr: float | None = None, magnesium_block: float = 0.0,
+    paced_mode: str = "off", paced_capture: bool = False,
 ) -> str:
-    """Observed rhythm with ischemic slowing, sodium-channel block, or treated bradycardia."""
+    """Observed rhythm with ischemic slowing, sodium/magnesium conduction block, pacing, or treated bradycardia."""
+    if paced_capture and paced_mode != "off":
+        return f"Paced ({paced_mode.upper()})"
     if rhythm in (RhythmType.VTACH, RhythmType.VFIB, RhythmType.ASYSTOLE):
         return rhythm.value
-    if sodium_block >= SILENT_BLOCK:
+    if sodium_block >= SILENT_BLOCK or magnesium_block >= SILENT_BLOCK:
         return RhythmType.ASYSTOLE.value
     if conduction_failure >= AGONAL_FAILURE:
         return "Agonal rhythm"
     if conduction_failure >= IDIOVENTRICULAR_FAILURE:
         return "Idioventricular rhythm"
-    if sodium_block >= 0.2:
+    if sodium_block >= 0.2 or magnesium_block >= 0.2:
         return "Wide-complex rhythm"
     if conduction_failure >= JUNCTIONAL_FAILURE and rhythm != RhythmType.AFIB:
         return "Junctional rhythm"
@@ -117,12 +121,18 @@ def st_analyzable_scale(
     conduction_failure: float,
     sodium_block: float = 0.0,
     hyperkalemia_block: float = 0.0,
+    magnesium_block: float = 0.0,
 ) -> float:
     """Fraction (0-1) of ischemic ST deviation analyzable on the surface ECG."""
     morphology = _MORPHOLOGIES.get(rhythm)
     if morphology is None or not morphology.t_amplitude:
         return 0.0
-    wide = max(_ramp(conduction_failure, _QRS_WIDENING), clamp01(sodium_block), clamp01(hyperkalemia_block))
+    wide = max(
+        _ramp(conduction_failure, _QRS_WIDENING),
+        clamp01(sodium_block),
+        clamp01(hyperkalemia_block),
+        clamp01(magnesium_block),
+    )
     return 1.0 - wide
 
 
@@ -163,6 +173,7 @@ class ECGMonitor:
         self._st_scale = 1.0
         self._vulnerable_window: tuple[float, float] | None = None
         self._shock_artifact_s = 0.0
+        self._last_pacing: tuple[bool, tuple[float, ...]] = (False, ())
 
     def trigger_shock_artifact(self) -> None:
         """Start a brief defibrillation discharge artifact and amplifier recovery transient."""
@@ -170,7 +181,8 @@ class ECGMonitor:
 
     def _place_beats(
         self, cycle: CardiacCycleSample, conduction_failure: float, sodium_block: float,
-        potassium: float = 4.0, hyperkalemia_block: float = 0.0,
+        potassium: float = 4.0, hyperkalemia_block: float = 0.0, magnesium_block: float = 0.0,
+        *, paced_wide_qrs: bool = False, pacing_spikes: tuple[float, ...] = (),
     ) -> None:
         """Lay out the previous, current and next beat around the current R peak."""
         if cycle.beat_started and self._rhythm is not None:
@@ -181,9 +193,22 @@ class ECGMonitor:
 
         morphology = _MORPHOLOGIES[cycle.rhythm_type]
         hyperk = 0.0 if cycle.rhythm_type == RhythmType.VTACH else clamp01(hyperkalemia_block)
-        p_scale = (1.0 - _ramp(conduction_failure, _P_FADE)) * (1.0 - clamp01(hyperk / 0.4))
-        pr_shift_s = 0.10 * clamp01(hyperk / 0.4)
-        ischemic_wide = max(_ramp(conduction_failure, _QRS_WIDENING), clamp01(sodium_block))
+        mg = 0.0 if cycle.rhythm_type == RhythmType.VTACH else clamp01(magnesium_block)
+        p_scale = (
+            (1.0 - _ramp(conduction_failure, _P_FADE))
+            * (1.0 - clamp01(hyperk / 0.4))
+            * (1.0 - clamp01((mg - 0.55) / 0.40))
+        )
+        if paced_wide_qrs and len(pacing_spikes) == 1:
+            # Ventricular-only (VVI/VOO) capture suppresses synchronized P waves.
+            p_scale = 0.0
+        pr_shift_s = max(0.10 * clamp01(hyperk / 0.4), 0.14 * clamp01(mg / 0.50))
+        ischemic_wide = max(
+            _ramp(conduction_failure, _QRS_WIDENING),
+            clamp01(sodium_block),
+            0.85 * mg,
+            0.65 if paced_wide_qrs else 0.0,
+        )
         qrs_wide = max(ischemic_wide, hyperk)
         peaked_t = clamp01((potassium - 5.3) / 2.2)
         rr_into_prev, rr_into_current, rr_to_next = self._rr_s
@@ -207,6 +232,12 @@ class ECGMonitor:
                 center = r_time + offset
                 cutoff = _WAVE_CUTOFF_SIGMAS * width
                 waves.append((center - cutoff, center + cutoff, center, amplitude, -0.5 / (width * width)))
+            for spike_offset in pacing_spikes:
+                # Sharp narrow vertical pacing artifact (2 ms sigma, ~1.4 mV biphasic spike).
+                s_center = r_time + spike_offset
+                s_width = 0.0025
+                s_cut = _WAVE_CUTOFF_SIGMAS * s_width
+                waves.append((s_center - s_cut, s_center + s_cut, s_center, 1.45, -0.5 / (s_width * s_width)))
         self._waves = waves
 
     def vulnerable(self, cycle: CardiacCycleSample) -> bool:
@@ -227,7 +258,11 @@ class ECGMonitor:
     def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,
              *, conduction_failure: float = 0.0, sodium_block: float = 0.0,
              potassium: float = 4.0, hyperkalemia_block: float = 0.0,
-             compression_phase: float | None = None) -> float:
+             magnesium_block: float = 0.0,
+             compression_phase: float | None = None,
+             paced_wide_qrs: bool = False,
+             pacing_spikes: tuple[float, ...] = (),
+             unpaced_spike: bool = False) -> float:
         """Advance timing and noise; return voltage (mV).
 
         compression_phase, 0-1 through each chest compression, adds compression artifact.
@@ -244,6 +279,8 @@ class ECGMonitor:
         if compression_phase is not None:
             angle = 2.0 * math.pi * compression_phase
             artifact += _COMPRESSION_ARTIFACT_MV * (math.sin(angle) + 0.3 * math.sin(2.0 * angle + 0.5))
+        if unpaced_spike:
+            artifact += 1.45
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE or (rhythm_type != RhythmType.VFIB and not cycle.organized):
             self._rhythm = None
@@ -256,8 +293,13 @@ class ECGMonitor:
             val = amplitude * (self._vf_main.step(dt, self.rng) + 0.5 * self._vf_slow.step(dt, self.rng))
             return shock_spike if shock_spike is not None else val + self.rng.random() * 0.10 - 0.05 + artifact
 
-        if cycle.beat_started or rhythm_type != self._rhythm:
-            self._place_beats(cycle, conduction_failure, sodium_block, potassium, hyperkalemia_block)
+        pacing_key = (bool(paced_wide_qrs), tuple(pacing_spikes))
+        if cycle.beat_started or rhythm_type != self._rhythm or pacing_key != self._last_pacing:
+            self._last_pacing = pacing_key
+            self._place_beats(
+                cycle, conduction_failure, sodium_block, potassium, hyperkalemia_block, magnesium_block,
+                paced_wide_qrs=paced_wide_qrs, pacing_spikes=pacing_spikes,
+            )
 
         if shock_spike is not None:
             return shock_spike

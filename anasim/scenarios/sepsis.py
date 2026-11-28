@@ -11,6 +11,7 @@ from .base import (
     ScenarioStep,
     action_taken_in_case,
     create_observe_step,
+    equilibrate_maintenance_fio2,
     patient_stable,
     preroll_scenario,
     require_all,
@@ -33,7 +34,8 @@ _PRE_LACTATE_ADD_MMOL_L = 1.4
 
 
 def _prepare_septic_patient(engine) -> None:
-    """Arrive in the OR already septic: febrile, mildly volume-depleted, and hyperlactatemic."""
+    """Arrive in the OR already septic: febrile, mildly volume-depleted, and hyperlactatemic on ~45% air/O₂."""
+    equilibrate_maintenance_fio2(engine, target_fio2=0.45, min_air_l_min=1.2, air_vo2_factor=4.5)
     engine.state.temp_c = max(engine.state.temp_c, 38.5)
     leak_ml = _PRE_LEAK_FRACTION * engine.hemo.blood_volume_0
     engine.hemo.blood_volume -= leak_ml
@@ -143,7 +145,9 @@ def create_sepsis_response() -> Scenario:
             instruction=(
                 "If <b>MAP < 65 mmHg</b>, start or adjust <b>norepinephrine</b> in mcg/min "
                 "(0.05-0.1 mcg/kg/min = 3.5-7 mcg/min for 70 kg) and titrate to pressure and perfusion. "
-                "Start pressors alongside fluids in severe hypotension; skip this if pressure has already recovered."
+                "Start pressors alongside fluids in severe hypotension; skip this if pressure has already recovered.<br><br>"
+                "<i>For escalating norepinephrine requirements, add vasopressin (0.03-0.04 U/min) and consider "
+                "stress-dose hydrocortisone.</i>"
             ),
             check_requirements=require_vasopressor_if_hypotensive(
                 "nore", fail_message="Start or adjust norepinephrine for persistent hypotension",
@@ -157,7 +161,8 @@ def create_sepsis_response() -> Scenario:
             instruction=(
                 "Select <b>Request surgical source control</b> and maintain hemodynamic support; "
                 "vasoplegia persists after drainage.<br><br>"
-                "<i>Draw blood cultures without delaying broad-spectrum antibiotics, ideally within 1 hour.</i>"
+                "<i>Confirm broad-spectrum intraoperative antibiotics are infused and redosed appropriately, "
+                "and obtain intraoperative cultures without delaying source control.</i>"
             ),
             check_requirements=require_source_control,
         ),
@@ -192,7 +197,7 @@ def create_sepsis_response() -> Scenario:
         events=(
             CaseEvent(
                 "sepsis_decompensation", _DECOMPENSATION_AT_S,
-                "The surgeon drains a purulent intra-abdominal collection.",
+                "The surgeon enters a contaminated abdomen with purulent peritonitis and tissue manipulation.",
                 start,
             ),
             CaseEvent(

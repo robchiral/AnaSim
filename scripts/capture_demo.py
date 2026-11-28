@@ -74,14 +74,15 @@ def give_bolus(page, name, amount):
 
 
 def induce(page):
-    give_bolus(page, "Propofol", 175)
-    start_infusion(page, "Propofol", 150)
+    give_bolus(page, "Propofol", 150)
+    start_infusion(page, "Propofol", 120)
 
 
 def begin_maintenance(page):
     # The objective opens Drugs to check the infusions; the flow is on Machine.
     page.click('.tabs [data-tab="Machine"]')
-    enter(page.locator("#c-o2"), 2)
+    enter(page.locator("#c-o2"), 1)
+    enter(page.locator("#c-air"), 1)
     page.locator(".fresh-gas-settings").get_by_role("button", name="Apply", exact=True).click()
     page.click('.tabs [data-tab="Medications"]')
     if int(page.text_content("#v-bis")) < 40:
@@ -106,10 +107,10 @@ def mask_ventilate(page):
 ACTIONS = {
     "APPLY_MASK": lambda page: page.click('#c-airway [data-value="Mask"]'),
     "SET_FGF_PREOX": preoxygenate,
-    "START_ANALGESIA": lambda page: start_infusion(page, "Remifentanil", 0.2),
+    "START_ANALGESIA": lambda page: start_infusion(page, "Remifentanil", 0.15),
     "INDUCE": induce,
+    "GIVE_NMB": lambda page: give_bolus(page, "Rocuronium", 50),
     "MASK_VENTILATE": mask_ventilate,
-    "GIVE_NMB": lambda page: give_bolus(page, "Rocuronium", 42),
     "INTUBATE": lambda page: page.click('#c-airway [data-value="ETT"]'),
     "CONFIRM_ETT": lambda page: page.click("#c-vent-power"),
     "MAINTENANCE": begin_maintenance,

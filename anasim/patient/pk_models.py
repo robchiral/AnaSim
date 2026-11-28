@@ -4,9 +4,10 @@ Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
-lidocaine, amiodarone, dantrolene, rocuronium, succinylcholine, esmolol, and
-protamine, ng/mL for opioids, midazolam, vasoactive drugs other than
-vasopressin, atropine, labetalol, glycopyrrolate, and neostigmine, mU/L for vasopressin
+lidocaine, bupivacaine, ropivacaine, amiodarone, dantrolene, rocuronium,
+succinylcholine, esmolol, protamine, and methylene blue, ng/mL for opioids,
+midazolam, naloxone, flumazenil, vasoactive drugs other than vasopressin,
+atropine, labetalol, glycopyrrolate, and neostigmine, mU/L for vasopressin
 and insulin, and U/L for heparin.
 """
 
@@ -1130,7 +1131,89 @@ class AmiodaronePK(MammillaryPK):
         )
 
 
-class LidocainePK(MammillaryPK):
+class _EpiduralAbsorptionPK(MammillaryPK):
+    """Mammillary local anesthetic PK with dual fast/slow extravascular epidural depots.
+
+    Parallel biphasic epidural absorption follows Burm 1987, Emanuelsson 1997,
+    and Olofsen 2008. Absorption requires systemic perfusion (`circulation`) so
+    zero-flow arrest halts extravascular wash-in while conserving total drug mass.
+    """
+
+    _EPI_F_FAST: float = 0.30
+    _EPI_F_SLOW: float = 0.65
+    _EPI_T_HALF_FAST_MIN: float = 8.0
+    _EPI_T_HALF_SLOW_MIN: float = 240.0
+    _EPI_VASOCONSTRICTOR_SCALE: float = 0.65
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._epi_fast_mg = 0.0
+        self._epi_fast_epi_mg = 0.0  # Fast-pool fraction co-administered with epinephrine
+        self._epi_slow_mg = 0.0
+
+    @property
+    def epidural_depot_mg(self) -> float:
+        """Unabsorbed epidural local anesthetic mass remaining in mg."""
+        return self._epi_fast_mg + self._epi_fast_epi_mg + self._epi_slow_mg
+
+    def add_epidural_dose(self, dose_mg: float, *, with_epinephrine: bool = False) -> None:
+        """Deposit an extravascular epidural dose (mg) into the biphasic absorption pools."""
+        if dose_mg <= 0.0:
+            return
+        fast = dose_mg * self._EPI_F_FAST
+        slow = dose_mg * self._EPI_F_SLOW
+        if with_epinephrine:
+            self._epi_fast_epi_mg += fast
+        else:
+            self._epi_fast_mg += fast
+        self._epi_slow_mg += slow
+
+    def has_mass(self) -> bool:
+        return (
+            super().has_mass()
+            or self._epi_fast_mg > 1e-12
+            or self._epi_fast_epi_mg > 1e-12
+            or self._epi_slow_mg > 1e-12
+        )
+
+    def reset(self) -> None:
+        super().reset()
+        self._epi_fast_mg = 0.0
+        self._epi_fast_epi_mg = 0.0
+        self._epi_slow_mg = 0.0
+
+    def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
+        absorbed_rate = 0.0
+        if dt_sec > 0.0 and self.circulation > 0.0 and (
+            self._epi_fast_mg > 0.0 or self._epi_fast_epi_mg > 0.0 or self._epi_slow_mg > 0.0
+        ):
+            dt_eff_min = (dt_sec / 60.0) * self.circulation
+            k_fast = math.log(2.0) / self._EPI_T_HALF_FAST_MIN
+            k_slow = math.log(2.0) / self._EPI_T_HALF_SLOW_MIN
+            absorbed_mg = 0.0
+            if self._epi_fast_mg > 0.0:
+                df = self._epi_fast_mg * -math.expm1(-k_fast * dt_eff_min)
+                self._epi_fast_mg = max(0.0, self._epi_fast_mg - df)
+                if self._epi_fast_mg < 1e-12:
+                    self._epi_fast_mg = 0.0
+                absorbed_mg += df
+            if self._epi_fast_epi_mg > 0.0:
+                dfe = self._epi_fast_epi_mg * -math.expm1(-k_fast * self._EPI_VASOCONSTRICTOR_SCALE * dt_eff_min)
+                self._epi_fast_epi_mg = max(0.0, self._epi_fast_epi_mg - dfe)
+                if self._epi_fast_epi_mg < 1e-12:
+                    self._epi_fast_epi_mg = 0.0
+                absorbed_mg += dfe
+            if self._epi_slow_mg > 0.0:
+                ds = self._epi_slow_mg * -math.expm1(-k_slow * dt_eff_min)
+                self._epi_slow_mg = max(0.0, self._epi_slow_mg - ds)
+                if self._epi_slow_mg < 1e-12:
+                    self._epi_slow_mg = 0.0
+                absorbed_mg += ds
+            absorbed_rate = absorbed_mg / dt_sec
+        return super().step(dt_sec, input_rate_per_sec + absorbed_rate)
+
+
+class LidocainePK(_EpiduralAbsorptionPK):
     """Foong et al. 2025 three-compartment model from surgical patients (mcg/mL).
 
     CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L for
@@ -1145,8 +1228,16 @@ class LidocainePK(MammillaryPK):
     and Tucker and Boas 1971, and V1 includes first-pass lung uptake. Foong's
     fluid effect on V2, postoperative clearance change, and metabolites are
     omitted. AnaSim sets ke0 so the analgesic site peaks 3 min after a bolus,
-    the best time to give it before intubation (Tam 1987).
+    the best time to give it before intubation (Tam 1987). Biphasic epidural
+    absorption parameters follow Burm 1987 (F1 0.38, t1/2 9.3 min; F2 0.58,
+    t1/2 82 min).
     """
+
+    _EPI_F_FAST = 0.38
+    _EPI_F_SLOW = 0.58
+    _EPI_T_HALF_FAST_MIN = 9.3
+    _EPI_T_HALF_SLOW_MIN = 82.0
+    _EPI_VASOCONSTRICTOR_SCALE = 0.60
 
     def __init__(self, patient: Patient):
         size = patient.weight / 70.0
@@ -1163,6 +1254,161 @@ class LidocainePK(MammillaryPK):
             ke0=0.6,
             # Cardiac and CNS sites with calibrated 30 s half-times.
             additional_effect_sites=(("ce_cv", math.log(2.0) / 0.5), ("ce_neuro", math.log(2.0) / 0.5)),
+        )
+
+
+class BupivacainePK(_EpiduralAbsorptionPK):
+    """Olofsen et al. 2008 arterial three-compartment bupivacaine PK (mcg/mL, input mg).
+
+    Anchored to the Olofsen 2008 arterial levobupivacaine/ropivacaine joint model
+    at age 50 (V1 6.85 L, CL 0.358 L/min, V2 11.8 L, Q2 1.04 L/min, V3 48.6 L,
+    Q3 0.356 L/min, Vdss 67.2 L, age exponents -0.193 on V1 and +0.579 on k12),
+    consistent with racemic bupivacaine disposition in Burm 1987 and Burm 1994
+    (Vdss 68-70 L, CL 0.36-0.52 L/min) and volunteer arterial peaks in Knudsen 1997.
+    Intermediate hepatic extraction scales with hepatic function and cardiac output
+    (cl1_co_exponent 0.45). Biphasic epidural absorption follows Burm 1987
+    (F1 0.28, t1/2 7.0 min; F2 0.66, t1/2 362 min).
+    """
+
+    _EPI_F_FAST = 0.28
+    _EPI_F_SLOW = 0.66
+    _EPI_T_HALF_FAST_MIN = 7.0
+    _EPI_T_HALF_SLOW_MIN = 362.0
+    _EPI_VASOCONSTRICTOR_SCALE = 0.68
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 70.0
+        lean_size = janmahasatian_ffm(patient.weight, patient.height, patient.sex == "male") / 56.1
+        age_ratio = clamp(patient.age, 20.0, 85.0) / 50.0
+        v1_age = age_ratio ** -0.193
+        k12_age = age_ratio ** 0.579
+        v1_ref = 6.85 * lean_size * v1_age
+        cl1 = 0.358 * (lean_size ** 0.75) * organ_clearance_scaler(patient, hepatic_fraction=0.90)
+        q2 = 6.85 * 0.152 * k12_age * (lean_size ** 0.75)
+        v2 = (6.85 * 0.152 / 0.0884) * lean_size
+        q3 = 6.85 * 0.0519 * (lean_size ** 0.75)
+        v3 = (6.85 * 0.0519 / 0.00732) * size
+        super().__init__(
+            v1=_pregnancy_v1(patient, v1_ref),
+            cl1=cl1,
+            v2=v2,
+            cl2=q2,
+            v3=v3,
+            cl3=q3,
+            ke0=math.log(2.0) / 0.5,
+            cl1_co_exponent=0.45,
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 0.5), ("ce_neuro", math.log(2.0) / 0.5)),
+        )
+
+
+class RopivacainePK(_EpiduralAbsorptionPK):
+    """Olofsen et al. 2008 arterial three-compartment ropivacaine PK (mcg/mL, input mg).
+
+    Uses the Olofsen 2008 arterial joint model at age 50 (V1 6.85 L, CL 0.358 L/min,
+    V2 11.8 L, Q2 1.04 L/min, V3 26.0 L, Q3 0.356 L/min, Vdss 44.6 L), matching
+    Lee 1989 (Vss 42 L) and Emanuelsson 1997 (arterial CL 0.338 L/min, Vss 36 L)
+    and Knudsen 1997 arterial concentrations. Biphasic epidural absorption is
+    calibrated between Emanuelsson 1997 (f1 0.52, t1/2 14 min; f2 0.48, t1/2 252 min)
+    and Olofsen 2008 (t1/2,a1 9.7 min, t1/2,a2 237 min).
+    """
+
+    _EPI_F_FAST = 0.44
+    _EPI_F_SLOW = 0.50
+    _EPI_T_HALF_FAST_MIN = 12.0
+    _EPI_T_HALF_SLOW_MIN = 240.0
+    _EPI_VASOCONSTRICTOR_SCALE = 0.72
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 70.0
+        lean_size = janmahasatian_ffm(patient.weight, patient.height, patient.sex == "male") / 56.1
+        age_ratio = clamp(patient.age, 20.0, 85.0) / 50.0
+        v1_age = age_ratio ** -0.193
+        k12_age = age_ratio ** 0.579
+        v1_ref = 6.85 * lean_size * v1_age
+        cl1 = 0.358 * (lean_size ** 0.75) * organ_clearance_scaler(patient, hepatic_fraction=0.90)
+        q2 = 6.85 * 0.152 * k12_age * (lean_size ** 0.75)
+        v2 = (6.85 * 0.152 / 0.0884) * lean_size
+        q3 = 6.85 * 0.0519 * (lean_size ** 0.75)
+        v3 = (6.85 * 0.0519 / 0.0137) * size
+        super().__init__(
+            v1=_pregnancy_v1(patient, v1_ref),
+            cl1=cl1,
+            v2=v2,
+            cl2=q2,
+            v3=v3,
+            cl3=q3,
+            ke0=math.log(2.0) / 0.5,
+            cl1_co_exponent=0.45,
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 0.5), ("ce_neuro", math.log(2.0) / 0.5)),
+        )
+
+
+class NaloxonePK(MammillaryPK):
+    """Yassen et al. 2007b arterial two-compartment naloxone PK (ng/mL, input mcg).
+
+    From 44 healthy volunteers (Table III): V1 12.1 L, V2 102 L (Vdss 114.1 L),
+    CL 3.45 L/min, Q2 4.74 L/min (elimination t1/2 ~33 min), and biophase ke0
+    0.106 min^-1 (t1/2,ke0 6.5 min). Rapid brain entry and short plasma half-life
+    match Ngai 1976 and Dowling 2008, producing fast opioid reversal with risk
+    of renarcotization after long-acting agonists. Clearance is predominantly
+    hepatic glucuronidation and high-extraction flow-dependent.
+    """
+
+    def __init__(self, patient: Patient):
+        lean_size = _lean_weight_kg(patient) / 70.0
+        super().__init__(
+            v1=_pregnancy_v1(patient, 12.1 * lean_size),
+            v2=102.0 * lean_size,
+            cl1=3.45 * (lean_size ** 0.75) * organ_clearance_scaler(patient, hepatic_fraction=0.95),
+            cl2=4.74 * (lean_size ** 0.75),
+            ke0=0.106,
+            cl1_co_exponent=0.7,
+        )
+
+
+class FlumazenilPK(MammillaryPK):
+    """Two-compartment IV flumazenil PK grounded in Roncari 1986 and Klotz 1988 (ng/mL, input mcg).
+
+    Matches Roncari 1986 pooled IV estimates in healthy men (CLp 15.5 mL/min/kg =
+    1.085 L/min at 70 kg, Vss 1.06 L/kg = 74 L, t1/2,z 53 min, <0.1% unchanged
+    renal excretion) with rapid central equilibration (ke0 1.4 min^-1, t1/2 ~30 s)
+    reproducing the 30-48 s clinical arousal and 1-2 h duration of 2.5 mg IV
+    reported in Klotz and Kanto 1988.
+    """
+
+    def __init__(self, patient: Patient):
+        lean_size = _lean_weight_kg(patient) / 70.0
+        super().__init__(
+            v1=_pregnancy_v1(patient, 22.0 * lean_size),
+            v2=52.0 * lean_size,
+            cl1=1.085 * (lean_size ** 0.75) * organ_clearance_scaler(patient, hepatic_fraction=0.98),
+            cl2=2.0 * (lean_size ** 0.75),
+            ke0=1.4,
+            cl1_co_exponent=0.7,
+        )
+
+
+class MethyleneBluePK(MammillaryPK):
+    """Calibrated two-compartment IV methylene blue PK (mcg/mL, input mg).
+
+    Calibrated so a 1-2 mg/kg IV dose (Guay 2009) drives erythrocyte
+    NADPH-methemoglobin reductase clearance substantially over 1-2 h while
+    capturing transient plasma dye peak and multi-hour elimination.
+    """
+
+    def __init__(self, patient: Patient):
+        lean_size = _lean_weight_kg(patient) / 70.0
+        clearance_scale, renal_fraction = renal_capacity_scaling(
+            patient, 0.35, hepatic_fraction=0.65,
+        )
+        super().__init__(
+            v1=_pregnancy_v1(patient, 18.0 * lean_size),
+            v2=90.0 * lean_size,
+            cl1=0.35 * (lean_size ** 0.75) * clearance_scale,
+            cl2=1.1 * (lean_size ** 0.75),
+            ke0=0.35,
+            renal_fraction=renal_fraction,
+            cl1_co_exponent=0.4,
         )
 
 

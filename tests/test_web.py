@@ -1109,3 +1109,129 @@ def test_web_vent_withdrawal_cpb_reinfusion_mask_zero_and_sga_feedback():
     assert res_before > 100.0
     cmd(cpb, "extracorporeal_stop")
     assert cpb.engine.hemo.patient_blood_volume > bv_before + 100.0
+
+
+def test_web_extended_toxicity_reversals_magnesium_and_methemoglobinemia():
+    """Verify UI drug filtering, LAST/MetHb events, MgSO4 commands, ABG analytes, and LAST safety warnings."""
+    s = WebSession({**PATIENT, "mode": "awake"})
+    info = parse(s.info())
+    drug_keys = {d["key"] for d in info["drugs"]}
+    assert {"naloxone", "flumazenil", "methylene_blue"} <= drug_keys
+    assert "bupivacaine" not in drug_keys and "ropivacaine" not in drug_keys
+    controls0 = s.snapshot()["controls"]
+    assert "bupivacaine" not in controls0["drugs"] and "ropivacaine" not in controls0["drugs"]
+
+    # Magnesium bolus and infusion commands + ABG magnesium field.
+    cmd(s, "run", running=True)
+    mg_res = cmd(s, "magnesium_sulfate", grams=4.0)
+    assert "Magnesium sulfate 4 g given" in mg_res["medication"]["text"]
+    mg_rate = cmd(s, "magnesium_rate", g_hr=2.0)
+    assert "2 g/hr" in mg_rate["medication"]["text"]
+    run_seconds(s, 90)
+    snap_mg = s.snapshot()
+    assert snap_mg["controls"]["magnesium"]["rate"] == pytest.approx(2.0)
+    assert snap_mg["controls"]["magnesium"]["serum_mmol_l"] > 1.2
+    abg_mg = cmd(s, "blood_gas")["blood_gas"]
+    assert abg_mg["magnesium"] > 1.2 and abg_mg["methb_pct"] == pytest.approx(0.0)
+
+    # LAST crisis trigger -> safety warning on vasopressin/flumazenil/high-dose epi -> clear.
+    cmd(s, "last_crisis", active=True, drug="bupivacaine")
+    run_seconds(s, 20)
+    assert s.snapshot()["controls"]["last_crisis"]["active"] is True
+    vaso_fb = cmd(s, "drug_bolus", key="vaso", amount=40.0)
+    assert vaso_fb["feedback"]["code"] == "vasopressin_in_last"
+    flum_fb = cmd(s, "drug_bolus", key="flumazenil", amount=0.2)
+    assert flum_fb["feedback"]["code"] == "flumazenil_in_last"
+    cmd(s, "last_crisis", active=False)
+    assert s.snapshot()["controls"]["last_crisis"]["active"] is False
+
+    # Methemoglobinemia trigger -> ABG methb_pct -> clear.
+    cmd(s, "methemoglobinemia", active=True, agent="benzocaine")
+    run_seconds(s, 60)
+    snap_mh = s.snapshot()
+    assert snap_mh["controls"]["methemoglobinemia"]["active"] is True
+    assert snap_mh["controls"]["methemoglobinemia"]["methb_pct"] > 5.0
+    abg_mh = cmd(s, "blood_gas")["blood_gas"]
+    assert abg_mh["methb_pct"] > 5.0
+    cmd(s, "methemoglobinemia", active=False)
+    assert s.snapshot()["controls"]["methemoglobinemia"]["active"] is False
+
+    # Ropivacaine neuraxial bolus works via WebSession.
+    ropi_res = cmd(s, "neuraxial_epidural_bolus", drug="ropivacaine", volume_ml=10.0, concentration_pct=0.5)
+    assert "ropivacaine" in ropi_res["medication"]["text"]
+
+    # Case mode blocks instructor last_crisis and methemoglobinemia event commands.
+    case = WebSession({"scenario_id": "last_crisis"})
+    for ev_name in ("last_crisis", "methemoglobinemia"):
+        with pytest.raises(ValueError, match="Case events are controlled by the case"):
+            cmd(case, ev_name, active=True)
+
+
+def test_web_gas_supply_resuscitation_cardioplegia_and_transfusion_round_trips():
+    """Verify WebSession commands and snapshot fields for gas supply, pacing, shock energy,
+    CPR quality, CPB cannulas/cardioplegia, PRBC storage age, plasma products, and coag panels.
+    """
+    s = WebSession({**PATIENT, "mode": "steady_state"})
+    s.engine.config.dt = 0.5
+    cmd(s, "run", running=True)
+
+    # 1. Gas supply pipelines, backup E-cylinders, and ventilator drive gas
+    cmd(s, "gas_pipeline", gas="o2", connected=False)
+    cmd(s, "gas_cylinder", gas="o2", valve_open=True)
+    cmd(s, "vent_drive", mode="electric")
+    gs = s.snapshot()["controls"]["gas_supply"]
+    assert gs["o2_pipeline"] is False
+    assert gs["o2_cylinder_open"] is True
+    assert gs["o2_source"] == "cylinder"
+    assert gs["vent_drive_mode"] == "electric"
+    cmd(s, "gas_cylinder", gas="o2", replace=True)
+    cmd(s, "gas_pipeline", gas="o2", connected=True)
+
+    # 2. Pacing, variable shock energy, and CPR quality
+    cmd(s, "pacing", mode="vvi", route="transcutaneous", rate_bpm=95, output_ma=80)
+    run_seconds(s, 3)
+    pm = s.snapshot()["controls"]["pacemaker"]
+    assert pm["mode"] == "vvi" and pm["rate"] == 95 and pm["output_ma"] == 80
+    cmd(s, "pacing", mode="off")
+
+    cmd(s, "defib_energy", energy_j=360)
+    assert s.snapshot()["controls"]["defibrillator"]["energy_j"] == 360
+    cmd(s, "charge_defibrillator")
+    run_seconds(s, 8)
+    assert s.snapshot()["controls"]["defibrillator"]["status"] == "ready"
+    cmd(s, "disarm_defibrillator")
+
+    cmd(s, "cpr_quality", rate=120, depth_cm=6.0, recoil_percent=80)
+    cq = s.snapshot()["controls"]["cpr_quality"]
+    assert cq == {"rate": 120, "depth_cm": 6.0, "recoil": 80}
+
+    # 3. Transfusion products, PRBC storage age, and coagulation panel
+    res_prbc = cmd(s, "fluid", kind="blood", volume_ml=300, storage_days=42)
+    assert "42 d" in res_prbc["fluid"]["text"]
+    assert "FFP" in cmd(s, "fluid", kind="ffp", volume_ml=250)["fluid"]["text"]
+    assert "platelets" in cmd(s, "fluid", kind="platelets", volume_ml=250)["fluid"]["text"]
+    assert "cryoprecipitate" in cmd(s, "fluid", kind="cryoprecipitate", volume_ml=100)["fluid"]["text"]
+    coag = cmd(s, "coag_panel")["coag_panel"]
+    assert coag["inr"] == pytest.approx(1.0, abs=0.05)
+    assert coag["ready_at"] == pytest.approx(coag["drawn_at"] + 120.0)
+    assert len(parse(s.info())["coag_panels"]) == 1
+
+    # 4. CPB cannulas and Buckberg / del Nido cardioplegia commands
+    cmd(s, "extracorporeal_start", mode="cpb", blood_flow=4.5, sweep_gas=3.0, arterial_fr=20, venous_fr=32)
+    cmd(s, "extracorporeal_settings", cross_clamp=True, arterial_fr=18)
+    cpg_res = cmd(s, "cardioplegia_dose", protocol="del_nido", route="retrograde", phase="induction")
+    assert "del Nido" in cpg_res["fluid"]["text"]
+    run_seconds(s, 10)
+    ec = s.snapshot()["controls"]["extracorporeal"]
+    assert ec["arterial_fr"] == 18
+    assert ec["cardioplegia_protocol"] == "del_nido"
+    assert ec["cardioplegia_route"] == "retrograde"
+    assert ec["cardioplegia_active"] is True
+    assert ec["arterial_line_pressure"] > 100
+    cmd(s, "cardioplegia_stop")
+    assert s.snapshot()["controls"]["extracorporeal"]["cardioplegia_active"] is False
+
+    # 5. Case mode blocks gas_pipeline fault injection.
+    case = WebSession({"scenario_id": "oxygen_supply_failure"})
+    with pytest.raises(ValueError, match="Case events are controlled by the case"):
+        cmd(case, "gas_pipeline", gas="air", connected=False)

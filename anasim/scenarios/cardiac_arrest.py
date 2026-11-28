@@ -16,6 +16,7 @@ from .base import (
     Scenario,
     ScenarioStep,
     create_observe_step,
+    equilibrate_maintenance_fio2,
     infusion_running,
     require_all,
     require_etco2_above,
@@ -26,6 +27,11 @@ from .base import (
     stability_outcome,
     tracheal_ventilation_confirmed,
 )
+
+
+def _prepare_cardiac_arrest(engine) -> None:
+    """Start on routine intraoperative air/O₂ (~45% FiO₂) so switching to 100% O₂ is meaningful."""
+    equilibrate_maintenance_fio2(engine, target_fio2=0.45, min_air_l_min=1.2, air_vo2_factor=4.5)
 
 EVENT = "ventricular_fibrillation"
 _ANESTHETIC_INFUSIONS = ("propofol", "remi", "fentanyl", "midazolam", "ketamine", "etomidate")
@@ -138,27 +144,26 @@ def _start_compressions_instruction(engine) -> str:
             "<i>Judge CPR quality with capnography: EtCO₂ below 10 mmHg suggests poor flow.</i>"
         )
     return (
-        f"{recognition} Call for help and the defibrillator, stop all anesthetic agents, "
-        "and start <b>chest compressions</b> immediately. Set <b>100% oxygen</b> "
-        "(O₂ 10 L/min, air and N₂O 0 L/min in Machine) and ventilate at about 10 breaths/min.<br><br>"
+        f"{recognition} Call for help and the defibrillator, pause surgery (desufflate if laparoscopic), "
+        "stop all anesthetic agents, and start <b>chest compressions</b> immediately.<br><br>"
+        "Set <b>100% O₂</b> (10 L/min, air and N₂O 0) and ventilate at <b>~10/min with low PEEP (0-5 cmH₂O)</b>.<br><br>"
         f"{feedback}"
     )
 
 
 def _continue_cycles_instruction(engine) -> str:
     rosc_cue = (
-        "An organized rhythm with arterial pulsations and a sudden EtCO₂ rise indicates "
-        "return of circulation."
+        "An organized rhythm with arterial pulsations and a sudden EtCO₂ jump indicates ROSC."
         if engine.config.arterial_line_enabled
-        else "An organized rhythm with a returning pulse and a sudden EtCO₂ rise indicates "
-        "return of circulation."
+        else "An organized rhythm with a returning pulse and a sudden EtCO₂ jump indicates ROSC."
     )
     return (
-        "Check rhythm every 2 minutes, shock persistent VF, and resume compressions immediately. "
-        "Give <b>epinephrine 1 mg</b> (1000 mcg) after the second shock and every 3-5 minutes. "
-        "After the third shock, give <b>amiodarone 300 mg</b> or <b>lidocaine 1-1.5 mg/kg</b> "
-        "(repeat amiodarone 150 mg or lidocaine 0.5-0.75 mg/kg if VF persists).<br><br>"
-        f"<i>{rosc_cue} VF can recur after a successful shock.</i>"
+        "Run full <b>2-minute CPR cycles</b> between shocks rather than stacking shocks. "
+        "Give <b>epinephrine 1 mg</b> (1000 mcg) after the 2nd shock and every 3-5 min. "
+        "After the 3rd shock, give <b>amiodarone 300 mg</b> (raise from the 150 mg default) or "
+        "<b>lidocaine 1-1.5 mg/kg</b>.<br><br>"
+        f"<i>{rosc_cue} Search for intraoperative reversible causes (hemorrhage, hypoxia, hyperkalemia, "
+        "tension pneumothorax, PE/VAE, anaphylaxis, LAST, high spinal, tamponade, ischemia).</i>"
     )
 
 
@@ -230,6 +235,7 @@ def create_cardiac_arrest() -> Scenario:
     return Scenario(
         id="cardiac_arrest",
         name="Cardiac arrest",
+        setup_engine=_prepare_cardiac_arrest,
         briefing=CRISIS_BRIEFING,
         steps=steps,
         events=(CaseEvent(EVENT, CRISIS_ONSET_S, "The ECG changes abruptly and the pulse is lost.", _start),),

@@ -28,6 +28,16 @@ class LungAeration:
     INDUCTION_ATELECTASIS = 0.25  # Left by preoxygenation and apnea at induction
     OPENING_WIDTH = 4.5  # cmH2O; logistic pressure response, Rothen 1993
     OPENING_RATE = 1.0 / 2.6  # /s; CT reopening time constant at 40 cmH2O, Rothen 1999
+    # Low-pressure reversible small-airway / poorly-aerated compartment
+    # (Pelosi 1999 P_flex,L; Maisch 2008 pre-RM PEEP compliance gain; Reinius 2009
+    # poorly-aerated -500..-100 HU shift without clearing dense CT atelectasis;
+    # Bates and Irvin 2002 separate static opening > closing pressures).
+    SMALL_AIRWAY_OPEN_PRESSURE = 14.5  # cmH2O; inspiratory reopening threshold
+    SMALL_AIRWAY_OPEN_WIDTH = 1.1  # cmH2O; logistic slope across ZEEP-to-PEEP5 plateau
+    SMALL_AIRWAY_CLOSE_PRESSURE = 5.0  # cmH2O; end-expiratory closure threshold
+    SMALL_AIRWAY_OPEN_RATE = 0.30  # /s above opening pressure
+    SMALL_AIRWAY_CLOSE_RATE = 0.019  # /s at zero distending pressure
+    SMALL_AIRWAY_COMPLIANCE_WEIGHT = 0.21  # Compliance share in normal-BMI adults
     # Gas-dependent closure calibrated to Rothen 1995.
     ABSORPTION_RATE = 0.02  # /s at zero distending pressure without inert gas
     INERT_GAS_PROTECTION = 9.0  # Aggregate gas effect
@@ -81,6 +91,10 @@ class LungAeration:
         self.closing_pressure = 5.0 + 0.30 * max(0.0, patient.bmi - 25.0)
         self.bulk_closing_pressure = 5.0
         bmi_factor = clamp01((patient.bmi - 30.0) / 20.0)
+        self.small_airway_open = 1.0
+        self.small_airway_open_pressure = self.SMALL_AIRWAY_OPEN_PRESSURE + 0.14 * max(0.0, patient.bmi - 25.0)
+        self.small_airway_close_pressure = self.SMALL_AIRWAY_CLOSE_PRESSURE + 0.06 * max(0.0, patient.bmi - 25.0)
+        self.small_airway_compliance_weight = self.SMALL_AIRWAY_COMPLIANCE_WEIGHT + 0.08 * bmi_factor
         self.min_recruited = self.MIN_RECRUITED
         self.max_atelectatic = (1.0 - self.MIN_RECRUITED) + 0.22 * bmi_factor
         self.atelectasis_shunt = self.ATELECTASIS_SHUNT + 0.10 * bmi_factor
@@ -158,6 +172,31 @@ class LungAeration:
         if rate > 0.0:
             equilibrium = (opening * target + spontaneous * spontaneous_cap + closing * minimum) / rate
             self.recruited = equilibrium + (self.recruited - equilibrium) * math.exp(-rate * self.elapsed)
+        # Low-pressure small-airway reopening/closure responds to PEEP 0-10 cmH2O
+        # without clearing dense CT atelectatic shunt (Maisch 2008; Reinius 2009).
+        s_open_frac = 1.0 / (
+            1.0 + math.exp((self.small_airway_open_pressure - pressure) / self.SMALL_AIRWAY_OPEN_WIDTH)
+        )
+        s_open = self.SMALL_AIRWAY_OPEN_RATE * s_open_frac if s_open_frac > 0.02 else 0.0
+        s_awake = 0.015 * (1.0 - self.unconscious) if awake_active else 0.0
+        if pressure < self.small_airway_close_pressure and self.unconscious > 0.0:
+            s_close = (
+                self.SMALL_AIRWAY_CLOSE_RATE
+                * self.unconscious
+                * (self.small_airway_close_pressure - pressure)
+                / self.small_airway_close_pressure
+            )
+        else:
+            s_close = 0.0
+        s_min = 1.0 - self.unconscious
+        if self.small_airway_open <= s_min:
+            s_close = 0.0
+        s_rate = s_open + s_awake + s_close
+        if s_rate > 0.0:
+            s_eq = (s_open * 1.0 + s_awake * 1.0 + s_close * s_min) / s_rate
+            self.small_airway_open = clamp01(
+                s_eq + (self.small_airway_open - s_eq) * math.exp(-s_rate * self.elapsed)
+            )
         # Gas composition changes shunt separately from bulk compliance (Rothen 1995).
         closed_target = self.max_atelectatic * (1.0 - fraction)
         s = self.persistent_share
@@ -229,9 +268,12 @@ class LungAeration:
     @property
     def static_compliance(self) -> float:
         """Low-inflation compliance at the current aeration, L/cmH2O."""
-        return self.reference_compliance * self.aerated / (
-            self.REFERENCE_RECRUITED * max(0.2, self.chest_wall_stiffness)
-        )
+        non_dense = (1.0 - self.flooded) * (1.0 - clamp01(self.pleural_collapse))
+        if non_dense <= 0.0:
+            return 0.0
+        dense_scale = ((self.recruited / self.REFERENCE_RECRUITED) ** 0.45) * non_dense
+        low_p_scale = 1.0 - self.small_airway_compliance_weight * (1.0 - self.small_airway_open)
+        return self.reference_compliance * dense_scale * low_p_scale / max(0.2, self.chest_wall_stiffness)
 
     def static_mechanics(self, volume: float) -> tuple[float, float]:
         """Static recoil and tangent compliance at an absolute gas volume (L)."""

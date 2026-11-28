@@ -42,8 +42,10 @@ const bloodGasRows = [
   ["K⁺", "mmol/L", "potassium", (value) => value.toFixed(1), "3.5–5.0", 3.5, 5.0],
   ["Cl⁻", "mmol/L", "chloride", (value) => value.toFixed(0), "98–107", 98, 107],
   ["Ionized Ca²⁺", "mmol/L", "ionized_calcium", (value) => value.toFixed(2), "1.15–1.30", 1.15, 1.30],
+  ["Mg²⁺", "mmol/L", "magnesium", (value) => value.toFixed(2), "0.70–1.05", 0.70, 1.05],
   ["Glucose", "mg/dL", "glucose", (value) => value.toFixed(0), "70–140", 70, 140],
   ["SaO₂", "%", "sao2", (value) => value.toFixed(1), "≥95", 95, null],
+  ["MetHb", "%", "methb_pct", (value) => value.toFixed(1), "<1.5", null, 1.5],
   ["Hb", "g/dL", "hb", (value) => value.toFixed(1), "12.0–17.5", 12.0, 17.5],
   ["FiO₂", "%", "fio2", (value) => (value * 100).toFixed(0), "—", null, null],
 ];
@@ -79,6 +81,10 @@ const ISO_DRUG_CLASS = {
   lipid: "rescue",
   calcium_chloride: "rescue",
   sodium_bicarbonate: "rescue",
+  magnesium_sulfate: "rescue",
+  naloxone: "reversal",
+  flumazenil: "reversal",
+  methylene_blue: "rescue",
   heparin: "local",
   protamine: "reversal",
   insulin: "rescue",
@@ -118,15 +124,26 @@ const medicationGroups = [
   { name: "Antiarrhythmics", keys: ["lidocaine", "amiodarone"], open: false },
   { name: "Anticoagulation and reversal", keys: ["heparin", "protamine"], open: false },
   { name: "Endocrine and metabolic", keys: ["insulin", "d50w", "d10w"], open: false },
-  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"], open: false },
+  {
+    name: "Rescue and antidotes",
+    keys: [
+      "dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate",
+      "magnesium_sulfate", "naloxone", "flumazenil", "methylene_blue",
+    ],
+    open: false,
+  },
 ];
-const neuraxialSearchText = "neuraxial anesthesia spinal epidural bupivacaine lidocaine block level";
+const neuraxialSearchText = "neuraxial anesthesia spinal epidural bupivacaine ropivacaine lidocaine block level";
 const medicationSearchTerms = {
   neostigmine: "reversal anticholinesterase prostigmin",
   dantrolene: "malignant hyperthermia MH",
-  lipid: "local anesthetic systemic toxicity LAST",
-  calcium_chloride: "hypocalcemia hyperkalemia CaCl2",
+  lipid: "local anesthetic systemic toxicity LAST bupivacaine ropivacaine",
+  calcium_chloride: "hypocalcemia hyperkalemia hypermagnesemia MgSO4 CaCl2",
   sodium_bicarbonate: "NaHCO3 bicarb 8.4% acidosis hyperkalemia LAST toxicity alkalinization",
+  magnesium_sulfate: "MgSO4 eclampsia preeclampsia torsades hypermagnesemia",
+  naloxone: "narcan opioid reversal overdose rigidity respiratory depression",
+  flumazenil: "romazicon benzodiazepine midazolam reversal",
+  methylene_blue: "methemoglobinemia MetHb benzocaine prilocaine antidote",
   heparin: "UFH anticoagulation ACT CPB ECMO",
   protamine: "heparin reversal ACT CPB",
   insulin: "regular hyperglycemia hyperkalemia glucose diabetes",
@@ -145,6 +162,8 @@ export class Controls {
     this.shownBloodGases = null;
     this.acts = [...(info.acts ?? [])];
     this.shownActs = null;
+    this.coagPanels = [...(info.coag_panels ?? [])];
+    this.shownCoagPanels = null;
     this.glucoses = [...(info.glucoses ?? [])];
     this.shownGlucoses = null;
     this.time = 0;
@@ -164,9 +183,11 @@ export class Controls {
     $("clinical-feedback-dismiss").onclick = () => this.send("dismiss_feedback");
     this.bindTabs();
     this.bindMachine();
+    this.bindGasSupply();
     this.buildDrugs(info.drugs);
     this.bindFluids(info.patient.weight);
     this.bindResuscitation();
+    this.bindPacemaker();
     this.bindExtracorporeal();
     this.bindAirwayTools();
     this.bindNeuraxial();
@@ -356,12 +377,70 @@ export class Controls {
     $("c-pinsp-label").textContent = mode === "PSV" ? "Backup Pinsp" : "Pinsp";
   }
 
+  bindGasSupply() {
+    const module = $("gas-supply-module");
+    if (!module) return;
+    module.open = false;
+    module.ontoggle = () => this.onViewChanged?.();
+    const drive = $("c-vent-drive");
+    if (drive) drive.onchange = () => this.send("vent_drive", { mode: drive.value });
+    for (const gas of ["o2", "air", "n2o"]) {
+      const valve = $(`c-${gas}-cyl-valve`);
+      if (valve) {
+        valve.onclick = () => this.send("gas_cylinder", {
+          gas,
+          valve_open: !this.state?.gas_supply?.[`${gas}_cylinder_open`],
+        });
+      }
+      const swap = $(`c-${gas}-cyl-replace`);
+      if (swap) swap.onclick = () => this.performAction(swap, "gas_cylinder", { gas, replace: true });
+    }
+  }
+
+  syncGasSupply(gs) {
+    const module = $("gas-supply-module");
+    if (!module || !gs) return;
+    const summary = $("gas-supply-summary");
+    if (summary) {
+      const tags = [];
+      if (!gs.o2_pipeline) tags.push(gs.o2_source === "cylinder" ? "O₂ cyl" : "O₂ lost");
+      if (!gs.air_pipeline) tags.push("Air lost");
+      if (!gs.n2o_pipeline) tags.push("N₂O lost");
+      if (!gs.vent_drive_available) tags.push("Drive lost");
+      summary.hidden = tags.length === 0;
+      setText(summary, tags.join(" · "));
+    }
+    const readout = $("c-gas-supply-readout");
+    if (readout) {
+      const parts = [
+        `O₂ Pipe ${Math.round(gs.o2_pipeline_psig ?? 0)} psig`,
+        `Cyl ${Math.round(gs.o2_cylinder_psig ?? 0)} psig (${Math.round(gs.o2_cylinder_l ?? 0)} L)`,
+        `Air ${Math.round(gs.air_pipeline_psig ?? 0)}`,
+        `N₂O ${Math.round(gs.n2o_pipeline_psig ?? 0)}`,
+      ];
+      if ((gs.vent_drive_l_min ?? 0) > 0) parts.push(`Drive ${gs.vent_drive_l_min.toFixed(1)} L/min`);
+      setText(readout, parts.join(" · "));
+      readout.className = "ecmo-readout" + ((!gs.o2_pipeline || !gs.vent_drive_available) ? " bad" : "");
+    }
+    const drive = $("c-vent-drive");
+    if (drive && gs.vent_drive_mode) setValue(drive, gs.vent_drive_mode);
+    for (const [gas, label] of [["o2", "O₂"], ["air", "Air"], ["n2o", "N₂O"]]) {
+      const valve = $(`c-${gas}-cyl-valve`);
+      if (valve) {
+        const open = Boolean(gs[`${gas}_cylinder_open`]);
+        setPressed(valve, open, open ? `Close ${label} cylinder` : `Open ${label} cylinder`);
+      }
+    }
+  }
+
   // --- Medications --------------------------------------------------
 
   buildDrugs(drugs) {
     const container = $("drug-cards");
     const lipid = $("lipid-controls");
     lipid.open = false;
+    const magnesium = $("magnesium-controls");
+    if (magnesium) magnesium.open = false;
     container.replaceChildren();
     $("running-infusion-list").replaceChildren();
     $("running-infusions").hidden = true;
@@ -576,13 +655,25 @@ export class Controls {
     this.medicationRows.set("lipid", {
       card: lipid, name: `Lipid emulsion 20% ${medicationSearchTerms.lipid}`, feedback: $("c-lipid-feedback"),
     });
+    if (magnesium) {
+      this.medicationRows.set("magnesium_sulfate", {
+        card: magnesium,
+        name: `Magnesium sulfate 50% ${medicationSearchTerms.magnesium_sulfate}`,
+        feedback: $("c-magnesium-feedback"),
+      });
+    }
     for (const group of this.medicationGroups) {
       const groupLower = group.name.toLowerCase();
+      let present = 0;
       for (const key of group.keys) {
         const row = this.medicationRows.get(key);
+        if (!row) continue;
         row.searchText = `${row.name.toLowerCase()} ${groupLower}`;
         group.section.append(row.card);
+        present += 1;
       }
+      const countEl = group.section.querySelector?.(".group-count");
+      if (countEl) countEl.textContent = String(present);
     }
     for (const button of document.querySelectorAll("[data-sugammadex]")) {
       button.onclick = () => this.performAction(button, "sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
@@ -611,6 +702,7 @@ export class Controls {
       let groupMatches = false;
       for (const key of group.keys) {
         const row = this.medicationRows.get(key);
+        if (!row) continue;
         const matches = !query || row.searchText.includes(query);
         row.card.hidden = !matches;
         groupMatches ||= matches;
@@ -736,12 +828,40 @@ export class Controls {
       const result = await this.performAction($("c-lipid-stop"), "lipid_rate", { ml_min: 0 });
       if (!this.destroyed && result !== undefined) lipidEditor.cancel();
     };
+    const mgBolus = $("c-magnesium-bolus");
+    const mgGive = $("c-magnesium-give");
+    const mgRate = $("c-magnesium-rate");
+    const mgStop = $("c-magnesium-stop");
+    if ($("c-magnesium-feedback")) $("c-magnesium-feedback").hidden = true;
+    if (mgBolus) mgBolus.value = "2";
+    if (mgGive && mgBolus) {
+      mgGive.onclick = () => {
+        if (mgBolus.reportValidity && !mgBolus.reportValidity()) return;
+        return this.performAction(mgGive, "magnesium_sulfate", { grams: readNumber(mgBolus) });
+      };
+    }
+    if (mgRate) {
+      const mgEditor = this.editSettings(
+        [mgRate], () => this.send("magnesium_rate", { g_hr: readNumber(mgRate) }), $("c-magnesium-actions"),
+      );
+      if (mgStop) {
+        mgStop.onclick = async () => {
+          const result = await this.performAction(mgStop, "magnesium_rate", { g_hr: 0 });
+          if (!this.destroyed && result !== undefined) mgEditor.cancel();
+        };
+      }
+    }
     $("fluid-feedback").hidden = true;
     for (const button of document.querySelectorAll("[data-fluid]")) {
       button.onclick = async () => {
-        const result = await this.performAction(button, "fluid", {
-          kind: button.dataset.fluid, volume_ml: Number(button.dataset.volume),
-        });
+        const kind = button.dataset.fluid;
+        const payload = { kind, volume_ml: Number(button.dataset.volume) };
+        if (kind === "blood") {
+          const ageEl = $("c-prbc-age");
+          const days = ageEl ? Number(ageEl.value) : 21;
+          if (Number.isFinite(days) && days !== 21) payload.storage_days = days;
+        }
+        const result = await this.performAction(button, "fluid", payload);
         if (this.destroyed || result === undefined) return;
         const feedback = $("fluid-feedback");
         setText(feedback, result.fluid.text);
@@ -757,6 +877,28 @@ export class Controls {
 
   bindResuscitation() {
     $("c-compressions").onclick = () => this.send("compressions", { active: !this.state.compressions.active });
+    const cprMod = $("cpr-quality-module");
+    if (cprMod) {
+      cprMod.open = false;
+      cprMod.ontoggle = () => this.onViewChanged?.();
+    }
+    const cprBox = $("c-cpr-settings");
+    const cprFields = ["c-cpr-rate", "c-cpr-depth", "c-cpr-recoil"].map($).filter(Boolean);
+    if (cprBox && cprFields.length === 3) {
+      this.editSettings(
+        cprFields,
+        () => this.send("cpr_quality", {
+          rate: readNumber($("c-cpr-rate")),
+          depth_cm: readNumber($("c-cpr-depth")),
+          recoil_percent: readNumber($("c-cpr-recoil")),
+        }),
+        cprBox,
+      );
+    }
+    const defibEnergy = $("c-defib-energy");
+    if (defibEnergy) {
+      defibEnergy.onchange = () => this.send("defib_energy", { energy_j: Number(defibEnergy.value) });
+    }
     this.synchronized = false;
     this.lastShockTime = null;
     this.lastDefibStatus = "idle";
@@ -785,12 +927,75 @@ export class Controls {
     };
   }
 
+  bindPacemaker() {
+    const module = $("pacemaker-module");
+    if (!module) return;
+    module.open = false;
+    module.ontoggle = () => this.onViewChanged?.();
+    const mode = $("c-pace-mode");
+    const route = $("c-pace-route");
+    if (mode) mode.onchange = () => this.send("pacing", { mode: mode.value });
+    if (route) route.onchange = () => this.send("pacing", { route: route.value });
+    const box = $("c-pace-settings");
+    const paceFields = ["c-pace-rate", "c-pace-output"].map($).filter(Boolean);
+    if (box && paceFields.length === 2) {
+      this.editSettings(
+        paceFields,
+        () => this.send("pacing", {
+          rate_bpm: readNumber($("c-pace-rate")),
+          output_ma: readNumber($("c-pace-output")),
+        }),
+        box,
+      );
+    }
+  }
+
+  syncPacemaker(pm) {
+    const module = $("pacemaker-module");
+    if (!module || !pm) return;
+    const active = pm.mode !== "off";
+    const summary = $("pacemaker-summary");
+    if (summary) {
+      summary.hidden = !active;
+      if (active) {
+        const cap = pm.capture ? "Capture" : pm.inhibited ? "Inhibited" : "No capture";
+        setText(summary, `${pm.mode.toUpperCase()} ${Math.round(pm.rate)}/min · ${cap}`);
+      }
+    }
+    if ($("c-pace-mode")) setValue($("c-pace-mode"), pm.mode);
+    if ($("c-pace-route")) setValue($("c-pace-route"), pm.route);
+    if ($("c-pace-rate")) setValue($("c-pace-rate"), Math.round(pm.rate));
+    if ($("c-pace-output")) setValue($("c-pace-output"), round(pm.output_ma, 1));
+    const readout = $("c-pace-readout");
+    if (readout) {
+      readout.hidden = !active;
+      if (active) {
+        const stateText = pm.capture
+          ? "Electrical & mechanical capture"
+          : pm.inhibited
+            ? "Sensing intrinsic rhythm (inhibited)"
+            : "Failure to capture";
+        const extra = pm.async_competition ? " · Async R-on-T competition" : "";
+        setText(readout, `${stateText} · Threshold ~${pm.threshold_ma.toFixed(0)} mA${extra}`);
+      }
+    }
+  }
+
   syncDefibrillator(defibrillator) {
     const status = defibrillator.status;
+    const energy = defibrillator.energy_j ?? 200;
+    const chargeTime = Math.max(0.5, defibrillator.charge_time_s ?? 5);
     const lastShock = defibrillator.last_shock;
     const shockDelivered = Boolean(lastShock && lastShock.time !== this.lastShockTime);
     const defibModule = $("defib-module");
     if (defibModule?.dataset) defibModule.dataset.status = status;
+    const energyLabel = $("c-defib-energy-label");
+    if (energyLabel) setText(energyLabel, `${energy} J biphasic`);
+    const energySelect = $("c-defib-energy");
+    if (energySelect) {
+      setValue(energySelect, String(energy));
+      energySelect.disabled = status !== "idle";
+    }
     const syncButtons = (this.syncButtons ??= [...$("c-sync").querySelectorAll("button")]);
     if (defibrillator.synchronized || status === "waiting_for_r") {
       this.synchronized = true;
@@ -809,13 +1014,13 @@ export class Controls {
     const chargeBar = $("defib-charge-bar");
     if (chargeBar?.style) {
       const fill = status === "idle" ? 0
-        : status === "charging" ? Math.min(100, Math.max(8, (1 - defibrillator.charge_remaining / 5) * 100))
+        : status === "charging" ? Math.min(100, Math.max(8, (1 - defibrillator.charge_remaining / chargeTime) * 100))
         : 100;
       chargeBar.style.setProperty("--fill", `${fill.toFixed(0)}%`);
     }
     setText($("c-defibrillator-status"), status === "charging"
       ? `Charging, ${Math.ceil(Math.max(0, defibrillator.charge_remaining - 1e-6))} s remaining`
-      : { idle: "Not charged", ready: "Ready, 200 J", waiting_for_r: "Waiting for an R wave" }[status]);
+      : { idle: "Not charged", ready: `Ready, ${energy} J`, waiting_for_r: "Waiting for an R wave" }[status]);
     setText($("c-charge"), status === "idle" ? "Charge" : "Disarm");
     $("c-shock").disabled = status !== "ready";
     for (const button of syncButtons) {
@@ -858,6 +1063,7 @@ export class Controls {
     const fields = [
       "c-ecmo-flow", "c-ecmo-sweep", "c-ecmo-fio2", "c-ecmo-water",
       "c-ecmo-lv-vent", "c-ecmo-sevo", "c-ecmo-venous-clamp", "c-ecmo-bg-strategy",
+      "c-ecmo-art-fr", "c-ecmo-ven-fr",
     ].map($).filter(Boolean);
     if (settingsBox && fields.length) {
       this.ecmoEditor = this.editSettings(fields, () => {
@@ -874,6 +1080,8 @@ export class Controls {
         addNum("c-ecmo-sweep", "sweep_gas", ec.sweep, 2);
         addNum("c-ecmo-fio2", "fio2_percent", ec.fio2, 0);
         addNum("c-ecmo-water", "water_target_c", ec.water_target_c, 1);
+        if (ec.arterial_fr !== undefined) addNum("c-ecmo-art-fr", "arterial_fr", ec.arterial_fr, 0);
+        if (ec.venous_fr !== undefined) addNum("c-ecmo-ven-fr", "venous_fr", ec.venous_fr, 0);
         if (ec.mode === "va_ecmo") addNum("c-ecmo-lv-vent", "lv_vent", ec.lv_vent, 2);
         if (ec.mode === "cpb") {
           addNum("c-ecmo-sevo", "sweep_sevo", ec.sevo, 1);
@@ -904,6 +1112,26 @@ export class Controls {
         cardioplegia: !this.state?.extracorporeal?.cardioplegia,
       });
     }
+    const cpgGive = $("c-cpg-give");
+    if (cpgGive) {
+      cpgGive.onclick = async () => {
+        const result = await this.performAction(cpgGive, "cardioplegia_dose", {
+          protocol: $("c-cpg-protocol")?.value ?? "buckberg",
+          route: $("c-cpg-route")?.value ?? "antegrade",
+          phase: $("c-cpg-phase")?.value ?? "induction",
+        });
+        if (this.destroyed || result === undefined) return;
+        const feedback = $("ecmo-fluid-feedback") ?? $("fluid-feedback");
+        if (feedback && result.fluid?.text) {
+          setText(feedback, result.fluid.text);
+          feedback.hidden = false;
+          clearTimeout(this.ecmoFluidFeedbackTimer);
+          this.ecmoFluidFeedbackTimer = setTimeout(() => { feedback.hidden = true; }, 6000);
+        }
+      };
+    }
+    const cpgStop = $("c-cpg-stop");
+    if (cpgStop) cpgStop.onclick = () => this.performAction(cpgStop, "cardioplegia_stop");
     const alarmMode = $("c-cpb-alarm-mode");
     if (alarmMode) {
       alarmMode.onclick = () => this.send("extracorporeal_settings", {
@@ -1055,15 +1283,17 @@ export class Controls {
     }
     if (spinalDrug && spinalDose) {
       spinalDrug.onchange = () => {
-        spinalDose.value = spinalDrug.value === "lidocaine" ? "50" : "12.5";
+        spinalDose.value = spinalDrug.value === "lidocaine" ? "50"
+          : spinalDrug.value === "ropivacaine" ? "15" : "12.5";
       };
     }
     if (epiDrug && epiConc) {
       const syncEpiDrugConc = () => {
         const isLido = epiDrug.value === "lidocaine";
+        const isRopi = epiDrug.value === "ropivacaine";
         epiConc.value = isLido ? "2" : "0.5";
         const rateLabel = $("c-epidural-rate-label");
-        if (rateLabel) setText(rateLabel, `Epidural infusion (${isLido ? "0.5" : "0.125"}%)`);
+        if (rateLabel) setText(rateLabel, `Epidural infusion (${isLido ? "0.5" : isRopi ? "0.2" : "0.125"}%)`);
       };
       epiDrug.onchange = syncEpiDrugConc;
       syncEpiDrugConc();
@@ -1099,7 +1329,7 @@ export class Controls {
         const result = await this.performAction(epiRateApply, "neuraxial_epidural_rate", {
           ml_hr: readNumber(epiRate),
           drug,
-          concentration_pct: drug === "lidocaine" ? 0.5 : 0.125,
+          concentration_pct: drug === "lidocaine" ? 0.5 : drug === "ropivacaine" ? 0.2 : 0.125,
         });
         if (!this.destroyed && result !== undefined) this.epiduralRateDraft = false;
       };
@@ -1264,6 +1494,8 @@ export class Controls {
     setValue($("c-ecmo-sweep"), round(ec.sweep, 2));
     setValue($("c-ecmo-fio2"), round(ec.fio2, 0));
     setValue($("c-ecmo-water"), round(ec.water_target_c, 1));
+    if ($("c-ecmo-art-fr") && ec.arterial_fr !== undefined) setValue($("c-ecmo-art-fr"), Math.round(ec.arterial_fr));
+    if ($("c-ecmo-ven-fr") && ec.venous_fr !== undefined) setValue($("c-ecmo-ven-fr"), Math.round(ec.venous_fr));
     if ($("c-ecmo-lv-vent") && ec.lv_vent !== undefined) setValue($("c-ecmo-lv-vent"), round(ec.lv_vent, 2));
     if ($("c-ecmo-sevo") && ec.sevo !== undefined) setValue($("c-ecmo-sevo"), round(ec.sevo, 1));
     if ($("c-ecmo-venous-clamp") && ec.venous_clamp !== undefined) setValue($("c-ecmo-venous-clamp"), round(ec.venous_clamp, 0));
@@ -1281,6 +1513,22 @@ export class Controls {
         setPressed($("c-cpb-cardioplegia"), ec.cardioplegia,
           ec.cardioplegia ? "Stop cardioplegia" : "Start cardioplegia");
       }
+      if ($("c-cpg-stop")) $("c-cpg-stop").hidden = !ec.cardioplegia_active;
+      const cpgReadout = $("c-cpg-readout");
+      if (cpgReadout) {
+        const showCpg = Boolean(ec.cross_clamp || ec.cardioplegia || ec.cardioplegia_active || (ec.cardioplegia_protection ?? 0) > 0);
+        cpgReadout.hidden = !showCpg;
+        if (showCpg) {
+          const cpgParts = [
+            `Protection ${Math.round(ec.cardioplegia_protection ?? 0)}%`,
+            `Myo ${(ec.myocardial_temp_c ?? 37).toFixed(1)} °C`,
+          ];
+          if ((ec.cardioplegia_redose_due_s ?? 0) > 0) cpgParts.push(`Redose ${minutesSeconds(ec.cardioplegia_redose_due_s)}`);
+          if ((ec.cs_pressure ?? 0) > 0) cpgParts.push(`CS ${Math.round(ec.cs_pressure)} mmHg${ec.cs_high ? " (HIGH)" : ""}`);
+          if (ec.cardioplegia_breakthrough) cpgParts.push("Electrical breakthrough");
+          setText(cpgReadout, cpgParts.join(" · "));
+        }
+      }
     }
     const readout = $("ecmo-readout");
     if (readout) {
@@ -1289,10 +1537,13 @@ export class Controls {
         `Sweep ${ec.sweep.toFixed(1)} L/min`,
         `FiO₂ ${Math.round(ec.fio2)}%`,
       ];
+      if ((ec.arterial_line_pressure ?? 0) > 0) {
+        parts.push(`Line ${Math.round(ec.arterial_line_pressure)} mmHg${ec.arterial_line_high ? " (HIGH)" : ""}`);
+      }
       if ((isVV || isVA) && ec.pre_so2 !== undefined) parts.push(`Pre-O₂ SvO₂ ${Math.round(ec.pre_so2)}%`);
       if (isCPB) parts.push(`Reservoir ${Math.round(ec.reservoir_ml)} mL${ec.reservoir_low ? " (LOW)" : ""}`);
       setText(readout, parts.join(" · "));
-      readout.className = "ecmo-readout" + (ec.reservoir_low ? " bad" : "");
+      readout.className = "ecmo-readout" + ((ec.reservoir_low || ec.arterial_line_high || ec.cs_high) ? " bad" : "");
     }
   }
 
@@ -1321,6 +1572,15 @@ export class Controls {
         this.showActs();
       };
     }
+    const coagBtn = $("c-coag-panel");
+    if (coagBtn) {
+      coagBtn.onclick = async () => {
+        const result = await this.performAction(coagBtn, "coag_panel");
+        if (this.destroyed || result === undefined) return;
+        (this.coagPanels ??= []).push(result.coag_panel);
+        this.showCoagPanels();
+      };
+    }
     const glucoseBtn = $("c-glucose");
     if (glucoseBtn) {
       glucoseBtn.onclick = async () => {
@@ -1332,7 +1592,56 @@ export class Controls {
     }
     this.showBloodGases();
     this.showActs();
+    this.showCoagPanels();
     this.showGlucoses();
+  }
+
+  showCoagPanels() {
+    if (!this.coagPanels) return;
+    const status = $("coag-pending");
+    const container = $("coag-results");
+    if (!status || !container) return;
+    const ready = this.coagPanels.filter((result) => result.ready_at <= this.time);
+    const pending = this.coagPanels.length - ready.length;
+    status.hidden = pending === 0;
+    if (pending > 0) {
+      const next = minutesSeconds(Math.ceil(this.coagPanels[ready.length].ready_at - this.time));
+      setText(status, pending === 1 ? `Result in ${next}` : `${pending} samples running; next result in ${next}`);
+    }
+    if (ready.length === this.shownCoagPanels) return;
+    this.shownCoagPanels = ready.length;
+    container.hidden = ready.length === 0;
+    const table = container.querySelector?.("table");
+    if (!table) return;
+    const addCell = (text, flag) => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      if (flag) {
+        td.className = flag === "H" ? "abg-high" : "abg-low";
+        const badge = document.createElement("span");
+        badge.className = "abg-flag";
+        badge.textContent = flag;
+        td.append(badge);
+      }
+      return td;
+    };
+    const newest = [...ready].reverse();
+    table.tBodies[0].replaceChildren(...newest.map((result) => {
+      const row = document.createElement("tr");
+      const timeCell = document.createElement("th");
+      timeCell.scope = "row";
+      timeCell.textContent = minutesSeconds(result.drawn_at);
+      const inrText = result.inr == null ? "—" : result.inr.toFixed(2);
+      const fibText = result.fibrinogen_g_l == null ? "—" : result.fibrinogen_g_l.toFixed(2);
+      const pltText = result.platelets_10e9_l == null ? "—" : String(Math.round(result.platelets_10e9_l));
+      row.append(
+        timeCell,
+        addCell(inrText, result.inr != null && result.inr > 1.3 ? "H" : ""),
+        addCell(fibText, result.fibrinogen_g_l != null && result.fibrinogen_g_l < 1.5 ? "L" : ""),
+        addCell(pltText, result.platelets_10e9_l != null && result.platelets_10e9_l < 100 ? "L" : ""),
+      );
+      return row;
+    }));
   }
 
   showGlucoses() {
@@ -1500,6 +1809,15 @@ export class Controls {
       return [section.dataset.event, { section, summary, output: summary.querySelector("output") }];
     }));
     $("c-o2-supply").onclick = () => this.send("oxygen_supply", { connected: !this.state.o2_connected });
+    for (const gas of ["o2", "air", "n2o"]) {
+      const pipeBtn = $(`c-${gas}-pipeline`);
+      if (pipeBtn) {
+        pipeBtn.onclick = () => this.send("gas_pipeline", {
+          gas,
+          connected: !this.state?.gas_supply?.[`${gas}_pipeline`],
+        });
+      }
+    }
 
     const profiles = $("c-disturbance");
     profiles.replaceChildren(new Option("Off", ""));
@@ -1594,6 +1912,20 @@ export class Controls {
         active: !(this.state?.neuraxial?.active && this.state?.neuraxial?.mode === "high_spinal"),
       });
     }
+    const lastCrisis = $("c-last-crisis");
+    if (lastCrisis) {
+      lastCrisis.onclick = () => this.send("last_crisis", {
+        active: !this.state?.last_crisis?.active,
+        drug: $("c-last-drug")?.value || "bupivacaine",
+      });
+    }
+    const methb = $("c-methb");
+    if (methb) {
+      methb.onclick = () => this.send("methemoglobinemia", {
+        active: !this.state?.methemoglobinemia?.active,
+        agent: $("c-methb-agent")?.value || "benzocaine",
+      });
+    }
     $("c-mh").onclick = () => this.send("malignant_hyperthermia", { active: !this.state.malignant_hyperthermia });
   }
 
@@ -1676,11 +2008,23 @@ export class Controls {
     setText($("c-lipid-total"), c.lipid.rate <= 0 && c.lipid.total_ml <= 0 ? ""
       : (c.lipid.rate > 0 ? `${round(c.lipid.rate)} mL/min, ` : "") + `${round(c.lipid.total_ml)} mL given`
         + (c.lipid.total_ml > this.lipidMaximum ? "; exceeds 12 mL/kg" : ""));
+    if (c.magnesium && $("c-magnesium-rate")) {
+      setValue($("c-magnesium-rate"), round(c.magnesium.rate));
+      if ($("c-magnesium-stop")) $("c-magnesium-stop").hidden = c.magnesium.rate <= 0;
+      if ($("c-magnesium-total")) {
+        const mgParts = [];
+        if (c.magnesium.rate > 0) mgParts.push(`${round(c.magnesium.rate)} g/hr`);
+        if (c.magnesium.total_g > 0) mgParts.push(`${round(c.magnesium.total_g)} g given`);
+        setText($("c-magnesium-total"), mgParts.join(", "));
+      }
+    }
     this.time = time;
     this.showBloodGases();
     this.showActs();
+    this.showCoagPanels();
     this.showGlucoses();
     this.showClinicalFeedback(c.clinical_feedback);
+    if (c.gas_supply) this.syncGasSupply(c.gas_supply);
 
     for (const button of (this.airwayButtons ??= [...$("c-airway").querySelectorAll("button")])) {
       setPressed(button, button.dataset.value === c.airway);
@@ -1727,7 +2071,16 @@ export class Controls {
     setPressed($("c-compressions"), compressions.active, compressions.active ? "Stop compressions" : "Start compressions");
     $("c-compressions-status").hidden = !compressions.active;
     if (compressions.active) setText($("c-compressions-status"), `Compressing for ${minutesSeconds(time - compressions.since)}`);
+    if (c.cpr_quality) {
+      if ($("c-cpr-summary")) {
+        setText($("c-cpr-summary"), `${Math.round(c.cpr_quality.rate)}/min · ${Number(c.cpr_quality.depth_cm).toFixed(1)} cm`);
+      }
+      if ($("c-cpr-rate")) setValue($("c-cpr-rate"), Math.round(c.cpr_quality.rate));
+      if ($("c-cpr-depth")) setValue($("c-cpr-depth"), round(c.cpr_quality.depth_cm, 1));
+      if ($("c-cpr-recoil")) setValue($("c-cpr-recoil"), Math.round(c.cpr_quality.recoil));
+    }
     this.syncDefibrillator(c.defibrillator);
+    if (c.pacemaker) this.syncPacemaker(c.pacemaker);
     if (c.extracorporeal) this.syncExtracorporeal(c.extracorporeal);
     if (c.airway_crisis) this.syncAirwayTools(c.airway_crisis, c.airway);
     if (c.neuraxial) this.syncNeuraxial(c.neuraxial);
@@ -1882,6 +2235,16 @@ export class Controls {
       const hsActive = Boolean(c.neuraxial.active && c.neuraxial.mode === "high_spinal");
       setPressed($("c-high-spinal"), hsActive, hsActive ? "Clear high spinal" : "Trigger high / total spinal");
     }
+    if ($("c-last-crisis") && c.last_crisis) {
+      const lastActive = Boolean(c.last_crisis.active);
+      setPressed($("c-last-crisis"), lastActive, lastActive ? "Clear LAST" : "Trigger LAST");
+      if ($("c-last-drug")) $("c-last-drug").disabled = lastActive;
+    }
+    if ($("c-methb") && c.methemoglobinemia) {
+      const mhActive = Boolean(c.methemoglobinemia.active);
+      setPressed($("c-methb"), mhActive, mhActive ? "Clear MetHb" : "Trigger MetHb");
+      if ($("c-methb-agent")) $("c-methb-agent").disabled = mhActive;
+    }
     setPressed($("c-mh"), c.malignant_hyperthermia,
       c.malignant_hyperthermia ? "Stop malignant hyperthermia" : "Start malignant hyperthermia");
 
@@ -1893,9 +2256,13 @@ export class Controls {
     if (c.embolism?.pe_active) circulation.push("Massive PE");
     if (c.embolism?.vae_active) circulation.push("Venous air embolism");
     if (c.neuraxial?.active && c.neuraxial?.mode === "high_spinal") circulation.push("High spinal");
+    if (c.last_crisis?.active) circulation.push("LAST");
     if (c.ecg_rhythm !== "Sinus rhythm") circulation.push(c.ecg_rhythm);
     this.syncEventSection("circulation", circulation);
-    this.syncEventSection("metabolism", c.malignant_hyperthermia ? ["Malignant hyperthermia"] : []);
+    const metabolism = [];
+    if (c.malignant_hyperthermia) metabolism.push("Malignant hyperthermia");
+    if (c.methemoglobinemia?.active) metabolism.push(`MetHb ${round(c.methemoglobinemia.methb_pct ?? 0, 0)}%`);
+    this.syncEventSection("metabolism", metabolism);
     const airway = [];
     if (c.obstruction > 0) airway.push(`Obstruction ${round(c.obstruction, 0)}%`);
     if (c.bronchospasm > 0) airway.push(`Bronchospasm ${round(c.bronchospasm, 0)}%`);
@@ -1912,6 +2279,16 @@ export class Controls {
     if (c.disturbance.active) stim.push($("c-disturbance").selectedOptions[0].text);
     if (c.pneumoperitoneum?.active) stim.push(`IAP ${round(c.pneumoperitoneum.iap, 0)} mmHg`);
     this.syncEventSection("stimulation", stim, Boolean(c.pneumoperitoneum?.active));
-    this.syncEventSection("equipment", c.o2_connected ? [] : ["O₂ supply disconnected"]);
+    const equip = [];
+    if (!c.o2_connected) equip.push("O₂ supply disconnected");
+    if (c.gas_supply) {
+      for (const [gas, label] of [["o2", "O₂"], ["air", "Air"], ["n2o", "N₂O"]]) {
+        const pipeBtn = $(`c-${gas}-pipeline`);
+        const ok = Boolean(c.gas_supply[`${gas}_pipeline`]);
+        if (pipeBtn) setPressed(pipeBtn, !ok, ok ? `Cut ${label} pipeline` : `Restore ${label} pipeline`);
+        if (!ok && !(gas === "o2" && !c.o2_connected)) equip.push(`${label} pipeline cut`);
+      }
+    }
+    this.syncEventSection("equipment", equip);
   }
 }

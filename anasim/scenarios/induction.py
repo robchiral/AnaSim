@@ -1,6 +1,7 @@
 """Adult general anesthesia inductions with volatile or TIVA maintenance."""
 
 from anasim.core.action_log import ACTION_DRUG_BOLUS, ACTION_TCI_TARGET
+from anasim.core.monitors import display_int
 from anasim.core.projection import loss_of_response
 
 from .base import (
@@ -109,7 +110,7 @@ def _preoxygenate() -> ScenarioStep:
         id="PREOXYGENATE",
         title="Preoxygenate",
         instruction=(
-            "Maintain a tight mask seal during tidal breathing until <b>end-tidal O₂ ≥ 90%</b>. "
+            "Maintain a tight mask seal during tidal breathing until <b>end-tidal O₂ ≥ 85%</b>. "
             "If wash-in stalls, check oxygen flow, mask seal, and ventilation; assist breathing if needed.<br><br>"
             "<i>Preoxygenation builds oxygen reserve before apnea.</i>"
         ),
@@ -118,15 +119,23 @@ def _preoxygenate() -> ScenarioStep:
     )
 
 
+def _require_loc(engine) -> tuple[bool, str]:
+    bis = monitor_value(engine, "bis")
+    if bis < 65.0 or loss_of_response(engine) >= 0.85:
+        return True, ""
+    shown_bis = max(int(display_int(bis)), 65)
+    return False, f"BIS: {shown_bis}/<65 (awaiting loss of consciousness)"
+
+
 def _confirm_loc() -> ScenarioStep:
     return ScenarioStep(
         id="CONFIRM_LOC",
         title="Confirm loss of consciousness",
         instruction=(
-            "Wait for <b>BIS < 60</b> before giving rocuronium.<br><br>"
-            "<i>At the bedside, confirm unresponsiveness clinically; apnea alone does not establish unconsciousness.</i>"
+            "Wait for clinical unresponsiveness (<b>BIS < 65</b>) before giving rocuronium.<br><br>"
+            "<i>At the bedside, confirm loss of eyelash reflex and response to command; apnea alone does not establish unconsciousness.</i>"
         ),
-        check_requirements=require_bis_below(60),
+        check_requirements=_require_loc,
     )
 
 
@@ -150,7 +159,7 @@ def _mask_ventilate() -> ScenarioStep:
         title="Mask ventilate",
         instruction=(
             "Set the <b>APL valve</b> to 20 cmH₂O, then select <b>Start bag ventilation</b>. "
-            "Confirm an EtCO₂ waveform and stable SpO₂, and keep ventilating until intubation.<br><br>"
+            "Confirm an EtCO₂ waveform and stable SpO₂, and ventilate gently while rocuronium takes effect.<br><br>"
             "<i>Verify chest rise and mask seal at the bedside.</i>"
         ),
         check_requirements=require_all(
@@ -167,8 +176,9 @@ def _give_rocuronium() -> ScenarioStep:
         id="GIVE_NMB",
         title="Give rocuronium",
         instruction=(
-            "Give <b>rocuronium 0.6 mg/kg</b> (42 mg for 70 kg) and continue mask ventilation "
-            "while the block develops."
+            "Give <b>rocuronium 0.6-0.8 mg/kg</b> (50 mg standard vial for 70 kg; 0.6 mg/kg = 42 mg) "
+            "once unconscious, and mask ventilate while the block develops.<br><br>"
+            "<i>Early neuromuscular blockade after confirming unconsciousness improves mask ventilation and avoids unnecessary delay before intubation.</i>"
         ),
         check_requirements=require_drug_bolus("roc", "Give the rocuronium bolus"),
         target_tab="Medications",
@@ -181,7 +191,8 @@ def _wait_for_paralysis() -> ScenarioStep:
         title="Assess neuromuscular block",
         instruction=(
             "Continue mask ventilation with <b>BIS < 60</b> until the <b>TOF count reaches 0-1</b>.<br><br>"
-            "<i>A TOF ratio requires four twitches. Intubating conditions also depend on anesthetic depth and muscle group.</i>"
+            "<i>The larynx and diaphragm paralyze faster than the adductor pollicis, so intubating conditions "
+            "may be adequate slightly before thumb TOF reaches 0. A TOF ratio requires four twitches.</i>"
         ),
         check_requirements=require_all(require_bis_below(60), require_tof_count_at_most(1)),
     )
@@ -240,14 +251,14 @@ def create_induction_balanced() -> Scenario:
             instruction=(
                 "Give <b>propofol 1.5-2.5 mg/kg</b> titrated to effect "
                 "(about 150 mg for 70 kg; reduce in older or hypotensive patients).<br><br>"
-                "<i>Lidocaine 20-40 mg IV beforehand can reduce injection pain.</i>"
+                "<i>Lidocaine 50-100 mg IV (1-1.5 mg/kg) beforehand reduces injection pain and blunts airway reflexes.</i>"
             ),
             check_requirements=require_drug_bolus("propofol", "Give the propofol induction bolus"),
             target_tab="Medications",
         ),
         _confirm_loc(),
-        _mask_ventilate(),
         _give_rocuronium(),
+        _mask_ventilate(),
         ScenarioStep(
             id="START_SEVO",
             title="Start sevoflurane",
@@ -303,13 +314,14 @@ def create_induction_tiva() -> Scenario:
             id="START_ANALGESIA",
             title="Start remifentanil",
             instruction=(
-                "Start remifentanil at <b>0.1-0.25 mcg/kg/min</b>. Support ventilation if needed.<br><br>"
-                "<i>The opioid blunts the response to laryngoscopy.</i>"
+                "Start remifentanil at <b>0.05-0.15 mcg/kg/min</b> just before or alongside propofol. "
+                "Watch for hypoventilation or chest-wall rigidity while awake.<br><br>"
+                "<i>The opioid blunts the response to laryngoscopy and lowers the propofol requirement.</i>"
             ),
             tci_instruction=(
-                "Start remifentanil at <b>TCI 2-4 ng/mL</b> or 0.1-0.25 mcg/kg/min. "
-                "Support ventilation if needed.<br><br>"
-                "<i>The opioid blunts the response to laryngoscopy.</i>"
+                "Start remifentanil at <b>TCI 2-4 ng/mL</b> (or 0.05-0.15 mcg/kg/min) just before or alongside propofol. "
+                "Watch for hypoventilation or chest-wall rigidity while awake.<br><br>"
+                "<i>The opioid blunts the response to laryngoscopy and lowers the propofol requirement.</i>"
             ),
             check_requirements=require_infusion_started(
                 "remi", fail_message="Start the remifentanil infusion"
@@ -321,8 +333,8 @@ def create_induction_tiva() -> Scenario:
             title="Induce",
             instruction=(
                 "Give <b>propofol 1.5-2.5 mg/kg</b> (about 150 mg for 70 kg; reduce in older or hypotensive patients) "
-                "and start an infusion at <b>100-200 mcg/kg/min</b>, titrated to effect.<br><br>"
-                "<i>Lidocaine 20-40 mg IV beforehand can reduce injection pain.</i>"
+                "and start a maintenance infusion at <b>75-150 mcg/kg/min</b>, titrated to effect.<br><br>"
+                "<i>Lidocaine 50-100 mg IV (1-1.5 mg/kg) beforehand reduces injection pain.</i>"
             ),
             tci_instruction=(
                 "Start propofol <b>TCI 4 µg/mL</b> (lower in older or hypotensive patients) and titrate to response. "
@@ -332,8 +344,8 @@ def create_induction_tiva() -> Scenario:
             target_tab="Medications",
         ),
         _confirm_loc(),
-        _mask_ventilate(),
         _give_rocuronium(),
+        _mask_ventilate(),
         _wait_for_paralysis(),
         _intubate(),
         _confirm_tube(),
@@ -343,11 +355,13 @@ def create_induction_tiva() -> Scenario:
             instruction=(
                 "Keep propofol and remifentanil running, titrated to <b>BIS 40-60</b> "
                 "(30-60 while the induction bolus clears) and <b>MAP ≥ 65 mmHg</b>. "
-                "Reduce fresh gas to <b>2 L/min</b> in Machine with at least 1 L/min O₂."
+                "Reduce fresh gas to <b>2 L/min</b> in Machine (for example, O₂ 1 L/min and air 1 L/min "
+                "to limit absorption atelectasis)."
             ),
             tci_instruction=(
                 "Keep propofol and remifentanil running, with <b>BIS 40-60</b> and <b>MAP ≥ 65 mmHg</b>. "
-                "Reduce fresh gas to <b>2 L/min</b> in Machine with at least 1 L/min O₂.<br><br>"
+                "Reduce fresh gas to <b>2 L/min</b> in Machine (for example, O₂ 1 L/min and air 1 L/min "
+                "to limit absorption atelectasis).<br><br>"
                 "<i>Typical targets: propofol 3-4 µg/mL, remifentanil 2-4 ng/mL.</i>"
             ),
             check_requirements=require_all(

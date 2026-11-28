@@ -537,3 +537,72 @@ def test_bronchospasm_hyperoxia_expands_low_vq_and_absorption_shunt(engine_facto
     rr89.set_bronchospasm(0.0)
     advance_time(rr89, 1200.0, dt=1.0)
     assert rr89.aeration.bronch_absorption_shunt < 0.005
+
+
+def test_low_pressure_peep_reopening_separates_small_airway_compliance_from_dense_ct_shunt(
+    engine_factory, advance_time,
+):
+    """Maisch 2008 / Pelosi 1999 / Reinius 2009: PEEP 0->5->10 reopens low-pressure
+    small airways and raises respiratory compliance before any high-pressure recruitment
+    maneuver without clearing dense CT atelectatic shunt; a 40 cmH2O RM still adds
+    post-RM compliance hysteresis and clears dense shunt; step-size invariant.
+    """
+    # 1. Pre-RM PEEP 0 -> 5 -> 10 vs post-RM PEEP 5 hysteresis (Maisch 2008)
+    eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True, age=45, weight=75.0, height=175.0, sex="male",
+    )
+    eng.set_fgf(1.5, 3.5)
+    eng.set_vent_settings(mode="VCV", rr=12.0, vt=0.50, peep=0.0, ie="1:2", p_max=50.0)
+    advance_time(eng, 180.0, dt=1.0)
+    c_zeep = eng.resp_mech.compliance
+    s_zeep = eng.aeration.small_airway_open
+
+    eng.set_vent_settings(mode="VCV", rr=12.0, vt=0.50, peep=5.0, ie="1:2", p_max=50.0)
+    advance_time(eng, 180.0, dt=1.0)
+    c_peep5_pre = eng.resp_mech.compliance
+    shunt_peep5_pre = eng.aeration.shunt_fraction
+    s_peep5 = eng.aeration.small_airway_open
+
+    assert s_peep5 > s_zeep + 0.35
+    assert c_peep5_pre > c_zeep * 1.12
+    # Dense CT atelectasis persists until high-pressure RM (Rothen 1993 / Reinius 2009)
+    assert eng.aeration.atelectatic > 0.15
+    assert shunt_peep5_pre > 0.03
+
+    # High-pressure RM (40 cmH2O for 20 s) recruits dense CT collapse and adds hysteresis at PEEP 5
+    for _ in range(20):
+        eng.aeration.advance(1.0, 40.0)
+    eng.set_vent_settings(mode="VCV", rr=12.0, vt=0.50, peep=5.0, ie="1:2", p_max=50.0)
+    advance_time(eng, 60.0, dt=1.0)
+    assert eng.aeration.atelectatic < 0.05
+    assert eng.aeration.shunt_fraction < shunt_peep5_pre * 0.4
+    assert eng.resp_mech.compliance > c_peep5_pre
+
+    # 2. Morbid obesity (Reinius 2009 / Pelosi 1999): PEEP 10 improves compliance but does not clear dense atelectasis
+    obese = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True, age=42, weight=132.0, height=170.0, sex="male",
+    )
+    obese.set_fgf(2.0, 3.0)
+    obese.set_vent_settings(mode="VCV", rr=12.0, vt=0.50, peep=0.0, ie="1:2", p_max=55.0)
+    advance_time(obese, 180.0, dt=1.0)
+    c_ob_zeep = obese.resp_mech.compliance
+    obese.set_vent_settings(mode="VCV", rr=12.0, vt=0.50, peep=10.0, ie="1:2", p_max=55.0)
+    advance_time(obese, 180.0, dt=1.0)
+    assert obese.resp_mech.compliance > c_ob_zeep * 1.10
+    assert obese.aeration.atelectatic > 0.15
+
+    # 3. Step-size invariance for small-airway opening and closure
+    fine = LungAeration(Patient(), recruited=0.9, atelectatic=0.25)
+    coarse = LungAeration(Patient(), recruited=0.9, atelectatic=0.25)
+    fine.unconscious = coarse.unconscious = 1.0
+    for dt_s, model in ((0.1, fine), (1.0, coarse)):
+        for _ in range(int(120.0 / dt_s)):
+            model.advance(dt_s, 1.0 * dt_s)
+        for _ in range(int(60.0 / dt_s)):
+            model.advance(dt_s, 18.0 * dt_s)
+        for _ in range(int(60.0 / dt_s)):
+            model.advance(dt_s, 1.0 * dt_s)
+    assert fine.small_airway_open == pytest.approx(coarse.small_airway_open, abs=1e-4)
+    assert fine.static_compliance == pytest.approx(coarse.static_compliance, rel=1e-4)

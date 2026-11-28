@@ -110,7 +110,8 @@ its clinical actions.
 | Midazolam | Albrecht 1999, with age-dependent distribution and effect-site equilibration; clearance scales with hepatic function |
 | Etomidate | Arden 1986, with age-dependent central volume and clearance; clearance scales with hepatic function (Van Hamme 1978) |
 | Ketamine | Kamp 2020, with hepatic clearance scaling, a cardiac-output effect site (S-ketamine equilibration in Kamp 2021 applied to racemic ketamine), and a faster calibrated heart-rate effect site |
-| Lidocaine | Foong 2025; cirrhosis enlarges volumes and lowers hepatic clearance (Thomson 1973) |
+| Lidocaine, bupivacaine, and ropivacaine | Lidocaine uses Foong 2025 (cirrhosis enlarges volumes and lowers hepatic clearance; Thomson 1973). Bupivacaine and ropivacaine use the Olofsen 2008 arterial three-compartment model (consistent with Burm 1987, 1994, Lee 1989, and Emanuelsson 1997) with biphasic epidural absorption pools slowed by co-administered epinephrine |
+| Naloxone, flumazenil, and methylene blue | Naloxone uses the Yassen 2007b arterial two-compartment model (consistent with Ngai 1976 and Dowling 2008); flumazenil uses a two-compartment model anchored to Roncari 1986 and Klotz and Kanto 1988; methylene blue uses a calibrated two-compartment model for erythrocyte methemoglobin reduction |
 | Amiodarone | Korth-Bradley 1996, with hepatic clearance scaling and separate effect sites for bolus vasodilation, contractility and rhythm conversion, and sinus slowing |
 | Rocuronium | Kleijn 2011, scaled toward ideal body weight in obesity (Meyhoff 2009); cirrhosis enlarges early distribution volumes (Khuenl-Brady and Sparr 1996; Magorian 1995) and lowers clearance (van Miert 1997), scaled with hepatic function |
 
@@ -794,22 +795,28 @@ after circulation stops).
 
 ### Chest compressions
 
-[Chest compressions](../anasim/physiology/resuscitation.py) at 110/min generate
-roughly a quarter of resting cardiac output when filling and vascular tone are
-normal, about a fifth under anesthesia, and very little after severe
-hemorrhage, with passive venous filling bypassing heart failure's flat upper
-Starling limb. Forward flow and vascular resistance set diastolic pressure
-between compressions, and each compression adds a pulse scaled by cardiac
-filling.
+[Chest compressions](../anasim/physiology/resuscitation.py) default to guideline
+quality (110/min, 5.5 cm depth, full chest recoil) and can be varied across rate
+(60 to 160/min), depth (2 to 7 cm), and recoil (0 to 1). At guideline defaults,
+compressions generate roughly a quarter of resting cardiac output when filling
+and vascular tone are normal, about a fifth under anesthesia, and very little
+after severe hemorrhage, with passive venous filling bypassing heart failure's
+flat upper Starling limb. Forward flow and vascular resistance set diastolic
+pressure between compressions, and each compression adds a pulse scaled by
+cardiac filling and compression depth. Slow or excessively rapid rates reduce
+output (Feneley 1988; Meaney 2013), shallow depth lowers output and EtCO₂
+(Sheak 2015), and incomplete chest-wall recoil (leaning) leaves residual
+intrathoracic pressure, elevates right atrial diastolic pressure, and reduces
+coronary perfusion pressure and forward flow (Yannopoulos 2005; Zuercher 2010).
 
 Coronary perfusion happens between compressions against venous, left atrial,
 and myocardial closing pressures. Myocardial energy recovers when arterial
 diastolic pressure exceeds about 25 mmHg, matching the CPR diastolic target in
 Meaney 2013 and exceeding the 15 mmHg coronary perfusion pressure threshold for
 return of spontaneous circulation in Paradis 1990 once right atrial pressure is
-subtracted. In an anesthetized adult, compressions produce roughly 70/25 mmHg
-and EtCO₂ around 15 to 20 mmHg, keeping VF coarse or converting fine VF back to
-coarse VF.
+subtracted. In an anesthetized adult, guideline compressions produce roughly
+70/25 mmHg and EtCO₂ around 15 to 20 mmHg, keeping VF coarse or converting fine
+VF back to coarse VF.
 
 Epinephrine raises arterial diastolic pressure (Kim 2025) and coronary
 perfusion pressure (canine CPR data in Michael 1984) during compressions, and
@@ -828,14 +835,18 @@ bupivacaine lipid resuscitation in Hiller 2009) or hyperkalemia (after calcium)
 can restart with compressions once the block clears. Interrupting compressions
 or losing perfusion resets the recovery interval.
 
-### Defibrillation and cardioversion
+### Defibrillation, cardioversion, and temporary pacing
 
-A first 200 J biphasic shock terminates VF roughly 9 times in 10 (Stiell 2007;
-Koster 2008), with lower calibrated success in fine VF, pulseless VT, or
-hypoxic arrest. Severe hypothermia and severe hyperkalemia sharply lower shock
-success until treated. Each shock causes mild contractile stunning that
-resolves over several minutes of coronary perfusion, calibrated from internal
-defibrillator shocks (Tokano 1998).
+Biphasic shock energy is selectable from 20 to 360 J (default 200 J), with
+energy- and BMI/impedance-dependent termination curves normalized to 200 J at
+normal BMI (Mittal 1999, 2000; Glover 2008; Stec 2011; Schmidt 2020). A first
+200 J biphasic shock terminates VF roughly 9 times in 10 (Stiell 2007; Koster
+2008), whereas lower energies drop steeply below 100 J for VF and across 70 to
+200 J for atrial fibrillation, especially in obesity; calibrated penalties apply
+in fine VF, pulseless VT, or hypoxic arrest. Severe hypothermia and severe
+hyperkalemia sharply lower shock success until treated. Each shock causes
+energy-scaled contractile stunning that resolves over several minutes of
+coronary perfusion, calibrated from internal defibrillator shocks (Tokano 1998).
 
 After brief VF, successful defibrillation returns directly to sinus rhythm, and
 arterial pressure recovers over 5 to 20 seconds (matching the post-VF pressure
@@ -855,10 +866,27 @@ asystole, or compression artifact. An unsynchronized shock that lands near the
 T-wave peak of an organized perfusing rhythm can trigger VF (about 15% of the
 time).
 
-Each shock requires a fresh 5-second charge (within the under-7-second
-specification) that expires after 60 seconds (ZOLL 2023). Compressions can
-continue while charging, and disarming cancels a charge or pending synchronized
-shock.
+Each shock requires a fresh energy-scaled charge (5 seconds at 200 J, within
+the under-7-second specification) that expires after 60 seconds (ZOLL 2023).
+Compressions can continue while charging, and disarming or changing energy
+cancels a charge or pending synchronized shock.
+
+[Temporary cardiac pacing](../anasim/physiology/pacing.py) supports
+transcutaneous (0 to 200 mA) and epicardial (0 to 25 mA) delivery across demand
+(`VVI`, `AAI`, `DDD`) and asynchronous (`VOO`, `DOO`) modes from 30 to 180 bpm
+(Zoll 1985; Hogue 1996). Electrical capture requires current above a threshold
+that rises with BMI for transcutaneous pads and with myocardial ischemia,
+hypoxia, hyperkalemia, local anesthetic sodium-channel block, hypermagnesemia,
+and hypothermia; pacing does not capture VF, VT, or energy-depleted arrest, and
+asynchronous spikes during an organized intrinsic rhythm carry R-on-T VF risk.
+Ventricular-only modes (`VVI`, `VOO`) sacrifice atrial kick and lower stroke
+volume relative to atrioventricular-synchronous modes (`AAI`, `DDD`, `DOO`),
+especially at normal or low filling pressures (Greenberg 1979). Without
+adrenergic stimulation, paced cardiac output flattens above roughly 100 to 120
+bpm and declines at very high rates as stroke volume falls with shorter
+diastolic filling (Ross 1965; Tweed 1972). Unsedated transcutaneous pacing adds
+sympathetic discomfort stress, and ECG traces render pacing spikes with wide
+paced ventricular QRS complexes during `VVI`/`VOO`/`DDD`/`DOO` capture.
 
 ### Ventricular arrhythmias
 
@@ -876,37 +904,65 @@ requirements and improved survival to hospital admission in Kudenchuk 2016,
 modeled here as higher defibrillation success once CPR circulates them, though
 neither prevents rearrest on its own (Salcido 2018).
 
-## Lidocaine toxicity
+## Local anesthetic toxicity and methemoglobinemia
 
-In awake patients, [lidocaine](../anasim/physiology/toxicity.py) produces
-sympathetic stimulation and seizures at moderate toxic concentrations (Foldes
-1960; Jorfeldt 1968). Higher concentrations replace seizures with central
-nervous system depression and apnea, then add myocardial depression, QRS
-widening, ventricular arrhythmias, and cardiac arrest. Acidemia worsens both
-neurological and cardiac toxicity.
+In awake patients, [local anesthetic systemic toxicity](../anasim/physiology/toxicity.py)
+progresses from sympathetic stimulation and seizures to central nervous system
+depression, apnea, myocardial depression, QRS widening, ventricular arrhythmias,
+and cardiac arrest (Foldes 1960; Jorfeldt 1968; Gitman and Barrington 2018),
+worsened by acidemia. Comparative toxic potency separates the three agents:
+bupivacaine has a narrow cardiovascular-to-CNS margin with prominent ventricular
+arrhythmias and slow diastolic cardiac sodium-channel recovery that intensifies
+block at faster heart rates (volunteer data in Knudsen 1997; guinea-pig
+papillary muscle in Clarkson and Hondeghem 1985; conscious dogs in Feldman 1989;
+porcine intracoronary racemic ropivacaine, bupivacaine, and lidocaine in Reiz
+1989), whereas ropivacaine preserves a wider electrophysiologic and arrhythmia
+margin. Pregnancy applies a conservative sensitivity increase for bupivacaine
+and ropivacaine cardiotoxicity (Morishima 1985 and Neal 2018; kept modest
+because the blinded ovine study of Santos 1995 found no pregnancy shift).
 
 Low cardiac output slows lidocaine distribution and hepatic clearance, while
 renal failure leaves parent-drug disposition unchanged (Stenson 1971; Thomson
-1973). A 2 g infusion over an hour in HFrEF produces hypotension and coma in
-sinus rhythm without arrest, matching the post-infusion concentration reported
-in Armstrong 1988, though linear clearance eliminates the drug faster than the
-prolonged decay observed in that case.
+1973). A 2 g lidocaine infusion over an hour in HFrEF produces hypotension and
+coma in sinus rhythm without arrest, matching the post-infusion concentration
+reported in Armstrong 1988, though linear clearance eliminates the drug faster
+than the prolonged decay observed in that case.
 
-Midazolam, propofol, etomidate, sevoflurane, and nitrous oxide suppress
-lidocaine seizures and their sympathetic surge. Neuromuscular blockers mask
-visible convulsions without stopping cerebral seizure activity.
+Midazolam, propofol, etomidate, sevoflurane, and nitrous oxide suppress local
+anesthetic seizures and their sympathetic surge; flumazenil removes
+benzodiazepine protection and lowers the seizure threshold during active LAST
+(Klotz and Kanto 1988). Neuromuscular blockers mask visible convulsions without
+stopping cerebral seizure activity.
 
-Intravenous lipid emulsion lowers lidocaine delivery to effect sites by roughly
-a fifth as a heuristic calibration based on the 23% drop in unentrapped venous
-plasma exposure in volunteers (Heinonen 2015, which itself saw no reduction in
-brain-toxicity symptoms and attributed the lower venous exposure to larger
-tissue distribution). It also lessens contractile depression, based on rat
-bupivacaine resuscitation (Fettiplace 2014), with calibrated reductions in
-conduction block and arrhythmogenic stress. Intravenous sodium bicarbonate attenuates sodium-channel conduction block
+Intravenous 20% lipid emulsion rescue scales with local anesthetic lipophilicity
+(strongest for bupivacaine, intermediate for ropivacaine, and smallest for
+lidocaine; in vitro binding in Mazoit 2009, isolated rat hearts in Zausig 2009,
+volunteer PK in Litonius 2012, Heinonen 2015, and Dureau 2016, and human PBPK
+shuttle analysis in Kuo and Akpa 2013). Acidemia attenuates lipophilic lipid
+binding (extended from in vitro Medialipide pH 7.0 data in Mazoit 2009), and
+direct cardiotonic recovery (rat bupivacaine data in Fettiplace 2014) strengthens
+once myocardial sodium-channel block drops below complete paralysis (Neal 2018).
+Following ASRA guidance (Neal 2018, 2021), high-dose epinephrine (at or above
+10 mcg/kg in rat resuscitation, Hiller 2009) and vasopressin (rat bupivacaine
+arrest data showing hemorrhagic pulmonary edema, severe lactic acidosis, and
+poor ROSC in Di Gregorio 2009) impair lipid rescue and cardiac recovery.
+Intravenous sodium bicarbonate attenuates sodium-channel conduction block
 (calibrated conservatively from porcine bupivacaine QRS recovery in Zaballos
 2019) and arrhythmogenic stress through alkalinization and extracellular sodium
 loading, without substituting for lipid emulsion in reversing myocardial
 depression.
+
+[Methemoglobinemia](../anasim/physiology/methemoglobin.py) models oxidative
+ferric-heme formation from benzocaine, prilocaine, or lidocaine (clinical series
+in Guay 2009). Oxidized hemoglobin reduces functional oxygen-carrying capacity
+and shifts the remaining oxyhemoglobin dissociation curve leftward, impairing
+tissue oxygen unloading while leaving PaO₂ normal on supplemental oxygen.
+Two-wavelength pulse oximetry applies optical bias calibrated to canine
+benzocaine/prilocaine data (Barker 1989) so SpO₂ plateaus near 85% at high
+MetHb while fractional SaO₂ on arterial blood gas falls linearly. Intravenous
+methylene blue (1 to 2 mg/kg; Guay 2009) causes a brief optical SpO₂ dip before
+accelerating NADPH-methemoglobin reductase clearance; cumulative doses above
+7 mg/kg trigger paradoxical oxidation and a safety warning.
 
 ## Fluids
 
@@ -945,9 +1001,12 @@ drives rapid plasma leak while keeping red cells intravascular, raising
 hemoglobin concentration (Fisher 1986); the leak slows once the trigger is
 removed, though ongoing reactions often need repeated crystalloid boluses.
 
-Transfused packed red cells track donor red-cell volume and hemoglobin
-separately from their protein-free supernatant, which follows crystalloid
-kinetics. High left atrial pressure increases extravascular lung water, shunt,
+Transfused packed red cells track donor red-cell volume, hemoglobin, and
+residual 2,3-DPG separately from their protein-free supernatant, which follows
+crystalloid kinetics. Fresh frozen plasma (FFP), platelets, and cryoprecipitate
+retain a larger intravascular fraction alongside diluted donor albumin and
+restore hemostatic factors in [`CoagulationModel`](../anasim/physiology/coagulation.py).
+High left atrial pressure increases extravascular lung water, shunt,
 and lung stiffness, connecting fluid balance to gas exchange. Hypoalbuminemia
 and inflammatory permeability in sepsis or anaphylaxis lower the threshold for
 pulmonary edema and accelerate filtration.
@@ -973,10 +1032,16 @@ water.
 Each fluid contributes its own ions, albumin, and buffer base according to its
 strong ion difference. Large volumes of 0.9% saline therefore produce
 hyperchloremic metabolic acidosis, whereas lactated Ringer's does not
-(Scheingraber 1999). Stored packed red cells represent 3-week-old blood with
-acidic, hyperkalemic, high-lactate, glucose-containing supernatant and storage
-acid (Rabcuka 2025), so rapid transfusion adds acid, CO₂, potassium, and
-glucose. Hepatic metabolism of
+(Scheingraber 1999). Stored packed red cells support selectable storage ages
+from 1 to 42 days (default 21 days), interpolating supernatant potassium,
+lactate, glucose, pH, and PCO₂ across the SAGM storage trajectory (Rabcuka 2025)
+while depleting red-cell 2,3-DPG over storage (Bennett-Guerrero 2007) to
+left-shift oxyhemoglobin P₅₀ (Dash 2016) until in-vivo regeneration recovers
+over hours. Older packed red cells therefore deliver larger potassium, lactate,
+and acid loads alongside higher oxygen affinity than fresh units. Fresh frozen plasma, platelets, and cryoprecipitate carry roughly four times the
+citrate load per unit of additive-solution packed red cells (~19 to 20 mmol/L
+citrate; Ewalenko 1986; Dzik and Kirkley 1988), driving deeper hypocalcemia
+during rapid balanced resuscitation (Giancarelli 2016). Hepatic metabolism of
 citrate (Kramer 2003; Kahn 1979) and exogenous lactate returns base over time,
 which can lead to post-transfusion metabolic alkalosis. Cirrhosis and
 hypothermia impair citrate clearance (Kramer 2003; Ludbrook and Wynn 1958);
@@ -1025,7 +1090,17 @@ delivery, 1 g raises ionized calcium by about 0.4 mmol/L, with half of the rise
 gone roughly 30 minutes after infusion start (Ansari 2025). Shed blood removes
 calcium, and calcium lost to dilution or bound by citrate is not replaced by
 endogenous stores within a session (consistent with progressive ionized calcium
-falls during citrate apheresis in Bolan 2001). During zero-flow cardiac arrest,
+falls during citrate apheresis in Bolan 2001). Electroneutral intravenous magnesium sulfate (1 g heptahydrate = 4.057 mmol
+Mg²⁺) follows a two-compartment renal-elimination model anchored to pre-eclampsia
+pharmacokinetics (Lu and Nightingale 2000), accumulating during oliguria or renal
+impairment without altering strong ion difference. Therapeutic hypermagnesemia
+potentiates nondepolarizing neuromuscular blockade (calibrated in
+[`nmba.py`](../anasim/patient/pd/nmba.py)), while severe hypermagnesemia produces
+presynaptic muscle weakness and respiratory paralysis above 5 mmol/L,
+vasodilation and hypotension, cardiac conduction block (PR/QRS widening above
+calibrated thresholds and altered conduction above 7.5 mmol/L), and asystole
+above 12.5 mmol/L (thresholds from Lu and Nightingale 2000), all antagonized by
+intravenous calcium chloride. During zero-flow cardiac arrest,
 arterial blood gases, glucose, hemoglobin, electrolytes, and lactate remain isolated
 from peripheral venous and fluid changes until circulation resumes.
 
@@ -1115,7 +1190,7 @@ deep bradypnea or apnea approaches (Babenco 2000), with age-dependent room-air
 bolus desaturation checked against Egan 2004. Fentanyl adds a calibrated
 respiratory lag and potency shift on top of its EEG effect site, anchored to
 equidepressant fentanyl-versus-remifentanil boluses (Gelberg 2012) and fentanyl
-hypercapnic depression (Yassen 2007). Under sevoflurane anesthesia, fentanyl
+hypercapnic depression (Yassen 2007a). Under sevoflurane anesthesia, fentanyl
 blunts volatile tachypnea and lengthens expiration so tidal volume rises
 modestly while minute ventilation falls (Ferguson and Drummond 2006, extended
 to remifentanil in the model, where capped inspiratory time lengthens
@@ -1145,7 +1220,18 @@ depress hypoxic drive steeply, and fentanyl-midazolam sedation also produces
 hypoxemia and apnea (Bailey 1990). Extending surgical halothane abolition of
 hypoxic drive (Knill and Gelb 1978), AnaSim abolishes hypoxic drive under
 surgical sevoflurane, propofol, nitrous oxide, and high-dose opioids while CO₂
-drive remains. Published age effects on chemoreflexes vary by method
+drive remains. Competitive antagonism by intravenous naloxone (`NALOXONE_KB`
+calibrated between Moss 2020 and Yassen 2007b) rapidly restores ventilation and
+consciousness, with an acute sympathetic surge when high opioid occupancy is
+abruptly displaced and renarcotization as short-lived naloxone clears faster
+than long-acting agonists (Ngai 1976; Dowling 2008; Yassen 2007b). Flumazenil
+competitively antagonizes midazolam hypnosis and seizure protection (Roncari
+1986; Klotz and Kanto 1988), permitting resedation after heavy midazolam
+loading. Rapid high-dose fentanyl or remifentanil boluses produce supraspinal
+skeletal-muscle rigidity and glottic vocal-cord closure (extrapolated from
+alfentanil in Benthuysen 1986 and sufentanil in Bennett 1997) that impede mask
+ventilation and intubation until reversed by a neuromuscular blocker or
+naloxone. Published age effects on chemoreflexes vary by method
 (García-Río 2007; Poulin 1993; Peterson 1981; Lhuissier 2012); as a
 calibration, acute hypoxic sensitivity declines substantially in older adults
 while CO₂ sensitivity declines much less. During airway obstruction, airflow is
@@ -1271,7 +1357,8 @@ and EtCO₂ reflect core temperature. Ionized calcium, renal compensation, and
 myocardial acidosis use the 37 °C values. [Blood
 buffering](../anasim/physiology/blood_chemistry.py) builds on Rees 2010 with
 plasma albumin and phosphate charge from Figge 2018, and hemoglobin oxygen
-affinity uses Dash 2016 at a reference 2,3-DPG level. Gas exchange and
+affinity uses Dash 2016 with 2,3-DPG shifts after stored red-cell transfusion
+(Bennett-Guerrero 2007). Gas exchange and
 oxygen-affinity shifts conserve CO₂, oxygen, and buffer base, and bleeding,
 fluids, transfusion, and urine add or remove buffer base directly.
 
@@ -1310,20 +1397,31 @@ reverses bronchospasm via beta-2 receptors (antagonized by labetalol), while
 sevoflurane and ketamine provide partial bronchodilation.
 
 [Lung aeration](../anasim/physiology/lung.py) depends on pressure history, with
-recruitment and collapse changing gas volume, shunt, and compliance. Inert gas
-in the alveoli slows recollapse, and atelectatic shunt evolves separately from
-bulk FRC and compliance (Rothen 1995). Preoxygenation and induction apnea leave
-roughly a 5% shunt, which is also the starting point for maintenance sessions.
-In normal-weight lungs, 5 cmH₂O PEEP prevents further collapse without
-reopening collapsed units, whereas higher closing pressures in overweight and
-obese patients still allow absorption atelectasis on 100% oxygen at 5 cmH₂O PEEP
-(Hedenstierna and Edmark 2015) without double-counting obesity's baseline
-compliance reduction (Behazin 2010). Atelectasis carries into emergence and
-early recovery (Benoît 2002; Östberg 2019). After extubation, most atelectasis
-clears over the first 24 hours, fastest after nonabdominal surgery and slowest
-after upper abdominal surgery (Strandberg 1986; Putensen-Himmer 1992). A smaller
-dependent fraction resolves over several days (Lindberg 1992), and morbid
-obesity prevents clearance over 24 hours (Eichenberger 2002).
+recruitment and collapse changing gas volume, shunt, and compliance. Two
+separate mechanisms govern pressure-dependent mechanics and gas exchange: a
+high-pressure dense-atelectasis pool whose CT reopening requires inflation
+pressures near 31 to 40 cmH₂O (Brismar 1985; Rothen 1993, 1999) and drives true
+atelectatic shunt, and a low-pressure reversible small-airway and poorly aerated
+compartment with distinct static opening (~14.5 cmH₂O) and closing (~5.0 cmH₂O)
+thresholds shifted gently upward with BMI (Bates and Irvin 2002; Pelosi 1999;
+Maisch 2008; Reinius 2009). Adding moderate PEEP (for example 0 to 5 cmH₂O)
+reopens closed small airways and improves compliance without clearing dense
+atelectatic shunt until a recruitment maneuver is performed, matching paired
+pre-incision VitalDB PEEP steps while preserving settled PEEP 0 to 2 and 4 to 6
+cmH₂O compliance and driving pressure. Inert gas in the alveoli slows
+recollapse, and atelectatic shunt evolves separately from bulk FRC and
+compliance (Rothen 1995). Preoxygenation and induction apnea leave roughly a 5%
+shunt, which is also the starting point for maintenance sessions. In
+normal-weight lungs, 5 cmH₂O PEEP prevents further dense absorption collapse,
+whereas higher closing pressures in overweight and obese patients still allow
+absorption atelectasis on 100% oxygen at 5 cmH₂O PEEP (Hedenstierna and Edmark
+2015) without double-counting obesity's baseline compliance reduction (Behazin
+2010). Atelectasis carries into emergence and early recovery (Benoît 2002;
+Östberg 2019). After extubation, most atelectasis clears over the first 24
+hours, fastest after nonabdominal surgery and slowest after upper abdominal
+surgery (Strandberg 1986; Putensen-Himmer 1992). A smaller dependent fraction
+resolves over several days (Lindberg 1992), and morbid obesity prevents
+clearance over 24 hours (Eichenberger 2002).
 
 ## Temperature
 
@@ -1401,6 +1499,31 @@ suppression after trigger washout, MH does not relapse as dantrolene clears,
 though re-exposure to sevoflurane or succinylcholine can restart it.
 
 ## Anesthesia machine and ventilation
+
+### Medical gas supply
+
+[`gas_supply.py`](../anasim/machine/gas_supply.py) models central wall
+pipelines (50 psig nominal, low-pressure threshold 35 psig) and finite backup
+E-cylinders for oxygen (660 L at 1,900 psig), medical air (625 L at 1,900
+psig), and nitrous oxide (1,590 L liquefied at a 745 psig vapor-pressure
+plateau until ~400 L remain). Secondary cylinder regulators feed at 45 psig so
+opening a backup cylinder automatically takes over when pipeline pressure falls
+below 45 psig while preserving cylinder gas whenever the wall pipeline is
+intact. Oxygen pressure below the 25 psig fail-safe threshold shuts off nitrous oxide
+delivery and scales oxygen flow down to zero.
+
+Pneumatic bellows ventilators consume drive gas equal to delivered minute
+ventilation plus internal circuit-bellows compression volume (Szpisjak 2008),
+selectable across oxygen drive (`o2`, which switches automatically to air if
+oxygen fails), oxygen-only drive (`o2_only`, which stops on oxygen loss), air
+drive (`air`, with oxygen fallback), or electric drive (`electric`, which
+consumes no drive gas). Opening an oxygen E-cylinder during wall oxygen failure
+therefore depletes faster under pneumatic oxygen-driven ventilation or high
+fresh gas flow than under manual bagging or electric drive. Separate
+source-pressure alarms flag pipeline failure (`O2Pipeline`, `AirPipeline`,
+`N2OPipeline`), low cylinder reserves (`O2Cylinder`, `AirCylinder`,
+`N2OCylinder`), total oxygen loss (`O2Supply`), and lost pneumatic ventilator
+drive gas (`VentDrive`).
 
 ### Breathing circuit
 
@@ -1489,9 +1612,11 @@ Alarm silence lasts 2 minutes of real time and ends early if a new alarm sounds
 or an active alarm flips between low and high limits. Lethal rhythm and arrest
 alarms (Asystole, VFIB, VTACH, and Arrest) highlight the HR tile red and show
 the rhythm name in the monitor alarm banner (leaving numeric HR blank during
-ventricular fibrillation). Along with oxygen pipeline failure (O2Supply) and
-CPB low reservoir (ReservoirLow), they break prior silence, re-break silence if
-they recur after clearing, and sound a faster, higher-pitched cadence. Core temperature alarms outside 35.5 to
+ventricular fibrillation). Along with oxygen supply failure (`O2Supply`, `O2Pipeline`), lost ventilator
+drive gas (`VentDrive`), CPB low reservoir (`ReservoirLow`), and high bypass
+line pressures (`ArtLinePressure`, `CSPressure`), they break prior silence,
+re-break silence if they recur after clearing, and sound a faster,
+higher-pitched cadence. Core temperature alarms outside 35.5 to
 38.0 °C. Peak airway pressure alarms above 40 cmH₂O, when a pressure-limited
 ventilator breath hits `min(40, Pmax)` before delivering target volume, or when
 continuous manual bagging is pressure-limited at or above 40 cmH₂O.
@@ -1525,7 +1650,12 @@ pulse loss, numeric SpO₂ waits for sustained beats before locking back on.
 
 Hyperkalemia progresses from peaked T waves (scaled to calcium-adjusted
 effective potassium) through flattened P waves, prolonged PR interval, and a
-widening QRS complex with an upright sine-wave T complex to asystole.
+widening QRS complex with an upright sine-wave T complex to asystole. Severe
+hypermagnesemia likewise prolongs PR and QRS intervals and progresses to
+asystole, relieved by calcium chloride. In methemoglobinemia, two-wavelength
+pulse oximetry plateaus near 85% despite normal PaO₂ and falling fractional SaO₂
+(Barker 1989), and intravenous methylene blue produces a brief transient optical
+SpO₂ dip (Guay 2009).
 
 ### Monitoring during arrest
 
@@ -1637,12 +1767,15 @@ values at the time of the draw and reports the result 2 minutes later. As in a
 clinical blood gas analyzer, pH, PaCO₂, and PaO₂ are warmed anaerobically to
 37 °C, so a hypothermic sample reads higher PaCO₂ and PaO₂ and lower pH than in
 vivo. Reports include bicarbonate, standard base excess, lactate, glucose (mg/dL),
-sodium, potassium, chloride, ionized calcium, SaO₂, hemoglobin, and FiO₂. During
+sodium, potassium, chloride, ionized calcium, serum magnesium (mmol/L),
+methemoglobin (%), fractional SaO₂, hemoglobin, and FiO₂. During
 extracorporeal support, samples can also be drawn from the right radial artery
 (upper body), femoral artery (lower body), pre-oxygenator venous line, or
 post-oxygenator outlet. A point-of-care blood glucose meter in the Labs tab
 reports arterial glucose in mg/dL after a 10-second analysis delay and flags
-readings below 70 or above 180 mg/dL.
+readings below 70 or above 180 mg/dL. A laboratory coagulation panel in the Labs tab reports INR, Clauss fibrinogen
+(g/L), and platelet count (×10⁹/L) after a 2-minute analysis delay, flagging
+INR above 1.3, fibrinogen below 1.5 g/L, and platelets below 100 ×10⁹/L.
 
 ## Extracorporeal support and anticoagulation
 
@@ -1684,14 +1817,32 @@ Karagiannidis 2017).
   cardiac arrest.
 - **CPB** adds central arterial return and passive venous drainage from
   stressed volume into an open hard-shell reservoir with a low-level ramp and
-  alarm (Magder and De Varennes 1998). Crystalloid prime hemodilution lowers
-  blood viscosity and SVR (Gordon 1975), cooling raises viscosity (in vitro
-  data of Eckmann 2000), and active heat exchange drives a two-compartment
+  alarm (Magder and De Varennes 1998). Arterial (15 to 24 Fr, default 22 Fr)
+  and venous (20 to 36 Fr, default 32 Fr) cannula pressure-flow mechanics follow
+  the Sinard 1991 M-number power law scaled by blood viscosity, reporting
+  arterial line pressure (`ArtLinePressure` alarm above 300 mmHg) and scaling
+  gravity venous drainage with cannula size. Crystalloid prime hemodilution
+  lowers blood viscosity and SVR (Gordon 1975), cooling raises viscosity (in
+  vitro data of Eckmann 2000), and active heat exchange drives a two-compartment
   core-periphery thermal model whose post-bypass afterdrop is blunted by
   forced-air warming (Rajek 2000). CPB also supports alpha-stat versus pH-stat
   cerebral blood flow management (Murkin 1987), aortic cross-clamping with
-  hypothermic cardioplegic arrest (Nissinen 2009; Al-Sarraf 2011), and optional
-  bypass alarm suppression while pump flow is active.
+  intermittent cardioplegia, and optional bypass alarm suppression while pump
+  flow is active.
+- **CPB cardioplegia** ([`cardioplegia.py`](../anasim/extracorporeal/cardioplegia.py))
+  supports Buckberg 4:1 blood:crystalloid (induction ~25 mEq/L K⁺, maintenance
+  ~10 mEq/L K⁺, ~20 min redose window; Buckberg 1995; Ikonomidis 1994) and del
+  Nido 1:4 blood:crystalloid (~24 mEq/L K⁺, ~7.3 mmol/L Mg²⁺, ~98 mg/L
+  lidocaine, mannitol, 60 to 75 min single-dose protection; Matte and del Nido
+  2012; Ad 2018), plus terminal warm reperfusion ("hot-shot") doses. Delivered
+  infusions transfer net potassium, magnesium, crystalloid hemodilution,
+  lidocaine, and thermal cooling into the patient and circuit, track myocardial
+  temperature and protection decay toward electrical breakthrough if redosing is
+  overdue, and distinguish antegrade aortic-root delivery (impaired myocardial
+  coverage behind severe coronary stenosis) from retrograde coronary-sinus
+  delivery (bypassing epicardial stenoses with a 40 mmHg coronary-sinus
+  pressure alarm, `CSPressure`; Partington 1989; Ikonomidis 1994; Nissinen 2009;
+  Al-Sarraf 2011).
 
 Circuit priming expands central volume and dilutes albumin, raising propofol's
 unbound fraction (CPB study of Hiraoka 2004, extended to ECMO). Hypothermia
@@ -1706,7 +1857,7 @@ circuit
 sequestration that spares morphine (ex vivo data of Shekar 2012; clinical VV
 ECMO study of Morales Castro 2025).
 
-### Heparin, protamine, and ACT
+### Heparin, protamine, ACT, and dilutional hemostasis
 
 [`coagulation.py`](../anasim/physiology/coagulation.py) models two-compartment
 unfractionated heparin kinetics (`HeparinPK`) with temperature-sensitive
@@ -1727,7 +1878,20 @@ a low-dose protamine infusion (Teoh 2004); excess free protamine above roughly
 protamine boluses trigger rate-dependent Type I vasodilation and venous pooling
 that slow infusions avoid, while a separate Type III catastrophic pulmonary
 vasoconstriction reaction spikes PVR and causes acute RV failure (Horrow 1985;
-Lowenstein 1983). Therapeutic anticoagulation amplifies active hemorrhage.
+Lowenstein 1983).
+
+Major blood loss replaced with crystalloid, colloid, or packed red cells also
+washes out plasma fibrinogen, clotting factors, and platelets along first-order
+depletion curves anchored to Hiippala 1995 (critical fibrinogen below 1.0 g/L
+near 142% blood-volume loss, preceding clotting-factor and platelet depletion
+above 200% loss). Plasma fibrinogen, platelet count, composite clotting-factor
+activity, and derived INR can be sampled through a 2-minute laboratory
+coagulation panel in the Labs tab. Targeted component replacement restores
+deficit-specific pools (FFP for clotting factors and modest fibrinogen,
+platelets for thrombocytopenia, cryoprecipitate for concentrated fibrinogen).
+Therapeutic anticoagulation, dilutional coagulopathy, hypothermia below 35.5 °C,
+and hypocalcemia below 0.90 mmol/L (Giancarelli 2016; Byerly 2020) each amplify
+active surgical hemorrhage.
 
 ## Airway, thoracic, and embolic crises
 
@@ -1829,10 +1993,15 @@ cardiac output, and desufflation restores airway mechanics and hemodynamics.
 (spinal) boluses, epidural catheter boluses and continuous infusions (building
 block height gradually even without an initial bolus and blending repeat-bolus
 concentrations), and accidental intrathecal high or total spinal block.
-Hyperbaric and isobaric bupivacaine or lidocaine advance on a continuous dermatome scale (S5 through C2 and brainstem), with
+Hyperbaric and isobaric bupivacaine, ropivacaine, or lidocaine advance on a continuous dermatome scale (S5 through C2 and brainstem), with
 higher cephalad spread in older adults (hyperbaric bupivacaine data in Veering
 1988) plus calibrated slower regression with age, higher pregnancy spread, and
-bedside cold/pinprick plus modified Bromage checks. Motor block lags sensory
+bedside cold/pinprick plus modified Bromage checks. Epidural boluses deposit
+local anesthetic into biphasic systemic absorption pools (Burm 1987; Emanuelsson
+1997; Olofsen 2008), while accidental intravascular epidural injection routes
+the bolus directly into central plasma (producing an immediate tachycardia when
+co-administered with 1:200,000 epinephrine, Neal 2018, and systemic toxicity
+without neuraxial block). Motor block lags sensory
 height by 2.8 segments for spinal and 4.6 segments for surgical-concentration
 epidural block (lidocaine data in Freund 1967, extended to bupivacaine), with
 additional motor sparing during dilute labor epidural analgesia (0.1%
@@ -1874,7 +2043,7 @@ physiological signs, accumulated occult blood loss, lighter anesthesia
 alongside residual neuromuscular block, post-induction airway crises, or active
 extracorporeal support. Acute intraoperative crises (anaphylaxis, oxygen supply
 failure, cardiac arrest, tension pneumothorax, venous air embolism, massive
-pulmonary embolism, and high spinal) begin shortly into the case. Cues tied to
+pulmonary embolism, high spinal, and local anesthetic systemic toxicity) begin shortly into the case. Cues tied to
 monitor changes wait until deterioration is visible, and initial ventricular
 fibrillation shocks are refractory so learners practice multi-cycle
 resuscitation.
@@ -1910,11 +2079,12 @@ outcomes must hold at case end.
 
 Attempting tracheal intubation triggers a brief laryngoscopy stimulus whether
 or not placement succeeds. When central muscle strength is more than half
-intact, placement fails during severe laryngospasm or, while systemic perfusion
-continues, when the patient is responsive or lacks adequate laryngoscopy
-tolerance, deep non-drug coma, or deep volatile anesthesia (Kimura 1994). During
-cardiac arrest or nonperfusing rhythms without arterial extracorporeal support,
-placement succeeds unless severe laryngospasm closes the vocal cords.
+intact, placement fails during severe laryngospasm, opioid-induced glottic
+rigidity, or, while systemic perfusion continues, when the patient is responsive
+or lacks adequate laryngoscopy tolerance, deep non-drug coma, or deep volatile
+anesthesia (Kimura 1994). During cardiac arrest or nonperfusing rhythms without
+arterial extracorporeal support, placement succeeds unless severe laryngospasm
+or opioid glottic rigidity closes the vocal cords.
 
 [`clinical_actions.py`](../anasim/core/clinical_actions.py) also checks
 supraglottic airway and oral airway placement against patient responsiveness
@@ -1943,3 +2113,9 @@ raises a warning without blocking the action when:
 - sodium bicarbonate is given during alkalemia (37 °C arterial pH above 7.50)
 - sodium bicarbonate is given during severe hypernatremia (plasma sodium above
   155 mmol/L)
+- vasopressin, beta-blockers (esmolol or labetalol), lidocaine, flumazenil,
+  high-dose epinephrine (above 1.5 mcg/kg or 100 mcg), or large propofol boluses
+  during cardiovascular compromise are given during active LAST
+- magnesium sulfate is given during severe renal impairment (`renal_function` at
+  or below 0.45)
+- cumulative methylene blue exceeds 7 mg/kg

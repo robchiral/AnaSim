@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass
 
 from anasim.core.utils import clamp01
+from anasim.machine.gas_supply import GasSupplySystem
 
 
 @dataclass
@@ -28,9 +29,22 @@ class CircleSystem:
         self.fgf_air = 0.0
         self.fgf_n2o = 0.0
         self.o2_flush_flow = 0.0  # L/min; bypasses vaporizer and N2O proportioning
-        self.oxygen_supply_connected = True
+        self.gas_supply = GasSupplySystem()
         self.vaporizer_setting = 0.0  # %
         self.vaporizer_on = False
+
+    @property
+    def oxygen_supply_connected(self) -> bool:
+        """Whether adequate oxygen supply pressure (pipeline or backup cylinder) is present."""
+        return self.gas_supply.o2.available
+
+    @oxygen_supply_connected.setter
+    def oxygen_supply_connected(self, connected: bool) -> None:
+        if bool(connected):
+            self.gas_supply.o2.set_pipeline(True)
+        else:
+            self.gas_supply.o2.set_pipeline(False)
+            self.gas_supply.o2.set_cylinder_valve(False)
 
     @property
     def bellows_fraction(self) -> float:
@@ -39,21 +53,25 @@ class CircleSystem:
 
     def delivered_o2_flow(self) -> float:
         """Return oxygen flow reaching the circuit from the supply."""
-        return self.fgf_o2 if self.oxygen_supply_connected else 0.0
+        return self.fgf_o2 * self.gas_supply.o2.delivery_scale
+
+    def delivered_air_flow(self) -> float:
+        """Return medical air flow reaching the circuit from the supply."""
+        return self.fgf_air * self.gas_supply.air.delivery_scale
 
     def delivered_o2_flush_flow(self) -> float:
         """Return pure O2 flush flow reaching the circuit (bypasses vaporizer)."""
-        return max(0.0, self.o2_flush_flow) if self.oxygen_supply_connected else 0.0
+        return max(0.0, self.o2_flush_flow) if self.gas_supply.o2.available else 0.0
 
     def delivered_n2o_flow(self) -> float:
         """Return N2O flow after the oxygen-pressure fail-safe and 25% O2 guard."""
-        if not self.oxygen_supply_connected:
+        if not self.gas_supply.o2.available:
             return 0.0
-        return min(self.fgf_n2o, 3.0 * self.delivered_o2_flow())
+        return min(self.fgf_n2o * self.gas_supply.n2o.delivery_scale, 3.0 * self.delivered_o2_flow())
 
     def fgf_total(self) -> float:
         """Return delivered carrier flow before added vapor, L/min."""
-        return self.delivered_o2_flow() + self.fgf_air + self.delivered_n2o_flow()
+        return self.delivered_o2_flow() + self.delivered_air_flow() + self.delivered_n2o_flow()
 
     def vapor_flow(self) -> float:
         """Return vaporizer output flow added to fresh carrier gas, L/min."""
@@ -87,7 +105,7 @@ class CircleSystem:
     def equilibrate(self, uptake_o2: float, fi_agent: float = 0.0) -> None:
         """Set steady composition at the supplied agent fraction and zero N2O uptake."""
         total_fgf = self.fgf_total()
-        net_o2 = self.delivered_o2_flow() + 0.21 * self.fgf_air - uptake_o2
+        net_o2 = self.delivered_o2_flow() + 0.21 * self.delivered_air_flow() - uptake_o2
         if total_fgf <= uptake_o2 or net_o2 < 0.0:
             raise ValueError("Circuit equilibrium requires enough oxygen flow and positive spill")
         # Carrier gases occupy 1-Fi_agent of the spill flow. Agent uptake is
@@ -108,6 +126,8 @@ class CircleSystem:
         uptake_n2: float = 0.0,
         leak_l_min: float = 0.0,
         rebreathed_share: float = 1.0,
+        *,
+        drive_gas_l_min: float = 0.0,
     ):
         """Advance dt seconds. Uptakes are L/min and negative during washout.
 
@@ -116,10 +136,15 @@ class CircleSystem:
         except exhaled N2 vented directly at the expiratory APL valve before
         rebreathing.
         """
-        delivered_o2 = self.delivered_o2_flow()
-        delivered_flush = self.delivered_o2_flush_flow()
-        delivered_n2o = self.delivered_n2o_flow()
-        total_fgf = max(0.0, delivered_o2 + self.fgf_air + delivered_n2o)
+        delivered_o2, delivered_flush, delivered_air, delivered_n2o = self.gas_supply.step(
+            dt,
+            o2_fgf=self.fgf_o2,
+            o2_flush=self.o2_flush_flow,
+            air_fgf=self.fgf_air,
+            n2o_fgf=self.fgf_n2o,
+            drive_demand_l_min=drive_gas_l_min,
+        )
+        total_fgf = max(0.0, delivered_o2 + delivered_air + delivered_n2o)
         leak_l_min = max(0.0, leak_l_min)
         rebreathed_share = clamp01(rebreathed_share)
 
@@ -182,7 +207,7 @@ class CircleSystem:
         )
         spill = spill_bulk - bypassed_n2
         total_vent = spill + leak_l_min
-        o2_flow = delivered_o2 + delivered_flush + 0.21 * self.fgf_air
+        o2_flow = delivered_o2 + delivered_flush + 0.21 * delivered_air
         eff_volume = max(1.0, self.volume - (self.reservoir_capacity - prev_reservoir))
         next_eff_volume = max(1.0, self.volume - (self.reservoir_capacity - self.reservoir_volume))
         eff_change_rate = (next_eff_volume - eff_volume) / dt_min if dt_min > 0.0 else 0.0

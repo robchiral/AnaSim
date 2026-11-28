@@ -40,6 +40,8 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
         ("heparin", 3600.0),
         ("protamine", 60.0),
         ("insulin", 3.6),
+        ("naloxone", 3.6),
+        ("flumazenil", 3.6),
     )
     # Each user rate is one model unit per second.
     assert {drug for drug, _ in rate_cases} == set(engine.infusion_rates)
@@ -63,6 +65,8 @@ def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
             "ephedrine",
             "insulin",
             "neostigmine",
+            "naloxone",
+            "flumazenil",
         ),
         1000.0,
     )

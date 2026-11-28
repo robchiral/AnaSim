@@ -2,14 +2,40 @@
 
 ## Unreleased
 
+- Added central O₂, air, and N₂O wall pipelines, finite backup E-cylinders with
+  automatic regulator switchover, pneumatic ventilator drive-gas consumption,
+  and separate source-pressure alarms.
+- Added temporary transcutaneous and epicardial pacing (`VVI`, `VOO`, `AAI`,
+  `DDD`, `DOO`), selectable 20 to 360 J biphasic shock energy, and variable CPR
+  rate, depth, and recoil.
+- Added Buckberg and del Nido CPB cardioplegia protocols (antegrade,
+  retrograde, redosing, and warm hot-shot) and cannula pressure-flow mechanics
+  with arterial-line and coronary-sinus pressure alarms.
+- Added low-pressure small-airway PEEP reopening separate from dense
+  atelectatic shunt so moderate PEEP improves compliance without clearing
+  high-pressure collapse.
+- Added variable PRBC storage age (1 to 42 days, including 2,3-DPG P₅₀ shifts),
+  FFP, platelets, and cryoprecipitate with product-specific citrate loads,
+  dilutional hemostasis tracking, and a laboratory coagulation panel.
 - Added difficult-airway escalation tools (videolaryngoscopy, bougie,
   bronchoscopy, oral airway, jaw thrust, SGA rescue, and eFONA), accidental
   esophageal intubation, and failed-airway cases.
 - Added tension pneumothorax, massive pulmonary embolism, and venous air
   embolism with crisis treatments and guided or independent cases.
-- Added spinal and epidural neuraxial anesthesia (bupivacaine, lidocaine,
-  epinephrine, infusions, dilute labor motor sparing, dermatome and Bromage
-  checks, and Bezold-Jarisch bradycardia) and a high-spinal case.
+- Added spinal and epidural neuraxial anesthesia (bupivacaine, ropivacaine,
+  lidocaine, epinephrine, infusions, labor motor sparing, level checks, and
+  accidental intrathecal or intravascular events) and a high-spinal case.
+- Extended local anesthetic systemic toxicity to bupivacaine and ropivacaine
+  with epidural absorption, rate-dependent cardiotoxicity, lipophilicity- and
+  pH-scaled lipid rescue, ASRA resuscitation warnings, and a LAST crisis case.
+- Added intravenous naloxone and flumazenil reversal with renarcotization,
+  resedation, withdrawal surge, LAST seizure unmasking, and rapid-bolus opioid
+  rigidity.
+- Added intravenous magnesium sulfate with renal accumulation, NMBA
+  potentiation, hypermagnesemic weakness and conduction block, calcium
+  antagonism, and blood-gas magnesium reporting.
+- Added local-anesthetic methemoglobinemia with pulse-oximetry bias near 85%,
+  blood-gas methemoglobin reporting, and intravenous methylene blue therapy.
 - Added laparoscopic CO₂ pneumoperitoneum (4 to 25 mmHg IAP) with chest-wall
   stiffening, dead space, peritoneal CO₂ absorption and washout, SVR and PVR
   rises, IVC compression, and an Events control.

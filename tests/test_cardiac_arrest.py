@@ -889,3 +889,124 @@ def test_perfusing_vtach_arrest_tone_freeze_windkessel_and_hfref_cpr_lap(engine_
     advance_time(hf, 60.0, dt=1.0)
     assert hf.hemo.state.lap < 24.0
     assert hf.hemo.coronary.supply_demand_ratio > 0.65
+
+
+def test_variable_cpr_quality_scales_output_rap_cpp_and_etco2(engine_factory):
+    """Shallow depth cuts EtCO2/CO (Sheak 2015), leaning raises RAP and cuts CPP (Yannopoulos 2005;
+    Zuercher 2010), and slow/overly rapid rates degrade output (Feneley 1988; Idris 2012).
+    """
+    base = _vf_engine(engine_factory)
+    _run(base, 15.0)
+
+    def run_cpr(*, rate=110.0, depth_cm=5.5, recoil=1.0):
+        eng = copy.deepcopy(base)
+        eng.set_chest_compressions(True, rate=rate, depth_cm=depth_cm, recoil=recoil)
+        _run(eng, 90.0)
+        cpp = eng.state.art_dbp - eng.hemo.state.venous_pressure
+        return {
+            "co": eng.state.co,
+            "rap": eng.hemo.state.venous_pressure,
+            "dbp": eng.state.art_dbp,
+            "sbp": eng.state.art_sbp,
+            "cpp": cpp,
+            "etco2": eng.state.display_etco2,
+        }
+
+    guideline = run_cpr(rate=110.0, depth_cm=5.5, recoil=1.0)
+    shallow = run_cpr(rate=110.0, depth_cm=3.0, recoil=1.0)
+    leaning = run_cpr(rate=110.0, depth_cm=5.5, recoil=0.75)
+    slow = run_cpr(rate=65.0, depth_cm=5.5, recoil=1.0)
+    too_fast = run_cpr(rate=155.0, depth_cm=5.5, recoil=1.0)
+
+    assert shallow["co"] < guideline["co"] * 0.65
+    assert shallow["sbp"] - shallow["dbp"] < (guideline["sbp"] - guideline["dbp"]) * 0.70
+    assert shallow["etco2"] < guideline["etco2"] - 3.0
+
+    # 25% leaning (75% recoil): RAP rises ~4 mmHg and CPP falls ~25-40% (Yannopoulos 2005; Zuercher 2010).
+    assert leaning["rap"] > guideline["rap"] + 3.0
+    assert leaning["co"] < guideline["co"] * 0.85
+    assert leaning["cpp"] < guideline["cpp"] * 0.80
+
+    assert slow["co"] < guideline["co"] * 0.80
+    assert too_fast["co"] < guideline["co"] * 0.85
+
+
+def test_cardiac_pacing_capture_threshold_atrial_kick_high_rate_plateau_and_cad_ischemia(engine_factory):
+    """Temporary pacing models capture thresholds (Zoll 1985), demand inhibition, VVI atrial-kick
+    loss across filling pressures (Greenberg 1979), bradycardia rescue + CAD ischemia (Hogue 1996),
+    and rapid-pacing CO plateau/decline (Ross 1965; Tweed 1972).
+    """
+    asys = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    asys.set_rhythm("ASYSTOLE")
+    _run(asys, 5.0)
+    asys.set_pacing(mode="vvi", route="transcutaneous", rate_bpm=75.0, output_ma=30.0)
+    _run(asys, 2.0)
+    assert not asys.state.pacing_capture
+    assert asys.state.co == 0.0
+    assert "Asystole" in asys.state.alarms
+    assert max(s.ecg_voltage for s in asys.output_buffer) > 1.0
+
+    asys.set_pacing(output_ma=80.0)
+    _run(asys, 5.0)
+    assert asys.state.pacing_capture
+    assert asys.state.hr == pytest.approx(75.0, abs=0.5)
+    assert asys.state.co > 2.5 and asys.state.map > 45.0
+    assert "Asystole" not in asys.state.alarms
+    assert displayed_rhythm(
+        asys.hemo.state.rhythm_type, asys.hemo.coronary.energy_failure,
+        paced_mode=asys.state.pacing_mode, paced_capture=asys.state.pacing_capture,
+    ) == "Paced (VVI)"
+
+    demand = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    _run(demand, 5.0)
+    assert demand.state.hr > 65.0
+    demand.set_pacing(mode="ddd", route="epicardial", rate_bpm=50.0, output_ma=10.0)
+    _run(demand, 2.0)
+    assert not demand.state.pacing_capture and demand.pacemaker.status.inhibited
+
+    brady = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    brady.set_rhythm("SINUS_BRADY")
+    _run(brady, 30.0)
+    brady_co = brady.state.co
+
+    ddd = copy.deepcopy(brady)
+    vvi = copy.deepcopy(brady)
+    ddd.set_pacing(mode="ddd", route="epicardial", rate_bpm=80.0, output_ma=10.0)
+    vvi.set_pacing(mode="vvi", route="epicardial", rate_bpm=80.0, output_ma=10.0)
+    _run(ddd, 20.0)
+    _run(vvi, 20.0)
+    assert ddd.state.co > brady_co + 0.4
+    sv_drop_normal = 1.0 - vvi.state.sv / ddd.state.sv
+    assert 0.14 <= sv_drop_normal <= 0.28
+
+    p80 = copy.deepcopy(ddd)
+    p120 = copy.deepcopy(ddd)
+    p150 = copy.deepcopy(ddd)
+    p120.set_pacing(rate_bpm=120.0)
+    p150.set_pacing(rate_bpm=150.0)
+    _run(p80, 90.0)
+    _run(p120, 90.0)
+    _run(p150, 90.0)
+    assert p120.state.sv < p80.state.sv * 0.78
+    assert abs(p120.state.co / p80.state.co - 1.0) < 0.15
+    assert p150.state.co < p80.state.co * 0.94
+
+    cad = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, coronary_flow_reserve=1.2,
+    )
+    cad.set_rhythm("SINUS_BRADY")
+    cad.start_disturbance("stim_sustained_surgery")
+    _run(cad, 30.0)
+    cad.set_pacing(mode="aai", route="epicardial", rate_bpm=65.0, output_ma=10.0)
+    _run(cad, 60.0)
+    isch_65 = cad.state.myocardial_ischemia
+    sd_65 = cad.state.coronary_supply_demand_ratio
+    cad.set_pacing(rate_bpm=110.0)
+    _run(cad, 60.0)
+    assert cad.state.coronary_supply_demand_ratio < sd_65 - 0.15
+    assert cad.state.myocardial_ischemia > isch_65 + 0.08
+    assert cad.state.st_depression_mv > 0.02
+    # Wide-QRS ventricular pacing blanks automated ST analysis while underlying ischemia persists.
+    cad.set_pacing(mode="vvi", rate_bpm=110.0)
+    _run(cad, 2.0)
+    assert cad.state.st_depression_mv == 0.0

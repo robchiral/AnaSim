@@ -24,6 +24,7 @@ from anasim.core.action_log import (
     ACTION_INFUSION_RATE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_MAGNESIUM_INFUSION,
     ACTION_NEURAXIAL,
     ACTION_O2_FLUSH,
     ACTION_POSITION,
@@ -52,6 +53,7 @@ SAFETY_REVIEW = {
     "unsafe_airway_removal": "Confirm ventilation, neuromuscular recovery, and a safe anesthetic plane before removing the tube.",
     "ventilation_stopped": "Maintain assisted ventilation while the patient is apneic.",
     "shock_while_responsive": "Give sedation or anesthesia before cardioversion in a responsive patient.",
+    "stacked_shocks": "Resume chest compressions for a 2-minute CPR cycle between defibrillation shocks instead of stacking shocks.",
     "succinylcholine_in_mh": "Avoid succinylcholine in malignant hyperthermia.",
     "succinylcholine_in_hyperkalemia": "Avoid succinylcholine when serum potassium is elevated.",
     "protamine_on_bypass": "Avoid administering protamine while cardiopulmonary bypass or ECMO is actively running.",
@@ -62,8 +64,17 @@ SAFETY_REVIEW = {
     "bicarbonate_in_hypernatremia": "Check serum sodium before giving hypertonic sodium bicarbonate in hypernatremia.",
     "awake_sga": "Establish adequate anesthesia before inserting a supraglottic airway.",
     "awake_opa": "Insert an oropharyngeal airway only once the patient is unconscious.",
-    "repeated_laryngoscopy": "Limit laryngoscopic attempts (<= 3) to avoid airway edema, bleeding, and CICO.",
+    "repeated_laryngoscopy": "Limit laryngoscopic attempts (≤ 3) to avoid airway edema, bleeding, and CICO.",
     "unnecessary_fona": "Reserve emergency surgical airway (eFONA) for CICO or failing oxygenation.",
+    "opioid_rigidity_blocked": "Treat opioid-induced glottic rigidity with a neuromuscular blocker or naloxone before attempting intubation.",
+    "vasopressin_in_last": "Avoid vasopressin in local anesthetic systemic toxicity; it worsens pulmonary edema and resuscitation outcomes.",
+    "beta_blocker_in_last": "Avoid beta-blockers during local anesthetic systemic toxicity.",
+    "lidocaine_in_last": "Avoid lidocaine for arrhythmias caused by local anesthetic systemic toxicity.",
+    "flumazenil_in_last": "Avoid flumazenil during local anesthetic systemic toxicity; it removes benzodiazepine seizure protection.",
+    "high_dose_epi_in_last": "Use reduced epinephrine doses (≤ 1 mcg/kg) during LAST resuscitation.",
+    "propofol_in_last_cv": "Avoid large propofol doses during LAST cardiovascular instability; treat seizures with benzodiazepines.",
+    "magnesium_in_renal_impairment": "Monitor serum magnesium and reflexes closely or avoid magnesium sulfate in severe renal impairment.",
+    "methylene_blue_max_dose": "Keep cumulative methylene blue at or below 7 mg/kg to avoid paradoxical methemoglobinemia.",
 }
 
 
@@ -252,6 +263,8 @@ def _describe(record: ActionRecord) -> str | None:
             return f"Calcium chloride {amount:g} mg given"
         if label == "sodium_bicarbonate":
             return f"Sodium bicarbonate {amount:g} mEq given"
+        if label == "magnesium_sulfate":
+            return f"Magnesium sulfate {amount:g} g given"
         spec = get_drug_spec(label)
         if action == ACTION_DRUG_BOLUS:
             return f"{spec.generic_name} {amount:g} {spec.bolus_unit} given"
@@ -276,6 +289,8 @@ def _describe(record: ActionRecord) -> str | None:
         return f"{amount:g} mL {fluid} started"
     if action == ACTION_LIPID_INFUSION:
         return f"20% lipid emulsion infusion {amount:g} mL/min" if amount > 0 else "Lipid emulsion infusion stopped"
+    if action == ACTION_MAGNESIUM_INFUSION:
+        return f"Magnesium sulfate infusion {amount:g} g/hr" if amount > 0 else "Magnesium sulfate infusion stopped"
     if action == ACTION_BLOOD_GAS:
         site_labels = {
             "right_radial": "right radial",

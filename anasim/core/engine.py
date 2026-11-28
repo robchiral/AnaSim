@@ -1,4 +1,5 @@
 import copy
+import math
 from collections import deque
 from dataclasses import dataclass
 
@@ -50,6 +51,7 @@ from anasim.patient.pk_models import (
     HeparinPK,
     NorepinephrinePK,
     ProtaminePK,
+    _EpiduralAbsorptionPK,
     _lean_weight_kg,
     janmahasatian_ffm,
 )
@@ -62,10 +64,14 @@ from anasim.physiology.airway_crisis import (
 )
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
 from anasim.physiology.cerebral import CerebralModel
-from anasim.physiology.coagulation import ACTResult, CoagulationModel
+from anasim.physiology.coagulation import ACTResult, CoagPanelResult, CoagulationModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.embolism import PulmonaryEmbolismModel
 from anasim.physiology.events import SeverityRamp
+from anasim.physiology.fluid_balance import (
+    DEFAULT_PRBC_STORAGE_DAYS,
+    PRBC_STORAGE_DAYS_RANGE,
+)
 from anasim.physiology.glucose import GlucoseModel, GlucoseResult
 from anasim.physiology.hemodynamics import MAX_HEMATOCRIT, HemodynamicModel
 from anasim.physiology.lactate import LactateModel
@@ -75,7 +81,9 @@ from anasim.physiology.malignant_hyperthermia import (
     MalignantHyperthermia,
     triggering_exposure,
 )
+from anasim.physiology.methemoglobin import MethemoglobinModel
 from anasim.physiology.neuraxial import NeuraxialLevelCheck, NeuraxialModel
+from anasim.physiology.pacing import CardiacPacemaker
 from anasim.physiology.pneumoperitoneum import (
     DEFAULT_IAP_MMHG,
     MAX_IAP_MMHG,
@@ -86,13 +94,15 @@ from anasim.physiology.pneumothorax import PneumothoraxModel
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
 from anasim.physiology.resuscitation import (
-    SHOCK_ENERGY_J,
+    COMPRESSION_DEPTH_RANGE_CM,
+    COMPRESSION_RATE_RANGE,
+    COMPRESSION_RECOIL_RANGE,
     Defibrillator,
     ShockResult,
     shock_outcome,
 )
 from anasim.physiology.thermal import ThermalModel
-from anasim.physiology.toxicity import LocalAnestheticToxicity
+from anasim.physiology.toxicity import LocalAnestheticToxicity, OpioidToxicityModel
 
 from . import monitors as monitor_core
 from . import projection as projection_core
@@ -104,6 +114,7 @@ from .action_log import (
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
     ACTION_CHEST_DECOMPRESS,
+    ACTION_COAG_PANEL,
     ACTION_COMPRESSIONS,
     ACTION_COOLING,
     ACTION_DRUG_BOLUS,
@@ -117,9 +128,11 @@ from .action_log import (
     ACTION_GLUCOSE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_MAGNESIUM_INFUSION,
     ACTION_NEURAXIAL,
     ACTION_O2_FLUSH,
     ACTION_OXYGEN_SUPPLY,
+    ACTION_PACING,
     ACTION_POSITION,
     ACTION_SHOCK,
     ACTION_VAPORIZER,
@@ -158,6 +171,7 @@ class PendingInfusion:
     hematocrit: float = 0.0
     retention_fraction: float | None = None
     label: str = "crystalloid"
+    storage_days: float = DEFAULT_PRBC_STORAGE_DAYS
 
 
 class SimulationEngine(DrugControllerMixin):
@@ -220,6 +234,7 @@ class SimulationEngine(DrugControllerMixin):
         self.blood_infusion_rate_ml_min = 75.0
         self.maintenance_fluid_rate_ml_min = 0.0
         self.lipid_infusion_ml_min = 0.0
+        self.magnesium_infusion_g_hr = 0.0
 
         self.auto_laryngospasm_enabled = True
         self.mask_seal = 1.0
@@ -407,7 +422,12 @@ class SimulationEngine(DrugControllerMixin):
         patient_ffm = janmahasatian_ffm(
             self.patient.weight, self.patient.height, self.patient.sex == "male",
         )
-        self.toxicity = LocalAnestheticToxicity(70.0 * patient_ffm / ref_ffm)
+        self.toxicity = LocalAnestheticToxicity(
+            70.0 * patient_ffm / ref_ffm,
+            pregnant=self.patient.gestational_age_weeks > 0.0,
+        )
+        self.opioid_toxicity = OpioidToxicityModel()
+        self.methemoglobin = MethemoglobinModel(self.patient.weight)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
         else:
@@ -428,6 +448,7 @@ class SimulationEngine(DrugControllerMixin):
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
         self.compression_clock = CompressionClock()
+        self.pacemaker = CardiacPacemaker(bmi=self.patient.bmi)
         self.arterial_waveform = ArterialWaveformRenderer(self.patient.age, bsa=self.patient.bsa)
         resting_sbp, resting_dbp = self.arterial_waveform.steady_pressures(
             self.patient.baseline_map, self.hemo.base_sv, self.hemo.base_hr,
@@ -440,6 +461,7 @@ class SimulationEngine(DrugControllerMixin):
         self.nmb = NeuromuscularMonitor()
         self.blood_gases: list[BloodGasResult] = []
         self.acts: list[ACTResult] = []
+        self.coag_panels: list[CoagPanelResult] = []
         self.glucoses: list[GlucoseResult] = []
         self.state.nibp_interval_sec = self.nibp.interval
 
@@ -474,11 +496,71 @@ class SimulationEngine(DrugControllerMixin):
         """Connect or isolate the oxygen source feeding the flowmeter."""
         connected = bool(connected)
         self.circuit.oxygen_supply_connected = connected
+        projection_core.sync_gas_supply(self)
         self.actions.record(
             self.state.time,
             ACTION_OXYGEN_SUPPLY,
             label="connected" if connected else "disconnected",
         )
+
+    def set_pipeline_connected(self, gas: str, connected: bool, *, pressure_psig: float | None = None):
+        """Connect or disconnect a wall gas pipeline ('o2', 'air', or 'n2o')."""
+        src = self.circuit.gas_supply.source(gas)
+        connected = bool(connected)
+        src.set_pipeline(connected, pressure_psig=pressure_psig)
+        projection_core.sync_gas_supply(self)
+        if src.gas == "o2":
+            self.actions.record(
+                self.state.time,
+                ACTION_OXYGEN_SUPPLY,
+                label="pipeline_connected" if connected else "pipeline_disconnected",
+                amount=src.effective_pipeline_psig,
+            )
+
+    def set_pipeline_pressure(self, gas: str, pressure_psig: float):
+        """Set a wall pipeline gauge pressure (0-100 psig) for partial or complete supply drops."""
+        src = self.circuit.gas_supply.source(gas)
+        src.set_pipeline_pressure(pressure_psig)
+        projection_core.sync_gas_supply(self)
+        if src.gas == "o2":
+            self.actions.record(
+                self.state.time,
+                ACTION_OXYGEN_SUPPLY,
+                label="pipeline_connected" if src.available else "pipeline_disconnected",
+                amount=src.effective_pipeline_psig,
+            )
+
+    def set_cylinder_valve(self, gas: str, open_: bool):
+        """Open or close a backup E-cylinder valve ('o2', 'air', or 'n2o')."""
+        src = self.circuit.gas_supply.source(gas)
+        open_ = bool(open_)
+        src.set_cylinder_valve(open_)
+        projection_core.sync_gas_supply(self)
+        if src.gas == "o2":
+            self.actions.record(
+                self.state.time,
+                ACTION_OXYGEN_SUPPLY,
+                label="cylinder_open" if open_ else "cylinder_closed",
+                amount=src.cylinder_pressure_psig,
+            )
+
+    def replace_cylinder(self, gas: str, fraction: float = 1.0):
+        """Swap a backup E-cylinder with a full (or partially filled) tank."""
+        src = self.circuit.gas_supply.source(gas)
+        src.replace_cylinder(fraction)
+        projection_core.sync_gas_supply(self)
+        if src.gas == "o2":
+            self.actions.record(
+                self.state.time,
+                ACTION_OXYGEN_SUPPLY,
+                label="cylinder_replaced",
+                amount=src.cylinder_pressure_psig,
+            )
+
+    def set_ventilator_drive_gas(self, mode: str):
+        """Select ventilator drive-gas configuration ('o2', 'o2_only', 'air', or 'electric')."""
+        self.circuit.gas_supply.set_drive_gas_mode(mode)
+        projection_core.sync_gas_supply(self)
 
     def set_vaporizer(self, percent: float):
         """Set the sevoflurane vaporizer dial (%); it stays off when sevoflurane is disabled."""
@@ -524,6 +606,21 @@ class SimulationEngine(DrugControllerMixin):
         self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.resp.state.ph_37))
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
 
+    def give_magnesium_sulfate(self, grams: float):
+        """Give IV magnesium sulfate heptahydrate; 1 g contains 4.057 mmol Mg2+."""
+        dose_g = bounded_number("magnesium sulfate dose", grams, 0.0, 30.0, unit="g")
+        if dose_g <= 0.0:
+            raise ValueError("magnesium sulfate dose must be greater than zero")
+        circulation = self.hemo.circulation_fraction()
+        self.hemo.fluids.give_magnesium_sulfate(dose_g * 4.05729, circulation=circulation, bolus_push_s=120.0)
+        self.state.magnesium = float(self.hemo.fluids.serum_magnesium())
+        self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="magnesium_sulfate", amount=dose_g)
+
+    def set_magnesium_infusion(self, g_hr: float):
+        """Set continuous IV magnesium sulfate infusion rate in g/hr (0 to 10 g/hr)."""
+        self.magnesium_infusion_g_hr = bounded_number("magnesium infusion", g_hr, 0.0, 10.0, unit="g/hr")
+        self.actions.record(self.state.time, ACTION_MAGNESIUM_INFUSION, amount=self.magnesium_infusion_g_hr)
+
     def give_sodium_bicarbonate(self, meq: float = 50.0):
         """Queue 8.4% sodium bicarbonate (1 mEq/mL; 50 mEq = 50 mL) as a 100 mL/min IV push."""
         dose = bounded_number("sodium bicarbonate dose", meq, 0.0, 500.0, unit="mEq")
@@ -532,14 +629,52 @@ class SimulationEngine(DrugControllerMixin):
         self._queue_infusion(dose, 100.0, hematocrit=0.0, label="bicarbonate", record_action=False)
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="sodium_bicarbonate", amount=dose)
 
-    def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
-        """Queue packed red cells at 75 mL/min."""
+    def give_blood(
+        self,
+        volume_ml: float = 300.0,
+        hematocrit: float = 0.55,
+        *,
+        storage_days: float = DEFAULT_PRBC_STORAGE_DAYS,
+    ):
+        """Queue packed red cells at 75 mL/min with selectable storage age (1-42 days, default 21)."""
         hct = bounded_number("blood hematocrit", hematocrit, 0.01, MAX_HEMATOCRIT)
+        days = bounded_number("PRBC storage age", storage_days, *PRBC_STORAGE_DAYS_RANGE, unit="days")
         self._queue_infusion(
             volume_ml,
             self.blood_infusion_rate_ml_min,
             hematocrit=hct,
             label="blood",
+            storage_days=days,
+        )
+
+    def give_ffp(self, volume_ml: float = 250.0):
+        """Queue fresh frozen plasma (1 unit ~= 250 mL) with citrate and clotting factors."""
+        self._queue_infusion(
+            volume_ml,
+            self.blood_infusion_rate_ml_min,
+            hematocrit=0.0,
+            retention_fraction=self.hemo.config.colloid_retention_fraction,
+            label="ffp",
+        )
+
+    def give_platelets(self, volume_ml: float = 250.0):
+        """Queue apheresis platelets (1 adult dose ~= 250 mL plasma + platelets)."""
+        self._queue_infusion(
+            volume_ml,
+            self.blood_infusion_rate_ml_min,
+            hematocrit=0.0,
+            retention_fraction=self.hemo.config.colloid_retention_fraction,
+            label="platelets",
+        )
+
+    def give_cryoprecipitate(self, volume_ml: float = 100.0):
+        """Queue cryoprecipitate (1 adult 10-unit pool ~= 100 mL, ~1.8 g fibrinogen)."""
+        self._queue_infusion(
+            volume_ml,
+            self.blood_infusion_rate_ml_min,
+            hematocrit=0.0,
+            retention_fraction=self.hemo.config.colloid_retention_fraction,
+            label="cryoprecipitate",
         )
 
     def give_albumin(self, volume_ml: float):
@@ -573,6 +708,7 @@ class SimulationEngine(DrugControllerMixin):
         label: str = "crystalloid",
         *,
         record_action: bool = True,
+        storage_days: float = DEFAULT_PRBC_STORAGE_DAYS,
     ):
         volume_ml = finite_number(f"{label} volume", volume_ml)
         if volume_ml <= 0 or rate_ml_min <= 0:
@@ -584,6 +720,7 @@ class SimulationEngine(DrugControllerMixin):
                 hematocrit=hematocrit,
                 retention_fraction=retention_fraction,
                 label=label,
+                storage_days=storage_days,
             )
         )
         if record_action:
@@ -627,6 +764,7 @@ class SimulationEngine(DrugControllerMixin):
                 hematocrit=self.hemo.get_hematocrit(),
                 baseline_hct=self.hemo.baseline_hct,
                 circulation=circ,
+                ionized_calcium_mmol_l=self.hemo.fluids.ionized_calcium(self.resp.state.ph_37),
             )
             if not was_prot_rxn and self.event_active("protamine_reaction"):
                 self.actions.record(self.state.time, ACTION_EVENT_START, label="protamine_reaction")
@@ -635,6 +773,8 @@ class SimulationEngine(DrugControllerMixin):
                 model.state.c1,
                 circulation=self.hemo.circulation_fraction(),
             )
+        elif spec.key == "methylene_blue":
+            self.methemoglobin.record_methylene_blue_dose(dose)
         projection_core.sync_pk_state(self)
         self.sync_active_tci_from_pk(spec.key)
         self.actions.record(
@@ -667,6 +807,10 @@ class SimulationEngine(DrugControllerMixin):
             return self.embolism.vae_active
         if name == "high_spinal":
             return self.neuraxial.last_mode == "high_spinal" and self.neuraxial.active
+        if name == "last_crisis":
+            return self.toxicity.active
+        if name == "methemoglobinemia":
+            return self.methemoglobin.active
         raise ValueError(f"Unknown clinical event: {name!r}")
 
     def _log_event(self, name: str, active: bool, amount: float = 0.0):
@@ -748,6 +892,16 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_neuraxial()
         self.neuraxial.place_epidural(False)
         self._sync_neuraxial_state()
+        if (
+            self.toxicity.active
+            or self.pk["bupivacaine"].has_mass()
+            or self.pk["ropivacaine"].has_mass()
+        ):
+            self.stop_last_crisis()
+        self.stop_methemoglobinemia()
+        self.opioid_toxicity.reset()
+        self.state.opioid_rigidity = 0.0
+        self.magnesium_infusion_g_hr = 0.0
         self.stop_disturbance()
         self.intubation_start_time = None
         self.hemo.invalidate_state_cache()
@@ -882,28 +1036,109 @@ class SimulationEngine(DrugControllerMixin):
         *,
         with_epinephrine: bool = False,
         accidental_intrathecal: bool = False,
+        accidental_intravascular: bool = False,
     ) -> None:
-        """Administer an epidural bolus (optionally with 1:200,000 epinephrine or intrathecal)."""
+        """Administer an epidural bolus (optionally with 1:200,000 epinephrine, intrathecal, or intravascular)."""
         vol = bounded_number("epidural volume", volume_ml, 1.0, 30.0, unit="mL")
         conc = bounded_number("epidural concentration", concentration_pct, 0.05, 2.0, unit="%")
+        drug_norm = str(drug).strip().lower()
+        if accidental_intrathecal and accidental_intravascular:
+            raise ValueError("Cannot trigger both accidental intrathecal and intravascular injection")
         if accidental_intrathecal:
             self._log_event("high_spinal", True, amount=vol)
         self.neuraxial.give_epidural_bolus(
-            drug=drug,
+            drug=drug_norm,
             volume_ml=vol,
             concentration_pct=conc,
             with_epinephrine=with_epinephrine,
             accidental_intrathecal=accidental_intrathecal,
+            accidental_intravascular=accidental_intravascular,
         )
         self._sync_neuraxial_state()
-        if not accidental_intrathecal:
+        dose_mg = vol * conc * 10.0
+        la_pk = self.pk.get(drug_norm)
+        if accidental_intravascular:
+            if not self.event_active("last_crisis"):
+                self.actions.record(self.state.time, ACTION_EVENT_START, label="last_crisis", amount=dose_mg)
+            if la_pk is not None:
+                la_pk.state.c1 += dose_mg / la_pk.v1
+            if with_epinephrine:
+                epi_pk = self.pk["epi"]
+                # 1:200,000 epinephrine = 5 mcg/mL; IV entry produces rapid test-dose tachycardia.
+                epi_pk.state.c1 += (vol * 5.0) / epi_pk.v1
+            projection_core.sync_pk_state(self)
+        elif not accidental_intrathecal:
+            if isinstance(la_pk, _EpiduralAbsorptionPK):
+                la_pk.add_epidural_dose(dose_mg, with_epinephrine=with_epinephrine)
             suffix = "_epi" if with_epinephrine else ""
             self.actions.record(
                 self.state.time,
                 ACTION_NEURAXIAL,
-                label=f"epidural_bolus:{drug.strip().lower()}{suffix}",
+                label=f"epidural_bolus:{drug_norm}{suffix}",
                 amount=vol,
             )
+
+    def trigger_last_crisis(self, drug: str = "bupivacaine", dose_mg: float | None = None) -> None:
+        """Trigger local anesthetic systemic toxicity via accidental IV local anesthetic bolus."""
+        drug_norm = str(drug).strip().lower()
+        defaults = {"bupivacaine": 100.0, "ropivacaine": 150.0, "lidocaine": 500.0}
+        if drug_norm not in defaults:
+            raise ValueError(f"Unsupported LAST drug {drug!r}; choose bupivacaine, ropivacaine, or lidocaine")
+        dose = defaults[drug_norm] if dose_mg is None else bounded_number("LAST dose", dose_mg, 1.0, 2000.0, unit="mg")
+        if not self.event_active("last_crisis"):
+            self.actions.record(self.state.time, ACTION_EVENT_START, label="last_crisis", amount=dose)
+        model = self.pk[drug_norm]
+        model.state.c1 += dose / model.v1
+        projection_core.sync_pk_state(self)
+
+    def stop_last_crisis(self) -> None:
+        """Clear active local anesthetic systemic toxicity and long-acting LA PK pools."""
+        was_active = self.event_active("last_crisis")
+        dom = self.toxicity.dominant_agent
+        self.pk["bupivacaine"].reset()
+        self.pk["ropivacaine"].reset()
+        if dom == "lidocaine":
+            self.pk["lidocaine"].reset()
+        self.toxicity = LocalAnestheticToxicity(self.toxicity.weight, pregnant=self.toxicity.pregnant)
+        self.state.seizure_activity = 0.0
+        self.state.convulsions = False
+        self.hemo.sodium_block = 0.0
+        self.hemo.toxic_contractility_loss = 0.0
+        projection_core.sync_pk_state(self)
+        self.hemo.invalidate_state_cache()
+        self._sync_cardiac_state()
+        if was_active:
+            self.actions.record(self.state.time, ACTION_EVENT_STOP, label="last_crisis")
+
+    def trigger_methemoglobinemia(
+        self,
+        agent: str = "benzocaine",
+        *,
+        severity: float = 1.0,
+        initial_fraction: float | None = None,
+    ) -> None:
+        """Trigger local-anesthetic-induced methemoglobinemia (Guay 2009)."""
+        sev = bounded_number("methemoglobinemia severity", severity, 0.1, 2.5)
+        init_f = (
+            None
+            if initial_fraction is None
+            else bounded_number("initial methemoglobin fraction", initial_fraction, 0.0, 0.80)
+        )
+        was_active = self.event_active("methemoglobinemia")
+        self.methemoglobin.trigger(agent=agent, severity=sev, initial_fraction=init_f)
+        self.state.methb_pct = float(100.0 * self.methemoglobin.arterial_methb_fraction)
+        if not was_active and self.event_active("methemoglobinemia"):
+            self.actions.record(self.state.time, ACTION_EVENT_START, label="methemoglobinemia", amount=sev)
+
+    def stop_methemoglobinemia(self) -> None:
+        """Clear methemoglobinemia oxidizer load and restore normal hemoglobin state."""
+        was_active = self.event_active("methemoglobinemia")
+        self.methemoglobin.reset()
+        self.resp._methb_fraction = 0.0
+        self.resp._arterial_methb_fraction = 0.0
+        self.state.methb_pct = 0.0
+        if was_active:
+            self.actions.record(self.state.time, ACTION_EVENT_STOP, label="methemoglobinemia")
 
     def set_epidural_infusion(
         self,
@@ -1332,13 +1567,16 @@ class SimulationEngine(DrugControllerMixin):
             self.state.potassium = float(fluids.arterial_potassium)
             self.state.chloride = float(fluids.arterial_chloride)
             self.state.ionized_calcium = float(fluids.arterial_ionized_calcium(self.resp.state.ph_37))
+            self.state.magnesium = float(fluids.arterial_magnesium)
             self.state.glucose = float(self.glucose.arterial_glucose_mg_dl)
         else:
             self.state.sodium = float(fluids.concentration("sodium"))
             self.state.potassium = float(fluids.concentration("potassium"))
             self.state.chloride = float(fluids.concentration("chloride"))
             self.state.ionized_calcium = float(fluids.ionized_calcium(self.resp.state.ph_37))
+            self.state.magnesium = float(fluids.serum_magnesium())
             self.state.glucose = float(self.glucose.live_glucose_mg_dl)
+        self.state.methb_pct = float(100.0 * self.methemoglobin.arterial_methb_fraction)
         self.state.albumin_g_l = float(fluids.plasma_albumin_g_l)
         self.state.phosphate = float(fluids.concentration("phosphate"))
         self.state.lactate = float(self.lactate.concentration)
@@ -1420,6 +1658,8 @@ class SimulationEngine(DrugControllerMixin):
         prime_hematocrit: float | None = None,
         heater_cooler_on: bool = True,
         water_target_c: float = 37.0,
+        arterial_cannula_fr: int | None = None,
+        venous_cannula_fr: int | None = None,
     ) -> None:
         """Initiate venovenous ECMO with optional circuit prime hemodilution."""
         norm_label, hct = self._resolve_prime_fluid(prime_label, prime_hematocrit)
@@ -1435,6 +1675,8 @@ class SimulationEngine(DrugControllerMixin):
             prime_volume_ml=prime_volume_ml,
             heater_cooler_on=heater_cooler_on,
             water_target_c=water_target_c,
+            arterial_cannula_fr=arterial_cannula_fr,
+            venous_cannula_fr=venous_cannula_fr,
         )
         self._finish_extracorporeal_start("start_vv_ecmo", blood_flow_l_min, prime_ml, norm_label, hct)
 
@@ -1454,6 +1696,8 @@ class SimulationEngine(DrugControllerMixin):
         water_target_c: float = 37.0,
         lv_vent_l_min: float = 0.0,
         bypass_alarm_mode: bool = False,
+        arterial_cannula_fr: int | None = None,
+        venous_cannula_fr: int | None = None,
     ) -> None:
         """Initiate venoarterial ECMO (peripheral femoral or central)."""
         norm_label, hct = self._resolve_prime_fluid(prime_label, prime_hematocrit)
@@ -1470,6 +1714,8 @@ class SimulationEngine(DrugControllerMixin):
             heater_cooler_on=heater_cooler_on,
             water_target_c=water_target_c,
             lv_vent_l_min=lv_vent_l_min,
+            arterial_cannula_fr=arterial_cannula_fr,
+            venous_cannula_fr=venous_cannula_fr,
         )
         self.extracorporeal.set_bypass_alarm_mode(bool(bypass_alarm_mode))
         self._finish_extracorporeal_start("start_va_ecmo", blood_flow_l_min, prime_ml, norm_label, hct)
@@ -1493,6 +1739,8 @@ class SimulationEngine(DrugControllerMixin):
         water_target_c: float = 37.0,
         venous_clamp_open: float = 1.0,
         bypass_alarm_mode: bool = True,
+        arterial_cannula_fr: int | None = None,
+        venous_cannula_fr: int | None = None,
     ) -> None:
         """Initiate cardiopulmonary bypass with an open venous reservoir."""
         norm_label, hct = self._resolve_prime_fluid(prime_label, prime_hematocrit)
@@ -1513,6 +1761,8 @@ class SimulationEngine(DrugControllerMixin):
             water_target_c=water_target_c,
             venous_clamp_open=venous_clamp_open,
             bypass_alarm_mode=bypass_alarm_mode,
+            arterial_cannula_fr=arterial_cannula_fr,
+            venous_cannula_fr=venous_cannula_fr,
         )
         self._finish_extracorporeal_start("start_cpb", blood_flow_l_min, prime_ml, norm_label, hct)
 
@@ -1580,8 +1830,37 @@ class SimulationEngine(DrugControllerMixin):
         self._sync_extracorporeal_state()
         self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="venous_clamp", amount=open_fraction)
 
+    def set_ecmo_cannulas(
+        self, *, arterial_fr: int | None = None, venous_fr: int | None = None,
+    ) -> None:
+        """Set arterial and/or venous extracorporeal cannula sizes (French)."""
+        self.extracorporeal.set_cannula_sizes(arterial_fr=arterial_fr, venous_fr=venous_fr)
+        hct = self.hemo.get_hematocrit()
+        visc = math.exp(2.2 * (hct - 0.41)) * (1.0 + 0.025 * max(0.0, 37.0 - self.state.temp_c))
+        self.extracorporeal.update_line_pressures(self.hemo.state.map, visc)
+        self._sync_extracorporeal_state()
+
     def set_cpb_cross_clamp(self, clamped: bool) -> None:
+        was_clamped = self.extracorporeal.state.aortic_cross_clamp
+        cpg = self.extracorporeal.cardioplegia
+        had_protocol_cpg = self.extracorporeal.is_cpb and cpg.dose_count > 0
+        had_breakthrough = cpg.breakthrough
+        last_proto = cpg.last_protocol_used or cpg.protocol
         self.extracorporeal.set_aortic_cross_clamp(clamped)
+        if was_clamped and not clamped and had_protocol_cpg:
+            # Spontaneous sinus return vs reperfusion VF on cross-clamp release (Ad 2018:
+            # del Nido ~98% sinus vs Buckberg ~82%, degraded by breakthrough or energy loss).
+            p_vf = 0.02 if last_proto == "del_nido" else 0.18
+            if had_breakthrough:
+                p_vf = min(0.80, p_vf + 0.30)
+            if self.hemo.coronary.energy_reserve < 0.65:
+                p_vf = min(0.85, p_vf + 0.35 * (0.65 - self.hemo.coronary.energy_reserve) / 0.65)
+            if self.hemo.fluids.concentration("potassium") < 3.5:
+                p_vf = min(0.85, p_vf + 0.12)
+            if self._shock_rng.random() < p_vf:
+                self.hemo.rhythm_type = RhythmType.VFIB
+            elif self.hemo.rhythm_type == RhythmType.ASYSTOLE:
+                self.hemo.rhythm_type = RhythmType.SINUS
         self._sync_extracorporeal_state()
         self.actions.record(
             self.state.time, ACTION_EXTRACORPOREAL, label="cross_clamp_on" if clamped else "cross_clamp_off",
@@ -1593,6 +1872,39 @@ class SimulationEngine(DrugControllerMixin):
         self.actions.record(
             self.state.time, ACTION_EXTRACORPOREAL, label="cardioplegia_on" if arrested else "cardioplegia_off",
         )
+
+    def give_cardioplegia(
+        self,
+        protocol: str = "buckberg",
+        *,
+        route: str = "antegrade",
+        phase: str = "induction",
+        volume_ml: float | None = None,
+        flow_ml_min: float | None = None,
+        temp_c: float | None = None,
+    ) -> None:
+        """Deliver an antegrade or retrograde Buckberg or del Nido CPB cardioplegia dose."""
+        rec = self.extracorporeal.start_cardioplegia(
+            protocol,
+            route=route,
+            phase=phase,
+            volume_ml=volume_ml,
+            flow_ml_min=flow_ml_min,
+            temp_c=temp_c,
+        )
+        self._sync_extracorporeal_state()
+        self.actions.record(
+            self.state.time,
+            ACTION_EXTRACORPOREAL,
+            label=f"cardioplegia_{rec.protocol}_{route}_{rec.phase}",
+            amount=self.extracorporeal.state.cardioplegia_remaining_ml,
+        )
+
+    def stop_cardioplegia(self) -> None:
+        """Stop an active cardioplegia infusion without releasing aortic cross-clamp."""
+        self.extracorporeal.stop_cardioplegia()
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="cardioplegia_stop")
 
     def set_ecmo_lv_vent(self, l_min: float) -> None:
         self.extracorporeal.set_lv_vent(l_min)
@@ -1651,9 +1963,35 @@ class SimulationEngine(DrugControllerMixin):
             return "moderate"
         return "severe"
 
+    def _sync_pacemaker(self) -> None:
+        """Evaluate current pacemaker capture against underlying rhythm and apply to hemo."""
+        ecmo = self.extracorporeal
+        cardioplegia_now = ecmo.is_arterial_support and ecmo.state.cardioplegia_arrest
+        status = self.pacemaker.evaluate(
+            intrinsic_rhythm=self.hemo.rhythm_type,
+            intrinsic_hr=self.hemo.intrinsic_rhythm_hr(),
+            lap=self.hemo._effective_lap(),
+            ischemia=self.hemo.coronary.ischemia,
+            hypoxia=self.hemo.myocardial_hypoxia,
+            energy_failure=self.hemo.coronary.energy_failure,
+            hyperkalemia_block=self.hemo.hyperkalemia_block,
+            sodium_block=self.toxicity.conduction_block,
+            magnesium_block=self.hemo.magnesium_block,
+            temp_c=self.state.temp_c,
+            cardioplegia_arrest=cardioplegia_now,
+            stimulus_tolerance=self._tol_current,
+        )
+        self.hemo.set_pacing_capture(
+            captured=status.captured,
+            mode=status.mode,
+            rate_bpm=status.paced_hr,
+            sv_multiplier=status.sv_multiplier,
+        )
+
     def _sync_cardiac_state(self) -> None:
-        """Project immediate rhythm, compression, or post-shock changes into public hemodynamic landmarks."""
+        """Project immediate rhythm, pacing, compression, or post-shock changes into public hemodynamic landmarks."""
         self.hemo.post_shock_asystole = self.arrhythmias.post_shock_asystole
+        self._sync_pacemaker()
         hemo_state = self.hemo.state
         projection_core.project_hemodynamics(self, hemo_state)
         sbp, dbp = projection_core.reference_arterial_pressures(self, hemo_state)
@@ -1661,6 +1999,27 @@ class SimulationEngine(DrugControllerMixin):
         self.state.dbp = float(min(dbp, self.state.map))
         if hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.hr <= 0.0:
             self.state.display_hr = 0.0
+
+    def set_pacing(
+        self,
+        *,
+        mode: str | None = None,
+        route: str | None = None,
+        rate_bpm: float | None = None,
+        output_ma: float | None = None,
+    ) -> None:
+        """Configure temporary transcutaneous or epicardial cardiac pacing."""
+        prev = (self.pacemaker.mode, self.pacemaker.route, self.pacemaker.rate_bpm, self.pacemaker.output_ma)
+        self.pacemaker.configure(mode=mode, route=route, rate_bpm=rate_bpm, output_ma=output_ma)
+        curr = (self.pacemaker.mode, self.pacemaker.route, self.pacemaker.rate_bpm, self.pacemaker.output_ma)
+        if curr != prev:
+            self.actions.record(
+                self.state.time,
+                ACTION_PACING,
+                label=f"{self.pacemaker.mode}:{self.pacemaker.route}",
+                amount=self.pacemaker.rate_bpm if self.pacemaker.is_on else 0.0,
+            )
+        self._sync_cardiac_state()
 
     def set_rhythm(self, rhythm_name: str | RhythmType):
         rhythm: RhythmType | None
@@ -1681,8 +2040,45 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.invalidate_state_cache()
         self._sync_cardiac_state()
 
-    def set_chest_compressions(self, active: bool):
-        """Start or stop chest compressions at the guideline rate."""
+    def set_cpr_quality(
+        self,
+        *,
+        rate: float | None = None,
+        depth_cm: float | None = None,
+        recoil: float | None = None,
+    ) -> None:
+        """Set CPR compression rate (60-160 /min), depth (2-7 cm), and full-recoil fraction (0-1)."""
+        new_rate = (
+            bounded_number("CPR rate", rate, *COMPRESSION_RATE_RANGE, unit="/min")
+            if rate is not None
+            else None
+        )
+        new_depth = (
+            bounded_number("CPR depth", depth_cm, *COMPRESSION_DEPTH_RANGE_CM, unit="cm")
+            if depth_cm is not None
+            else None
+        )
+        new_recoil = (
+            bounded_number("CPR recoil", recoil, *COMPRESSION_RECOIL_RANGE)
+            if recoil is not None
+            else None
+        )
+        self.hemo.set_cpr_quality(rate=new_rate, depth_cm=new_depth, recoil=new_recoil)
+        if new_rate is not None:
+            self.compression_clock.set_rate(new_rate)
+        self._sync_cardiac_state()
+
+    def set_chest_compressions(
+        self,
+        active: bool,
+        *,
+        rate: float | None = None,
+        depth_cm: float | None = None,
+        recoil: float | None = None,
+    ):
+        """Start or stop chest compressions, optionally adjusting rate, depth, and recoil."""
+        if rate is not None or depth_cm is not None or recoil is not None:
+            self.set_cpr_quality(rate=rate, depth_cm=depth_cm, recoil=recoil)
         active = bool(active)
         if active != self.hemo.compressions:
             self.compressions_started_at = self.state.time if active else None
@@ -1690,9 +2086,16 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.compressions = active
         self._sync_cardiac_state()
 
-    def charge_defibrillator(self) -> None:
-        """Start a 5-second charge to 200 J."""
-        self.defibrillator.charge(self.state.time)
+    def set_defibrillator_energy(self, energy_j: float) -> float:
+        """Select biphasic defibrillation/cardioversion shock energy (20-360 J)."""
+        val = self.defibrillator.set_energy(energy_j)
+        self.state.shock_energy_j = float(val)
+        return val
+
+    def charge_defibrillator(self, energy_j: float | None = None) -> None:
+        """Charge the defibrillator to the selected energy (default 200 J, 5.0 s at 200 J)."""
+        self.defibrillator.charge(self.state.time, energy_j=energy_j)
+        self.state.shock_energy_j = float(self.defibrillator.energy_j)
 
     def disarm_defibrillator(self) -> None:
         """Cancel charging or a pending synchronized shock."""
@@ -1728,8 +2131,9 @@ class SimulationEngine(DrugControllerMixin):
         return True
 
     def _deliver_shock(self, time: float, *, synchronized: bool) -> None:
-        self._last_shock_feedback = check_shock(self)
+        self._last_shock_feedback = check_shock(self, synchronized=synchronized)
         prev_rhythm = self.hemo.rhythm_type
+        energy_j = self.defibrillator.charged_energy_j
         cycle = self.cardiac_cycle.current
         hypoxia, energy_failure, silent = runtime_core.myocardial_substrate(self)
         rhythm = shock_outcome(
@@ -1745,13 +2149,15 @@ class SimulationEngine(DrugControllerMixin):
             energy_reserve=self.hemo.coronary.energy_reserve,
             temp_c=self.state.temp_c,
             hyperkalemia_block=self.hemo.hyperkalemia_block,
+            energy_j=energy_j,
+            bmi=self.patient.bmi,
         )
         self.defibrillator.consume(time, synchronized)
         self.ecg.trigger_shock_artifact()
         self.actions.record(time, ACTION_SHOCK,
-                            label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
+                            label="synchronized" if synchronized else "unsynchronized", amount=energy_j)
         if not (self.extracorporeal.is_arterial_support and self.extracorporeal.state.cardioplegia_arrest):
-            self.hemo.coronary.apply_shock(SHOCK_ENERGY_J)
+            self.hemo.coronary.apply_shock(energy_j)
         # An electrically silent heart keeps its underlying rhythm.
         if not silent and prev_rhythm != RhythmType.ASYSTOLE:
             self.hemo.rhythm_type = self.arrhythmias.after_shock(
@@ -1887,6 +2293,9 @@ class SimulationEngine(DrugControllerMixin):
         hb_sample = float(
             self.hemo.hb_conc if (is_venous_site or fluids._circulation >= 0.99) else self.resp._arterial_hb
         )
+        methb_sample = float(
+            self.methemoglobin.methb_fraction if is_venous_site else self.methemoglobin.arterial_methb_fraction
+        )
         temp_c = float(state.temp_c)
 
         def _warm_po2_and_sat_to_37(
@@ -1894,14 +2303,17 @@ class SimulationEngine(DrugControllerMixin):
         ) -> tuple[float, float]:
             if abs(temp_c - 37.0) <= 1e-6:
                 return float(po2_invivo), float(sat_invivo_pct)
-            p50_invivo = acid_base_p50(ph_37, pco2_37, temp_c)
+            hb_o2 = hb_sample * (1.0 - methb_sample)
+            p50_mult = 1.0 - 0.55 * min(0.70, methb_sample) if methb_sample > 0.0 else 1.0
+            dpg_frac = fluids.rbc_23dpg_fraction
+            p50_invivo = acid_base_p50(ph_37, pco2_37, temp_c, dpg_fraction=dpg_frac) * p50_mult
             sol_invivo = temperature_o2_solubility(temp_c)
-            o2_c, _ = oxygen_content(max(0.0, po2_invivo), hb_sample, p50_invivo, sol_invivo)
-            p50_37 = acid_base_p50(ph_37, pco2_37, 37.0, at_37=True)
+            o2_c, _ = oxygen_content(max(0.0, po2_invivo), hb_o2, p50_invivo, sol_invivo)
+            p50_37 = acid_base_p50(ph_37, pco2_37, 37.0, at_37=True, dpg_fraction=dpg_frac) * p50_mult
             po2_37, sat_37 = po2_and_sat_from_content(
-                o2_c, hb_sample, p50_37, max(1.0, po2_invivo), solubility=O2_SOLUBILITY,
+                o2_c, hb_o2, p50_37, max(1.0, po2_invivo), solubility=O2_SOLUBILITY,
             )
-            return float(po2_37), float(sat_37 * 100.0)
+            return float(po2_37), float(sat_37 * 100.0 * (1.0 - methb_sample))
 
         if ecmo.is_active:
             peripheral_va = ecmo.is_arterial_support and st.cannulation is CannulationType.PERIPHERAL_FEM
@@ -1949,6 +2361,8 @@ class SimulationEngine(DrugControllerMixin):
             fio2=abg_fio2,
             site=site_norm,
             glucose=float(self.glucose.state.glucose_mg_dl if is_venous_site else self.glucose.arterial_glucose_mg_dl),
+            magnesium=float(fluids.serum_magnesium() if is_venous_site else fluids.arterial_magnesium),
+            methb_pct=float(100.0 * methb_sample),
         )
         self.blood_gases.append(result)
         self.actions.record(state.time, ACTION_BLOOD_GAS, label=site_norm)
@@ -1959,6 +2373,20 @@ class SimulationEngine(DrugControllerMixin):
         result = ACTResult(drawn_at=self.state.time, act_s=float(self.coagulation.state.act_s))
         self.acts.append(result)
         self.actions.record(self.state.time, ACTION_ACT, amount=result.act_s)
+        return result
+
+    def measure_coag_panel(self) -> CoagPanelResult:
+        """Draw a coagulation panel (INR, fibrinogen, platelets); results post after 120 s."""
+        coag = self.coagulation.state
+        result = CoagPanelResult(
+            drawn_at=self.state.time,
+            fibrinogen_g_l=float(coag.fibrinogen_g_l),
+            platelets_10e9_l=float(coag.platelets_10e9_l),
+            inr=float(coag.inr),
+            factor_activity_pct=float(coag.factor_activity_pct),
+        )
+        self.coag_panels.append(result)
+        self.actions.record(self.state.time, ACTION_COAG_PANEL, amount=result.inr)
         return result
 
     def measure_glucose(self) -> GlucoseResult:

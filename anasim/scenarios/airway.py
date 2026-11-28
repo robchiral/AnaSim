@@ -22,7 +22,7 @@ def _setup_failed_laryngoscopy(engine) -> None:
     engine.set_airway_mode("Mask")
     engine.set_fgf(10.0, 0.0, 0.0)
     engine.set_apl_valve(20.0)
-    engine.set_mask_seal(0.85)
+    engine.set_mask_seal(0.60)
     wt = engine.patient.weight
     # Preoxygenate, then induce with fentanyl, propofol, and rocuronium + maintenance propofol.
     def _induce_step(eng, elapsed: float) -> None:
@@ -33,7 +33,7 @@ def _setup_failed_laryngoscopy(engine) -> None:
             else:
                 eng.give_drug_bolus("propofol", round(2.0 * wt))
                 eng.set_drug_rate("propofol", 75.0)
-            eng.give_drug_bolus("roc", round(0.9 * wt))
+            eng.give_drug_bolus("roc", round(0.6 * wt))
             eng.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
 
     preroll_scenario(engine, 130.0, dt=1.0, settle_s=15.0, on_step=_induce_step)
@@ -162,11 +162,11 @@ def create_failed_laryngoscopy() -> Scenario:
                 id="CALL_HELP_OXYGENATE",
                 title="Call for help and optimize mask oxygenation",
                 instruction=(
-                    "Direct laryngoscopy showed a <b>Cormack-Lehane Grade III</b> anterior view. "
+                    "Direct laryngoscopy showed a <b>Grade III</b> anterior view. "
                     "Open <b>Airway tools</b>, select <b>Call for airway help</b>, enable "
                     "<b>Oral airway (OPA)</b> or <b>Two-hand jaw thrust</b>, and maintain 100% O₂ "
-                    "(O₂ ≥ 6 L/min, Air and N₂O 0 L/min).<br><br>"
-                    "<i>ASA 2022 difficult airway guidelines prioritize oxygenation and early help over repeated attempts.</i>"
+                    "(O₂ ≥ 6 L/min, air and N₂O 0 L/min).<br><br>"
+                    "<i>Prioritize oxygenation and early help over repeated laryngoscopy attempts.</i>"
                 ),
                 check_requirements=_check_help_and_mask,
                 target_tab="Machine",
@@ -175,10 +175,12 @@ def create_failed_laryngoscopy() -> Scenario:
                 id="ALTERNATE_AIRWAY",
                 title="Escalate to an alternate airway device",
                 instruction=(
-                    "Change technique early (limit attempts to ≤ 3): select <b>VL + bougie</b>, "
+                    "Change technique early (limit attempts to ≤ 3): choose <b>VL + bougie</b>, "
                     "<b>Video laryngoscopy (VL)</b>, or <b>Flexible bronchoscopy</b> in Airway tools "
-                    "and click <b>Tracheal tube</b>, or place a rescue <b>SGA</b>.<br><br>"
-                    "<i>Exceeding 2 laryngoscopy attempts sharply increases hypoxemia and airway complications (Mort 2004b), and repeated trauma can precipitate CICO (ASA 2022; DAS 2015).</i>"
+                    "and select <b>Tracheal tube</b>, or place a rescue <b>SGA</b>.<br><br>"
+                    "<i>If elective and mask ventilation is stable, stopping <b>propofol</b> and giving "
+                    "<b>sugammadex 16 mg/kg</b> to wake the patient is also valid. Repeated attempts cause "
+                    "airway edema and can precipitate CICO.</i>"
                 ),
                 check_requirements=_check_alternate_device,
                 target_tab="Machine",
@@ -199,7 +201,7 @@ def create_failed_laryngoscopy() -> Scenario:
                 id="help_called",
                 label="Called for airway help and difficult airway cart",
                 check=lambda e: e.airway_crisis.help_called,
-                review="Call for help and the difficult airway cart immediately after an unexpected failed laryngoscopy (ASA 2022).",
+                review="Call for help and the difficult airway cart immediately after an unexpected failed laryngoscopy.",
                 milestone=True,
             ),
             CaseOutcome(
@@ -210,14 +212,14 @@ def create_failed_laryngoscopy() -> Scenario:
                     or e.airway_crisis.two_hand_mask
                     or bool(e.actions.since_case(ACTION_AIRWAY_TOOL, labels=("opa_on", "two_hand_on")))
                 ),
-                review="Use an oral airway and two-handed jaw thrust to preserve oxygenation between attempts (Joffe 2010).",
+                review="Use an oral airway and two-handed jaw thrust to preserve oxygenation between attempts.",
                 milestone=True,
             ),
             CaseOutcome(
                 id="limit_attempts",
                 label="Limited laryngoscopy attempts (≤ 3)",
                 check=lambda e: 1 <= e.airway_crisis.laryngoscopy_attempts <= 3,
-                review="Limit laryngoscopic attempts to ≤ 3 and change technique early to avoid hypoxemia and airway trauma (Mort 2004b; ASA 2022).",
+                review="Limit laryngoscopic attempts to ≤ 3 and change technique early to avoid hypoxemia and airway trauma.",
             ),
             CaseOutcome(
                 id="airway_secured",
@@ -250,11 +252,12 @@ def _setup_esophageal_intubation(engine) -> None:
             else:
                 eng.give_drug_bolus("propofol", round(2.4 * wt))
                 eng.set_drug_rate("propofol", 100.0)
-            eng.give_drug_bolus("roc", round(0.9 * wt))
+            eng.give_drug_bolus("roc", round(0.6 * wt))
             eng.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
 
     preroll_scenario(engine, 130.0, dt=1.0, settle_s=15.0, on_step=_induce_step)
     engine.set_bag_mask_ventilation(False)
+    engine.set_difficult_airway("anterior_dl")
     engine.set_esophageal_intubation(True, gastric_co2_mmhg=18.0)
     engine.airway_crisis.last_view = "Grade III"
     engine.airway_crisis.laryngoscopy_attempts = 1
@@ -281,6 +284,8 @@ def _check_esoph_reox(engine) -> tuple[bool, str]:
         missing.append(o2_msg)
     if not (engine.bag_mask_active or engine.vent.is_on):
         missing.append("Start bag or mechanical ventilation")
+    elif not s.etco2_signal_valid or monitor_value(engine, "etco2") < 15.0:
+        missing.append("Deliver mask or SGA breaths to confirm exhaled CO₂")
     return not missing, "; ".join(missing)
 
 
@@ -291,7 +296,7 @@ def _check_esoph_reintubated(engine) -> tuple[bool, str]:
         and not s.esophageal_intubation
         and (engine.vent.is_on or engine.bag_mask_active)
     )
-    return met, "" if met else "Place tracheal tube (VL or DL) or SGA and start ventilation"
+    return met, "" if met else "Place tracheal tube (VL / VL + bougie) or rescue SGA and start ventilation"
 
 
 def _check_esoph_confirmed(engine) -> tuple[bool, str]:
@@ -320,11 +325,11 @@ def create_esophageal_intubation() -> Scenario:
         events=(
             CaseEvent(
                 id="esoph_cue",
-                at=5.0,
+                at=15.0,
                 when=lambda e: e.airway_crisis.esophageal_intubation,
                 cue=(
-                    "Capnography is weak and decaying toward flatline, returned tidal volume (VTe) "
-                    "is very low, and breath sounds are absent over the chest."
+                    "After several breaths, capnography has decayed toward flatline, returned tidal "
+                    "volume (VTe) is very low, and breath sounds are absent over the chest."
                 ),
                 apply=lambda _e: None,
             ),
@@ -336,7 +341,8 @@ def create_esophageal_intubation() -> Scenario:
                 instruction=(
                     "Absent sustained exhaled CO₂ with low VTe indicates <b>esophageal intubation</b>. "
                     "Select <b>Facemask</b> (or <b>SGA</b>) under Machine → Airway to pull the tube immediately.<br><br>"
-                    "<i>PUMA 2022 consensus: default to immediate tube removal whenever sustained exhaled CO₂ is absent.</i>"
+                    "<i>Always remove the tube when sustained exhaled CO₂ is absent. Do not wait for SpO₂ to fall; "
+                    "after preoxygenation, pulse oximetry can stay normal for minutes.</i>"
                 ),
                 check_requirements=_check_esoph_removed,
                 target_tab="Machine",
@@ -345,17 +351,19 @@ def create_esophageal_intubation() -> Scenario:
                 id="REOXYGENATE",
                 title="Reoxygenate with 100% O₂",
                 instruction=(
-                    "Ventilate by facemask (or SGA) on <b>100% O₂</b> (O₂ ≥ 6 L/min, Air and N₂O 0 L/min, bag or ventilator) "
-                    "and restore oxygenation before re-attempting intubation."
+                    "Ventilate by facemask (or SGA) on <b>100% O₂</b> (O₂ ≥ 6 L/min, air and N₂O 0 L/min) "
+                    "until exhaled CO₂ returns and oxygenation is restored. Call for airway help if needed."
                 ),
                 check_requirements=_check_esoph_reox,
                 target_tab="Machine",
             ),
             ScenarioStep(
                 id="REINTUBATE",
-                title="Re-intubate under direct vision",
+                title="Re-intubate with an alternate technique",
                 instruction=(
-                    "Place the <b>Tracheal tube</b> (VL or DL) or rescue <b>SGA</b> and start mechanical ventilation."
+                    "Because initial direct laryngoscopy showed a Grade III view, switch to "
+                    "<b>Video laryngoscopy (VL)</b> or <b>VL + bougie</b> in Airway tools and place the "
+                    "<b>Tracheal tube</b> (or rescue <b>SGA</b>), then start mechanical ventilation."
                 ),
                 check_requirements=_check_esoph_reintubated,
                 target_tab="Machine",
@@ -376,7 +384,7 @@ def create_esophageal_intubation() -> Scenario:
                 id="removed_esophageal_tube",
                 label="Removed misplaced esophageal tube",
                 check=lambda e: not e.airway_crisis.esophageal_intubation,
-                review="Default to immediate tube removal whenever sustained exhaled CO₂ is absent (Chrimes 2022 PUMA).",
+                review="Default to immediate tube removal whenever sustained exhaled CO₂ is absent.",
             ),
             CaseOutcome(
                 id="tracheal_capnography",

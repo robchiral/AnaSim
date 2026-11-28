@@ -12,6 +12,7 @@ from .base import (
     create_observe_step,
     create_reassess_step,
     crisis_outcomes,
+    equilibrate_maintenance_fio2,
     format_unmet_int,
     preroll_scenario,
     require_crisis_stopped,
@@ -26,7 +27,8 @@ _BLEED_RATE_ML_MIN = 450.0
 
 
 def _prepare_hemorrhage(engine) -> None:
-    """Seed moderate occult surgical blood loss (~14% BV) so pulse pressure is narrowing at t = 0."""
+    """Seed moderate occult surgical blood loss (~14% BV) on ~45% air/O₂ maintenance."""
+    equilibrate_maintenance_fio2(engine, target_fio2=0.45, min_air_l_min=1.2, air_vo2_factor=4.5)
     rate_ml_min = _OCCULT_LOSS_FRACTION * engine.hemo.blood_volume_0 / (_PREROLL_S / 60.0)
     engine.start_hemorrhage(rate_ml_min)
     preroll_scenario(
@@ -68,7 +70,8 @@ def create_hemorrhage_response() -> Scenario:
                 "Treat brisk blood loss early without waiting for severe hypotension. "
                 "Falling MAP, narrowing pulse pressure, and dropping EtCO₂ signal low cardiac output; "
                 "anesthesia and beta blockers can blunt tachycardia.<br><br>"
-                "<i>Begin volume replacement or hemostasis right away, or watch pressure fall.</i>"
+                "<i>Increase FiO₂ to 100%, lighten anesthetic depth as tolerated, and begin volume replacement "
+                "or hemostasis right away.</i>"
             ),
             check_requirements=require_hypotension_or_treatment(
                 start_map, "hemorrhage", "replace volume and control bleeding", pressors=("nore", "phenyl"),
@@ -78,7 +81,8 @@ def create_hemorrhage_response() -> Scenario:
             id="STOP_BLEEDING",
             title="Control the bleeding source",
             instruction=(
-                "Call for help and select <b>Request surgical hemostasis</b>.<br><br>"
+                "Call for help, establish large-bore IV access, turn on the <b>fluid warmer</b> to prevent "
+                "hypothermia-induced coagulopathy, and select <b>Request surgical hemostasis</b>.<br><br>"
                 "<i>Control bleeding and resuscitate in parallel.</i>"
             ),
             check_requirements=require_crisis_stopped("hemorrhage", "Request surgical hemostasis"),
@@ -87,10 +91,10 @@ def create_hemorrhage_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Replace circulating volume",
             instruction=(
-                "Give <b>1000 mL crystalloid</b> as a bridge or start <b>PRBC (2 units = 600 mL)</b>, "
-                "or combine crystalloid and blood products. Use blood early in major hemorrhage and "
-                "activate the massive transfusion protocol when needed.<br><br>"
-                "<i>Guide component therapy and calcium replacement with coagulation tests and ionized calcium.</i>"
+                "Give <b>1000 mL crystalloid</b> as a bridge or <b>2 units PRBC (600 mL)</b> (or a combination). "
+                "For major bleeding, activate a <b>1:1:1 massive transfusion protocol</b>, consider <b>TXA 1 g IV</b>, "
+                "and give <b>calcium chloride 1 g IV</b> with rapid transfusion.<br><br>"
+                "<i>Draw an ABG in Labs to follow hemoglobin, lactate, base excess, and ionized calcium.</i>"
             ),
             check_requirements=_require_volume_replacement,
             target_tab="Circulation",
@@ -99,9 +103,10 @@ def create_hemorrhage_response() -> Scenario:
             id="START_VASOPRESSOR",
             title="Start vasopressor",
             instruction=(
-                "If <b>MAP < 65 mmHg</b>, start or adjust <b>norepinephrine</b> in mcg/min while replacing volume "
-                "(0.05-0.1 mcg/kg/min = 3.5-7 mcg/min for 70 kg) and titrate to response. "
-                "Skip this if pressure has already recovered."
+                "If <b>MAP < 65 mmHg</b>, start or adjust <b>norepinephrine</b> in mcg/min as a bridge while "
+                "replacing volume (0.05-0.1 mcg/kg/min = 3.5-7 mcg/min for 70 kg) and titrate to response. "
+                "Skip this if pressure has already recovered.<br><br>"
+                "<i>Avoid excessive pressor-induced hypertension before surgical bleeding is controlled.</i>"
             ),
             check_requirements=require_vasopressor_if_hypotensive(
                 "nore", "phenyl",

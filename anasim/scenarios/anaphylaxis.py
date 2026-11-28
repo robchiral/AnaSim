@@ -35,11 +35,10 @@ def _epinephrine_instruction(engine) -> str:
             "and consider midazolam for amnesia."
         )
     return (
-        "Sudden hypotension with bronchospasm and rising airway pressure suggests anaphylaxis. "
+        "Sudden hypotension with rising airway pressure suggests anaphylaxis. "
         "Call for help, pause surgery, and select <b>Stop suspected trigger</b>.<br><br>"
-        "Give <b>epinephrine 50-100 mcg IV</b> promptly and repeat to response; start an infusion "
-        "if repeated boluses are needed (for example, 3.5 mcg/min = 0.05 mcg/kg/min for 70 kg). "
-        "Set <b>100% oxygen</b> (O₂ 10 L/min, air and N₂O 0 L/min in Machine) and keep ventilating.<br><br>"
+        "Give <b>epinephrine 50-100 mcg IV</b> for severe shock/bronchospasm (10-50 mcg if milder), "
+        "repeat or start an infusion as needed, and set <b>100% O₂</b> (O₂ 10 L/min, air and N₂O 0 L/min).<br><br>"
         f"<i>{anesthetic_line}</i>"
     )
 
@@ -150,10 +149,10 @@ def create_anaphylaxis_scenario() -> Scenario:
             id="STABILIZE",
             title="Stabilize and reassess",
             instruction=(
-                "Select <b>Stop suspected trigger</b> if not already done, and continue support until "
-                "<b>MAP ≥ 65 mmHg</b> and airway pressure improves. Give more epinephrine and fluids "
-                "if hypotension or bronchospasm persists.<br><br>"
-                "<i>Arrange serial tryptase levels and allergy follow-up after stabilization.</i>"
+                "Confirm <b>Stop suspected trigger</b> is selected, and repeat epinephrine and fluids until "
+                "<b>MAP ≥ 65 mmHg</b> and airway pressure improves.<br><br>"
+                "<i>For refractory cases, add albuterol, vasopressin or norepinephrine (glucagon if on beta-blockers), "
+                "and secondary H1/H2 blockers plus hydrocortisone. Draw tryptase at 1-3 h and baseline > 24 h later.</i>"
             ),
             check_requirements=require_all(
                 require_crisis_resolved_with_map("anaphylaxis", fail_crisis="Stop the suspected trigger"),
@@ -173,7 +172,7 @@ def create_anaphylaxis_scenario() -> Scenario:
             CaseEvent("anaphylaxis_onset", _ANAPHYLAXIS_ONSET_S, "", start),
             CaseEvent(
                 "anaphylaxis", _ANAPHYLAXIS_ONSET_S,
-                "Shortly after an antibiotic dose, blood pressure falls and airway pressure rises.",
+                "Shortly after starting an intraoperative antibiotic infusion, blood pressure falls and airway pressure rises.",
                 mark_visible,
                 when=crisis_apparent,
             ),

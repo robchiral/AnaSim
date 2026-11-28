@@ -35,6 +35,38 @@ def _build_ppg_template(resolution: int = _PPG_TEMPLATE_RESOLUTION) -> np.ndarra
 _PPG_TEMPLATE = _build_ppg_template()
 
 
+def pulse_ox_methemoglobin_spo2(
+    functional_sao2_pct: float,
+    methb_fraction: float,
+    *,
+    mb_optical_dip: float = 0.0,
+) -> float:
+    """Two-wavelength (660/940 nm) pulse oximeter optical reading under methemoglobinemia.
+
+    Grounded in Barker et al. 1989 (Anesthesiology 70:112-117): MetHb absorbs
+    strongly at both 660 and 940 nm with an extinction ratio near 1.0, pulling
+    SpO2 toward an ~85% plateau at MetHb >= 30-35% despite normal PaO2 and
+    progressively flattening sensitivity to true hypoxemia (slope ~0.10-0.12
+    above 45% MetHb). IV methylene blue dye also causes a brief false optical
+    dip (Guay 2009). Reduces identically to functional_sao2_pct when MetHb and
+    dye dip are zero.
+    """
+    sat = clamp(functional_sao2_pct, 0.0, 100.0)
+    m = clamp(methb_fraction, 0.0, 0.90)
+    dip = max(0.0, mb_optical_dip)
+    if m <= 0.0 and dip <= 0.0:
+        return sat
+    if m <= 0.0:
+        return clamp(sat - dip, 0.0, 100.0)
+    s = sat / 100.0
+    # Standard two-wavelength calibration SpO2 = 110 - 25 * (A_660 / A_940) is exact
+    # at m = 0 with R_0(s) = 4.4 - 4.0 * s and IR_0 = 1.0.
+    r_0 = 4.4 - 4.0 * s
+    a_660 = (1.0 - m) * r_0 + m * 9.5
+    a_940 = (1.0 - m) * 1.0 + m * 9.0
+    return clamp(110.0 - 25.0 * (a_660 / a_940) - dip, 0.0, 100.0)
+
+
 class SpO2Monitor:
     """Finger pulse oximeter: delayed pleth, circulatory transit lag, and multi-beat lock."""
 

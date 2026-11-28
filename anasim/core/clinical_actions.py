@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from anasim.core.enums import PULSELESS_RHYTHMS
+from anasim.core.action_log import ACTION_SHOCK
+from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 from anasim.core.runtime import is_perfusing
 from anasim.patient.pd import hypnotic_equivalent
 from anasim.patient.pd.anesthesia import (
@@ -95,6 +96,12 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
         return ActionFeedback(
             "laryngospasm_blocked",
             "Severe laryngospasm closes the vocal cords; tube not placed.",
+            blocked=True,
+        )
+    if engine.opioid_toxicity.glottic_obstruction >= 0.5 and strength > 0.5:
+        return ActionFeedback(
+            "opioid_rigidity_blocked",
+            "Opioid-induced glottic and jaw rigidity prevents intubation; give a neuromuscular blocker or naloxone.",
             blocked=True,
         )
     sustained_hypnosis = _has_sustained_hypnosis(engine, drug_unconscious, drug_tolerance)
@@ -208,8 +215,18 @@ def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | N
     return None
 
 
-def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
+def check_shock(engine: SimulationEngine, *, synchronized: bool = False) -> ActionFeedback | None:
     if _in_arrest(engine):
+        if not synchronized and engine.hemo.rhythm_type in (RhythmType.VFIB, RhythmType.VTACH):
+            shocks = [
+                r for r in engine.actions.since_case(ACTION_SHOCK, labels=("unsynchronized",))
+                if r.time <= engine.state.time
+            ]
+            if shocks and (engine.state.time - shocks[-1].time) < 60.0:
+                return ActionFeedback(
+                    "stacked_shocks",
+                    "Resume chest compressions for a full 2-minute CPR cycle between shocks rather than stacking defibrillation attempts.",
+                )
         return None
     unconscious, _ = _responsiveness(engine)
     if unconscious < 0.5:
@@ -220,7 +237,56 @@ def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
     return None
 
 
-def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedback | None:
+def check_drug_administration(
+    engine: SimulationEngine, key: str, *, amount: float | None = None,
+) -> ActionFeedback | None:
+    if engine.toxicity.active:
+        if key == "vaso":
+            return ActionFeedback(
+                "vasopressin_in_last",
+                "Vasopressin is contraindicated in local anesthetic systemic toxicity; it worsens pulmonary edema, lactic acidosis, and resuscitation outcomes.",
+            )
+        if key in {"esmolol", "labetalol"}:
+            return ActionFeedback(
+                "beta_blocker_in_last",
+                "Beta-blockers are avoided in local anesthetic systemic toxicity and can precipitate cardiovascular collapse.",
+            )
+        if key == "lidocaine":
+            return ActionFeedback(
+                "lidocaine_in_last",
+                "Avoid local anesthetics (including lidocaine) for arrhythmias in LAST; sodium-channel blockade is additive.",
+            )
+        if key == "flumazenil":
+            return ActionFeedback(
+                "flumazenil_in_last",
+                "Flumazenil reverses benzodiazepine seizure protection and lowers the seizure threshold during LAST.",
+            )
+        if key == "epi" and amount is not None and amount > max(100.0, 1.5 * engine.patient.weight):
+            return ActionFeedback(
+                "high_dose_epi_in_last",
+                "Use reduced epinephrine doses (≤ 1 mcg/kg) in LAST; high doses impair lipid rescue.",
+            )
+        if (
+            key == "propofol"
+            and (engine.toxicity.conduction_block >= 0.15 or engine.toxicity.contractility_loss >= 0.15)
+            and (amount is None or amount >= 50.0)
+        ):
+            return ActionFeedback(
+                "propofol_in_last_cv",
+                "Avoid large propofol doses during LAST cardiovascular compromise; use benzodiazepines for seizures.",
+            )
+    if key == "magnesium_sulfate" and engine.patient.renal_function <= 0.45:
+        return ActionFeedback(
+            "magnesium_in_renal_impairment",
+            "Magnesium is cleared exclusively by the kidneys; severe renal impairment risks hypermagnesemic respiratory and cardiac toxicity.",
+        )
+    if key == "methylene_blue":
+        added_mg_kg = (amount / engine.patient.weight) if (amount is not None and amount > 0.0) else 0.0
+        if engine.methemoglobin.cumulative_mb_mg_kg + added_mg_kg > 7.0:
+            return ActionFeedback(
+                "methylene_blue_max_dose",
+                "Cumulative methylene blue exceeds 7 mg/kg and can paradoxically worsen methemoglobinemia.",
+            )
     if key == "protamine" and engine.extracorporeal.is_active:
         return ActionFeedback(
             "protamine_on_bypass",

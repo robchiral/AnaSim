@@ -708,6 +708,30 @@
           </div>
         </div>
 
+        <details class="control-drawer" id="gas-supply-module">
+          <summary><span>Gas supply</span><output id="gas-supply-summary" hidden></output></summary>
+          <div class="drawer-body">
+            <p id="c-gas-supply-readout" class="ecmo-readout"></p>
+            <div class="control-setting">
+              <div class="control-setting-head"><label for="c-vent-drive">Ventilator drive gas</label></div>
+              <select id="c-vent-drive">
+                <option value="o2">Pneumatic O₂ (Air backup)</option>
+                <option value="o2_only">Pneumatic O₂ only</option>
+                <option value="air">Pneumatic Air (O₂ backup)</option>
+                <option value="electric">Electric piston / turbine</option>
+              </select>
+            </div>
+            <div class="toggle-grid">
+              <button type="button" class="btn toggle" id="c-o2-cyl-valve" aria-pressed="false">Open O₂ cylinder</button>
+              <button type="button" class="btn outlined" id="c-o2-cyl-replace">Swap O₂ tank</button>
+              <button type="button" class="btn toggle" id="c-air-cyl-valve" aria-pressed="false">Open Air cylinder</button>
+              <button type="button" class="btn outlined" id="c-air-cyl-replace">Swap Air tank</button>
+              <button type="button" class="btn toggle" id="c-n2o-cyl-valve" aria-pressed="false">Open N₂O cylinder</button>
+              <button type="button" class="btn outlined" id="c-n2o-cyl-replace">Swap N₂O tank</button>
+            </div>
+          </div>
+        </details>
+
         <fieldset class="group temperature-controls">
           <legend>Temperature</legend>
           <div class="control-setting">
@@ -760,6 +784,27 @@
             <p id="c-lipid-feedback" class="medication-feedback" role="status" hidden></p>
           </div>
         </details>
+        <details class="drug-card" id="magnesium-controls" data-iso="rescue">
+          <summary><span class="drug-name">Magnesium sulfate</span><span class="drug-strength">50%, 500 mg/mL</span><span id="c-magnesium-total" class="drug-strength drug-total"></span></summary>
+          <div class="drug-controls">
+            <div class="inline-action-field">
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-magnesium-rate">Infusion rate</label><span>g/hr</span></div>
+                <input id="c-magnesium-rate" type="number" min="0" max="10" step="0.5">
+              </div>
+              <button type="button" class="btn outlined" id="c-magnesium-stop" aria-label="Stop magnesium infusion" hidden>Stop</button>
+            </div>
+            <div id="c-magnesium-actions"></div>
+            <div class="bolus">
+              <div class="bolus-field">
+                <div class="control-setting-head"><label for="c-magnesium-bolus">Bolus</label><span>g</span></div>
+                <input id="c-magnesium-bolus" type="number" min="0.5" max="30" step="0.5" value="2" required>
+              </div>
+              <button type="button" class="btn" id="c-magnesium-give">Give bolus</button>
+            </div>
+            <p id="c-magnesium-feedback" class="medication-feedback" role="status" hidden></p>
+          </div>
+        </details>
         <details class="control-drawer neuraxial-drawer" id="neuraxial-module">
           <summary><span>Neuraxial anesthesia</span><output id="neuraxial-summary" hidden></output></summary>
           <div class="drawer-body">
@@ -768,7 +813,7 @@
               <div class="vent-settings">
                 <div class="control-setting span-full">
                   <div class="control-setting-head"><label for="c-spinal-drug">Spinal drug</label></div>
-                  <select id="c-spinal-drug"><option value="bupivacaine">Bupivacaine 0.5%</option><option value="lidocaine">Lidocaine 2%</option></select>
+                  <select id="c-spinal-drug"><option value="bupivacaine">Bupivacaine 0.5%</option><option value="ropivacaine">Ropivacaine 0.5%</option><option value="lidocaine">Lidocaine 2%</option></select>
                 </div>
                 <div class="control-setting">
                   <div class="control-setting-head"><label for="c-spinal-dose">Dose</label><span>mg</span></div>
@@ -786,7 +831,7 @@
               <div class="vent-settings">
                 <div class="control-setting span-full">
                   <div class="control-setting-head"><label for="c-epidural-drug">Epidural drug</label></div>
-                  <select id="c-epidural-drug"><option value="bupivacaine">Bupivacaine</option><option value="lidocaine">Lidocaine</option></select>
+                  <select id="c-epidural-drug"><option value="bupivacaine">Bupivacaine</option><option value="ropivacaine">Ropivacaine</option><option value="lidocaine">Lidocaine</option></select>
                 </div>
                 <div class="control-setting">
                   <div class="control-setting-head"><label for="c-epidural-vol">Bolus vol</label><span>mL</span></div>
@@ -794,7 +839,7 @@
                 </div>
                 <div class="control-setting">
                   <div class="control-setting-head"><label for="c-epidural-conc">Conc</label><span>%</span></div>
-                  <select id="c-epidural-conc"><option value="0.5">0.5%</option><option value="0.25">0.25%</option><option value="0.125">0.125%</option><option value="2">2%</option></select>
+                  <select id="c-epidural-conc"><option value="0.5">0.5%</option><option value="0.25">0.25%</option><option value="0.2">0.2%</option><option value="0.125">0.125%</option><option value="2">2%</option></select>
                 </div>
               </div>
               <label class="choice"><input type="checkbox" id="c-epidural-epi"> With 1:200,000 epinephrine</label>
@@ -828,6 +873,17 @@
             <button type="button" class="btn fluid-key" data-fluid="albumin" data-volume="250"><span>Albumin 5%</span><small>250 mL</small></button>
             <button type="button" class="btn fluid-key" data-fluid="d5w" data-volume="250"><span>D5W</span><small>250 mL</small></button>
             <button type="button" class="btn fluid-key" data-fluid="blood" data-volume="300"><span>PRBC</span><small>300 mL</small></button>
+            <button type="button" class="btn fluid-key" data-fluid="ffp" data-volume="250"><span>FFP</span><small>250 mL</small></button>
+            <button type="button" class="btn fluid-key" data-fluid="platelets" data-volume="250"><span>Platelets</span><small>250 mL</small></button>
+            <button type="button" class="btn fluid-key" data-fluid="cryoprecipitate" data-volume="100"><span>Cryoprecipitate</span><small>100 mL</small></button>
+          </div>
+          <div class="control-setting">
+            <div class="control-setting-head"><label for="c-prbc-age">PRBC storage age</label></div>
+            <select id="c-prbc-age">
+              <option value="2">Fresh (2 days)</option>
+              <option value="21" selected>Standard (21 days)</option>
+              <option value="42">Old (42 days)</option>
+            </select>
           </div>
           <p id="fluid-feedback" class="action-feedback" role="status" hidden></p>
           <div class="control-setting">
@@ -837,16 +893,38 @@
         </fieldset>
 
         <section class="action-section" aria-labelledby="compressions-title">
-          <h2 id="compressions-title">Chest compressions <span class="legend-unit">110/min</span></h2>
+          <h2 id="compressions-title">Chest compressions <span class="legend-unit" id="c-cpr-summary">110/min · 5.5 cm</span></h2>
           <button type="button" class="btn toggle t-danger" id="c-compressions" aria-pressed="false">Start compressions</button>
           <p id="c-compressions-status" class="action-feedback cpr-timer" hidden></p>
+          <details class="control-drawer" id="cpr-quality-module">
+            <summary><span>CPR quality</span></summary>
+            <div class="drawer-body">
+              <div class="vent-settings" id="c-cpr-settings">
+                <div class="control-setting"><div class="control-setting-head"><label for="c-cpr-rate">Rate</label><span>/min</span></div><input id="c-cpr-rate" type="number" min="60" max="160" step="5" value="110"></div>
+                <div class="control-setting"><div class="control-setting-head"><label for="c-cpr-depth">Depth</label><span>cm</span></div><input id="c-cpr-depth" type="number" min="2" max="7" step="0.5" value="5.5"></div>
+                <div class="control-setting span-full"><div class="control-setting-head"><label for="c-cpr-recoil">Full recoil</label><span>%</span></div><input id="c-cpr-recoil" type="number" min="0" max="100" step="10" value="100"></div>
+              </div>
+            </div>
+          </details>
         </section>
 
         <fieldset class="group defib-section" id="defib-module" data-status="idle">
-          <legend>Defibrillator <span class="legend-unit">200 J biphasic</span></legend>
+          <legend>Defibrillator <span class="legend-unit" id="c-defib-energy-label">200 J biphasic</span></legend>
           <div class="segmented" id="c-sync">
             <button type="button" data-value="false" aria-pressed="true">Unsynchronized</button>
             <button type="button" data-value="true" aria-pressed="false">Synchronized</button>
+          </div>
+          <div class="control-setting">
+            <div class="control-setting-head"><label for="c-defib-energy">Shock energy</label><span>J</span></div>
+            <select id="c-defib-energy">
+              <option value="50">50 J (SVT / AFL)</option>
+              <option value="100">100 J (VT / AF)</option>
+              <option value="120">120 J</option>
+              <option value="150">150 J</option>
+              <option value="200" selected>200 J (default)</option>
+              <option value="300">300 J</option>
+              <option value="360">360 J (escalated)</option>
+            </select>
           </div>
           <div class="defib-readout">
             <div class="defib-status-line">
@@ -861,6 +939,35 @@
           </div>
           <p id="c-shock-feedback" class="action-feedback" role="status" hidden></p>
         </fieldset>
+
+        <details class="control-drawer" id="pacemaker-module">
+          <summary><span>Temporary pacemaker</span><output id="pacemaker-summary" hidden></output></summary>
+          <div class="drawer-body">
+            <div class="vent-settings" id="c-pace-settings">
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-pace-mode">Mode</label></div>
+                <select id="c-pace-mode">
+                  <option value="off">Off</option>
+                  <option value="vvi">VVI (demand)</option>
+                  <option value="voo">VOO (async)</option>
+                  <option value="aai">AAI (atrial)</option>
+                  <option value="ddd">DDD (dual)</option>
+                  <option value="doo">DOO (dual async)</option>
+                </select>
+              </div>
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-pace-route">Route</label></div>
+                <select id="c-pace-route">
+                  <option value="transcutaneous">Transcutaneous</option>
+                  <option value="epicardial">Epicardial</option>
+                </select>
+              </div>
+              <div class="control-setting"><div class="control-setting-head"><label for="c-pace-rate">Rate</label><span>/min</span></div><input id="c-pace-rate" type="number" min="30" max="180" step="5" value="70"></div>
+              <div class="control-setting"><div class="control-setting-head"><label for="c-pace-output">Output</label><span>mA</span></div><input id="c-pace-output" type="number" min="0" max="200" step="5" value="70"></div>
+            </div>
+            <p id="c-pace-readout" class="action-feedback" role="status" hidden></p>
+          </div>
+        </details>
 
         <details class="control-drawer" id="ecmo-module">
           <summary><span>Extracorporeal support</span><output id="ecmo-summary" hidden></output></summary>
@@ -882,6 +989,8 @@
                 <div class="control-setting" id="ecmo-sevo-row" hidden><div class="control-setting-head"><label for="c-ecmo-sevo">Oxy sevo</label><span>%</span></div><input id="c-ecmo-sevo" type="number" min="0" max="8" step="0.2"></div>
                 <div class="control-setting" id="ecmo-venous-row" hidden><div class="control-setting-head"><label for="c-ecmo-venous-clamp">Venous line</label><span>% open</span></div><input id="c-ecmo-venous-clamp" type="number" min="0" max="100" step="10"></div>
                 <div class="control-setting span-full" id="ecmo-bg-row" hidden><div class="control-setting-head"><label for="c-ecmo-bg-strategy">Blood gas</label></div><select id="c-ecmo-bg-strategy"><option value="alpha_stat">Alpha-stat</option><option value="ph_stat">pH-stat</option></select></div>
+                <div class="control-setting"><div class="control-setting-head"><label for="c-ecmo-art-fr">Art cannula</label><span>Fr</span></div><input id="c-ecmo-art-fr" type="number" min="15" max="24" step="1"></div>
+                <div class="control-setting"><div class="control-setting-head"><label for="c-ecmo-ven-fr">Ven cannula</label><span>Fr</span></div><input id="c-ecmo-ven-fr" type="number" min="19" max="36" step="1"></div>
               </div>
               <div class="ecmo-actions">
                 <button type="button" class="btn toggle t-ok full" id="c-ecmo-hc" aria-pressed="true">Heater-cooler: On</button>
@@ -891,6 +1000,16 @@
                     <button type="button" class="btn toggle t-warning" id="c-cpb-cross-clamp" aria-pressed="false">Apply aortic cross-clamp</button>
                     <button type="button" class="btn toggle t-warning" id="c-cpb-cardioplegia" aria-pressed="false">Start cardioplegia</button>
                   </div>
+                  <div class="vent-settings" id="c-cpg-settings">
+                    <div class="control-setting"><div class="control-setting-head"><label for="c-cpg-protocol">Cardioplegia</label></div><select id="c-cpg-protocol"><option value="buckberg">Buckberg 4:1</option><option value="del_nido">del Nido 1:4</option></select></div>
+                    <div class="control-setting"><div class="control-setting-head"><label for="c-cpg-route">Route</label></div><select id="c-cpg-route"><option value="antegrade">Antegrade</option><option value="retrograde">Retrograde CS</option></select></div>
+                    <div class="control-setting span-full"><div class="control-setting-head"><label for="c-cpg-phase">Dose phase</label></div><select id="c-cpg-phase"><option value="induction">Induction</option><option value="maintenance">Maintenance</option><option value="hot_shot">Warm hot-shot</option></select></div>
+                  </div>
+                  <div class="action-row">
+                    <button type="button" class="btn outlined" id="c-cpg-give">Give cardioplegia</button>
+                    <button type="button" class="btn outlined" id="c-cpg-stop" hidden>Stop dose</button>
+                  </div>
+                  <p id="c-cpg-readout" class="dim small" hidden></p>
                   <div class="fluid-grid">
                     <button type="button" class="btn fluid-key" data-reservoir-fluid="crystalloid" data-volume="500"><span>Reservoir LR</span><small>+500 mL</small></button>
                     <button type="button" class="btn fluid-key" data-reservoir-fluid="blood" data-volume="300"><span>Reservoir PRBC</span><small>+300 mL</small></button>
@@ -953,6 +1072,19 @@
           </div>
         </section>
 
+        <section class="action-section" aria-labelledby="coag-title">
+          <h2 id="coag-title">Coagulation panel</h2>
+          <button type="button" class="btn outlined" id="c-coag-panel">Draw coag panel</button>
+          <p id="coag-pending" class="action-feedback" hidden></p>
+          <div id="coag-results" class="abg-results" hidden>
+            <table>
+              <caption>INR 0.9–1.2 · Fibrinogen 2.0–4.0 g/L · Platelets 150–400 ×10⁹/L.</caption>
+              <thead><tr><th scope="col">Drawn</th><th scope="col">INR</th><th scope="col">Fib (g/L)</th><th scope="col">Plt (×10⁹/L)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
         <section class="action-section" aria-labelledby="glucose-title">
           <h2 id="glucose-title">Point-of-care glucose</h2>
           <button type="button" class="btn outlined" id="c-glucose">Check glucose</button>
@@ -993,6 +1125,14 @@
               <button type="button" class="btn toggle t-danger" id="c-vae" aria-pressed="false">Start venous air embolism</button>
               <button type="button" class="btn toggle t-danger" id="c-high-spinal" aria-pressed="false">Trigger high / total spinal</button>
             </div>
+            <div class="inline">
+              <select id="c-last-drug" aria-label="LAST local anesthetic">
+                <option value="bupivacaine">Bupivacaine (100 mg IV)</option>
+                <option value="ropivacaine">Ropivacaine (150 mg IV)</option>
+                <option value="lidocaine">Lidocaine (500 mg IV)</option>
+              </select>
+              <button type="button" class="btn toggle t-danger" id="c-last-crisis" aria-pressed="false">Trigger LAST</button>
+            </div>
           </div>
         </details>
 
@@ -1001,6 +1141,13 @@
           <div class="event-controls">
             <button type="button" class="btn toggle t-danger full" id="c-mh" aria-pressed="false">Start malignant hyperthermia</button>
             <p class="dim small">Requires sevoflurane or recent succinylcholine.</p>
+            <div class="inline">
+              <select id="c-methb-agent" aria-label="Methemoglobinemia agent">
+                <option value="benzocaine">Benzocaine spray</option>
+                <option value="prilocaine">Prilocaine</option>
+              </select>
+              <button type="button" class="btn toggle t-warning" id="c-methb" aria-pressed="false">Trigger MetHb</button>
+            </div>
           </div>
         </details>
 
@@ -1053,6 +1200,11 @@
           <summary><span>Equipment faults</span><output hidden></output></summary>
           <div class="event-controls">
             <button type="button" class="btn toggle t-danger full" id="c-o2-supply" aria-pressed="false">Disconnect O₂ supply</button>
+            <div class="toggle-grid">
+              <button type="button" class="btn toggle t-danger" id="c-o2-pipeline" aria-pressed="false">Cut O₂ pipeline</button>
+              <button type="button" class="btn toggle t-warning" id="c-air-pipeline" aria-pressed="false">Cut Air pipeline</button>
+              <button type="button" class="btn toggle t-warning" id="c-n2o-pipeline" aria-pressed="false">Cut N₂O pipeline</button>
+            </div>
           </div>
         </details>
       </div>

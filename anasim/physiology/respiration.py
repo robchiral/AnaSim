@@ -142,7 +142,7 @@ class RespiratoryModel:
     # Fast-opioid hypercapnic slope depression and separate fentanyl respiratory transfer:
     # Babenco 2000 (0.5 mcg/kg remi cuts CO2 slope 73%, VE50 53% mostly via VT with brief 1-min RR dip),
     # Gelberg 2012 (fentanyl 1 mcg/kg ~ remifentanil 0.47 mcg/kg at 5.0 vs 2.9 min),
-    # Yassen 2007 (fentanyl respiratory EC50 1.14 ng/mL), and Ferguson and Drummond 2006
+    # Yassen 2007a (fentanyl respiratory EC50 1.14 ng/mL), and Ferguson and Drummond 2006
     # (0.5 mcg/kg fentanyl under sevoflurane slows RR -42% while raising VT +12%).
     REMI_SLOPE_TAU_S = 115.0
     FENTANYL_RESP_TAU_S = 35.0
@@ -303,6 +303,8 @@ class RespiratoryModel:
         self._oxygen_hb = self.baseline_hb
         self._arterial_hb = self.baseline_hb
         self._pulm_hb = self.baseline_hb
+        self._methb_fraction = 0.0
+        self._arterial_methb_fraction = 0.0
         self.fluids: FluidBalance | None = None
         self._plasma_buffers: PlasmaBuffers | None = None
         self._extracellular_buffers: PlasmaBuffers | None = None
@@ -542,7 +544,9 @@ class RespiratoryModel:
         else:
             transport.oxygen = [amt / v for amt, v in zip(old_o2_amounts, transport.volumes, strict=True)]
         prev_oxygen_hb = self._oxygen_hb
-        self._oxygen_hb = hb
+        hb_o2 = hb * (1.0 - self._methb_fraction)
+        hb_art_o2 = hb * (1.0 - self._arterial_methb_fraction)
+        self._oxygen_hb = hb_o2
         if not venous_only:
             if abs(prev_oxygen_hb - self._arterial_hb) > 1e-6 and v2 > 0.0:
                 eff_art_hb = self._arterial_hb * art_o2_scale * (old_volumes[1] / v1) if v1 > 0.0 else self._arterial_hb
@@ -550,7 +554,7 @@ class RespiratoryModel:
                     transport.oxygen[1], eff_art_hb, self._blood_p50[1],
                     self._blood_po2[1], self._o2_solubility_now,
                 )
-                target_c1 = _O2_PER_HB * hb * sat_1 + self._o2_solubility_now * po2_1
+                target_c1 = _O2_PER_HB * hb_art_o2 * sat_1 + self._o2_solubility_now * po2_1
                 shift_1 = clamp(
                     (transport.oxygen[1] - target_c1) * v1,
                     -transport.oxygen[2] * v2,
@@ -565,7 +569,7 @@ class RespiratoryModel:
                     transport.oxygen[0], eff_pulm_hb, self._blood_p50[0],
                     self._blood_po2[0], self._o2_solubility_now,
                 )
-                target_c0 = _O2_PER_HB * hb * sat_0 + self._o2_solubility_now * po2_0
+                target_c0 = _O2_PER_HB * hb_o2 * sat_0 + self._o2_solubility_now * po2_0
                 shift_0 = clamp(
                     (transport.oxygen[0] - target_c0) * v0,
                     -transport.oxygen[2] * v2,
@@ -574,9 +578,9 @@ class RespiratoryModel:
                 if v0 > 0.0:
                     transport.oxygen[0] -= shift_0 / v0
                 transport.oxygen[2] += shift_0 / v2
-            self._arterial_hb = hb
+            self._arterial_hb = hb_art_o2
             if not no_pulm_flow:
-                self._pulm_hb = hb
+                self._pulm_hb = hb_o2
 
         total_target_co2 = old_total_co2 - lost_carbon + added_carbon
         target_blood_co2 = keep_0 * old_carbon + blood_infuse_carbon + shift_co2 - urine_carbon
@@ -1167,6 +1171,11 @@ class RespiratoryModel:
         self._blood_po2[0], self._blood_p50[0], self._blood_saturations[0] = capillary, p50, saturation
         return capillary_co2, content
 
+    @property
+    def functional_sao2_pct(self) -> float:
+        """Oxyhemoglobin saturation of functional (non-MetHb) arterial hemoglobin (%)."""
+        return 100.0 * self._blood_saturations[1]
+
     def _publish_blood_gases(self) -> None:
         state = self.state
         delta_t = 37.0 - self._temp_c
@@ -1178,7 +1187,7 @@ class RespiratoryModel:
         state.ph_37 = self._blood_ph[1]
         state.ph = self._blood_ph[1] + ph_shift
         state.p_arterial_o2 = self._blood_po2[1]
-        state.sao2 = 100.0 * self._blood_saturations[1]
+        state.sao2 = 100.0 * self._blood_saturations[1] * (1.0 - self._arterial_methb_fraction)
         state.pv_co2 = self._blood_pressures[2] * pco2_scale
         state.pv_o2 = self._blood_po2[2]
         state.venous_ph = self._blood_ph[2] + ph_shift
@@ -1207,12 +1216,15 @@ class RespiratoryModel:
         )
 
     def arterial_po2_and_sat_at_37(self) -> tuple[float, float]:
-        """Arterial (PO2 mmHg, SaO2 %) after the analyzer warms the sample to 37 °C."""
-        p50 = self._acid_base_p50(self._blood_ph[1], self._blood_pressures[1], at_37=True)
+        """Arterial (PO2 mmHg, fractional SaO2 %) after the analyzer warms the sample to 37 °C."""
+        p50 = self._acid_base_p50(
+            self._blood_ph[1], self._blood_pressures[1],
+            at_37=True, methb_fraction=self._arterial_methb_fraction,
+        )
         po2_37, sat_37 = self._po2_and_sat_from_content(
             self.gas_transport.oxygen[1], self._arterial_hb, p50, self._blood_po2[1], solubility=_O2_SOLUBILITY,
         )
-        return float(po2_37), float(sat_37 * 100.0)
+        return float(po2_37), float(sat_37 * (1.0 - self._arterial_methb_fraction) * 100.0)
 
     def arterial_po2_at_37(self) -> float:
         """Arterial PO2 after the analyzer warms the sample to 37 °C, mmHg."""
@@ -1587,7 +1599,9 @@ class RespiratoryModel:
              extracorporeal=None,
              embolic_alveolar_deadspace: float = 0.0,
              exogenous_co2_ml_min: float = 0.0,
-             ce_fentanyl: float = 0.0) -> RespState:
+             ce_fentanyl: float = 0.0,
+             methb_fraction: float = 0.0,
+             arterial_methb_fraction: float | None = None) -> RespState:
         """Advance ventilatory control and blood-lung gas exchange by dt seconds."""
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
@@ -1662,21 +1676,28 @@ class RespiratoryModel:
         perfusion_excess = self.perfusion_deadspace_gain * clamp01(1.0 - perfusion_ratio)
         hb = self.baseline_hb if hb_g_dl is None else hb_g_dl
         hct = self.baseline_hct if hematocrit is None else hematocrit
+        methb = clamp(float(methb_fraction), 0.0, 0.85)
+        art_methb = methb if arterial_methb_fraction is None else clamp(float(arterial_methb_fraction), 0.0, 0.85)
+        self._methb_fraction = methb
+        self._arterial_methb_fraction = art_methb
+        hb_o2 = hb * (1.0 - methb)
+        hb_art_o2 = hb * (1.0 - art_methb)
         old_o2_solubility = self._o2_solubility_now
         new_solubility = self._temperature_o2_solubility(temp_c)
         if cardiac_output > 0.0:
-            if hb != self._oxygen_hb:
-                # Each pool keeps its PO2 and saturation as Hb changes.
+            if hb_o2 != self._oxygen_hb:
+                # Each pool keeps its PO2 and saturation as functional O2-binding Hb changes.
                 transport.oxygen = [
-                    _O2_PER_HB * hb * saturation + old_o2_solubility * po2
-                    for po2, saturation in zip(self._blood_po2, self._blood_saturations, strict=True)
+                    _O2_PER_HB * (hb_art_o2 if idx == 1 else hb_o2) * saturation + old_o2_solubility * po2
+                    for idx, (po2, saturation) in enumerate(zip(self._blood_po2, self._blood_saturations, strict=True))
                 ]
-                self._oxygen_hb = hb
-                self._pulm_hb = hb
-            if hb != self._arterial_hb:
+                self._oxygen_hb = hb_o2
+                self._pulm_hb = hb_o2
+                self._arterial_hb = hb_art_o2
+            elif hb_art_o2 != self._arterial_hb:
                 old_art_o2 = transport.oxygen[1]
                 new_art_o2 = (
-                    _O2_PER_HB * hb * self._blood_saturations[1] + old_o2_solubility * self._blood_po2[1]
+                    _O2_PER_HB * hb_art_o2 * self._blood_saturations[1] + old_o2_solubility * self._blood_po2[1]
                 )
                 transport.oxygen[1] = new_art_o2
                 if transport.volumes[2] > 0.0:
@@ -1684,14 +1705,14 @@ class RespiratoryModel:
                         0.0,
                         transport.oxygen[2] + (old_art_o2 - new_art_o2) * transport.volumes[1] / transport.volumes[2],
                     )
-                self._arterial_hb = hb
-        elif hb != self._oxygen_hb:
+                self._arterial_hb = hb_art_o2
+        elif hb_o2 != self._oxygen_hb:
             for idx in (0, 2):
                 transport.oxygen[idx] = (
-                    _O2_PER_HB * hb * self._blood_saturations[idx] + old_o2_solubility * self._blood_po2[idx]
+                    _O2_PER_HB * hb_o2 * self._blood_saturations[idx] + old_o2_solubility * self._blood_po2[idx]
                 )
-            self._oxygen_hb = hb
-            self._pulm_hb = hb
+            self._oxygen_hb = hb_o2
+            self._pulm_hb = hb_o2
         old_hb, old_hct = self._chemistry_composition
         # Fluid kinetics move Hb slightly every step; rebuild buffering for measurable changes.
         if abs(hb - old_hb) > 1e-6 * old_hb or abs(hct - old_hct) > 1e-6 * old_hct:
@@ -1923,7 +1944,14 @@ class RespiratoryModel:
             lung_supply = clamp01(state.p_alveolar_o2)
             lung_production = lung_demand * lung_supply
             delivery = max(0.0, cardiac_output) * transport.oxygen[1]
-            supply = min(1.0, self.CRITICAL_EXTRACTION * delivery / demand)
+            # Ferric MetHb locks remaining ferrous hemes in the high-affinity R-state,
+            # shifting P50 leftward and impairing capillary O2 unloading to tissues.
+            eff_crit_ext = (
+                self.CRITICAL_EXTRACTION * (1.0 - 0.55 * methb)
+                if methb > 0.0
+                else self.CRITICAL_EXTRACTION
+            )
+            supply = min(1.0, eff_crit_ext * delivery / demand)
             self.oxygen_supply_fraction = supply
             self.oxygen_deficit_l += (demand * (1.0 - supply)
                                       + lung_demand / self.rq * (1.0 - lung_supply)) * sub_dt / 60.0
@@ -1968,7 +1996,7 @@ class RespiratoryModel:
                         transport.co2[2],
                         transport.oxygen[2],
                         transport.base[2],
-                        hb,
+                        hb_o2,
                         temp_c,
                         self.chemistry,
                         pco2_v_guess=self._blood_pressures[2],
@@ -2093,7 +2121,7 @@ class RespiratoryModel:
             capillary_co2, capillary_o2 = self._equilibrate_lung(
                 carbon - ventilation * old_co2_in_vivo / 2.0 - n2o_co2_loss_l,
                 max(0.0, oxygen + inspired_o2_l - explicit_washout_o2),
-                hb, gas_capacity + ventilation / 2.0, self.aa_grad_base,
+                hb_o2, gas_capacity + ventilation / 2.0, self.aa_grad_base,
                 carbon_plan, oxygen_plan, max(0.0, cardiac_output) * sub_dt / 120.0,
                 co2_gas_capacity=(gas_capacity + ventilation / 2.0) * pco2_scale,
                 pulmonary_flow=pulm_half_arg,
@@ -2115,11 +2143,14 @@ class RespiratoryModel:
                 art_o2_delta=art_o2_delta,
             )
             if cardiac_output > 0.0:
-                self._resolve_blood_pool(1, hb)
+                self._resolve_blood_pool(1, hb_art_o2)
             else:
                 # Arterial blood stays isolated during zero-flow arrest; only update
                 # its in-vivo O2 dissociation if temperature shifted anaerobically.
-                art_p50 = self._acid_base_p50(self._blood_ph[1], self._blood_pressures[1])
+                art_p50 = self._acid_base_p50(
+                    self._blood_ph[1], self._blood_pressures[1],
+                    methb_fraction=self._arterial_methb_fraction,
+                )
                 if abs(art_p50 - self._blood_p50[1]) > 1e-12 or new_solubility != old_o2_solubility:
                     art_po2, art_sat = self._po2_and_sat_from_content(
                         transport.oxygen[1], self._arterial_hb, art_p50, self._blood_po2[1],
@@ -2129,11 +2160,11 @@ class RespiratoryModel:
                     self._blood_po2[1] = art_po2
                     self._blood_saturations[1] = art_sat
             # Venous blood renewed by cardiac output this step exchanges with extracellular fluid.
-            self._exchange_extracellular(hb, ext_exchange_vol)
-            self._resolve_blood_pool(2, hb)
+            self._exchange_extracellular(hb_o2, ext_exchange_vol)
+            self._resolve_blood_pool(2, hb_o2)
             self._publish_blood_gases()
             if ecmo_active and substep_idx == count - 1:
-                self._update_extracorporeal_regional_gases(extracorporeal, ecmo_res, pulm_co, hb, temp_c)
+                self._update_extracorporeal_regional_gases(extracorporeal, ecmo_res, pulm_co, hb_o2, temp_c)
             if sub_dt > 0.0:
                 self._pulmonary_o2_uptake = max(0.0, uptake_o2 * 60.0 / sub_dt) + actual_lung_prod_rate / self.rq
                 self._pulmonary_co2_delivery = max(0.0, delivered_co2 * 60.0 / sub_dt) + actual_lung_prod_rate
@@ -2224,7 +2255,7 @@ class RespiratoryModel:
                 temp_p50=self._temperature_p50_now, pco2_scale=self._pco2_temp_scale_now,
                 solubility=self._o2_solubility_now,
             )
-            return sat * 100.0, po2, pco2_37, ph_37
+            return sat * (1.0 - self._arterial_methb_fraction) * 100.0, po2, pco2_37, ph_37
 
         st.upper_body_sao2, st.upper_body_pao2, st.upper_body_paco2_37, st.upper_body_ph_37 = _mix_resolve(f_upper)
         st.lower_body_sao2, st.lower_body_pao2, st.lower_body_paco2_37, st.lower_body_ph_37 = _mix_resolve(f_lower)
@@ -2495,16 +2526,24 @@ class RespiratoryModel:
         """Dash 2016 Eq. 9d; pH, PCO2, and 2,3-DPG held at reference values."""
         return _blood_temperature_p50(temp_c)
 
-    def _acid_base_p50(self, ph_37: float, pco2_37: float, *, at_37: bool = False) -> float:
-        """Dash 2016 Eqs. 9-10 at in-vivo temperature (or 37 °C for ABG warming)."""
-        return _blood_acid_base_p50(
+    def _acid_base_p50(
+        self, ph_37: float, pco2_37: float, *, at_37: bool = False, methb_fraction: float | None = None,
+    ) -> float:
+        """Dash 2016 Eqs. 9-10 at in-vivo temperature (or 37 °C for ABG warming), shifted leftward by MetHb and 2,3-DPG depletion."""
+        dpg_fraction = self.fluids.rbc_23dpg_fraction if self.fluids is not None else 1.0
+        p50 = _blood_acid_base_p50(
             ph_37,
             pco2_37,
             self._temp_c,
             temp_p50=self._temperature_p50_now,
             pco2_scale=self._pco2_temp_scale_now,
             at_37=at_37,
+            dpg_fraction=dpg_fraction,
         )
+        m = self._methb_fraction if methb_fraction is None else clamp(methb_fraction, 0.0, 0.70)
+        if m > 0.0:
+            p50 *= 1.0 - 0.55 * min(0.70, m)
+        return p50
 
     @staticmethod
     def _saturation_at_p50(pao2: float, p50: float) -> float:

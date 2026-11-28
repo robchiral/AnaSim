@@ -129,6 +129,7 @@ class LactateModel:
              infused_lactate_mmol: float = 0.0, *,
              convulsion_intensity: float = 0.0,
              mh_severity: float = 0.0,
+             extra_rate_mmol_kg_min: float = 0.0,
              circulation: float = 1.0,
              temp_c: float = 37.0) -> float:
         """Advance dt seconds and return net buffer base removed, mmol.
@@ -182,10 +183,11 @@ class LactateModel:
             if mh > 0.0
             else 0.0
         )
+        extra_rate = max(0.0, extra_rate_mmol_kg_min) * self._lean_mass_kg if extra_rate_mmol_kg_min > 0.0 else 0.0
         supply = clamp01(supply_fraction)
         extrahepatic = (1.0 - HEPATIC_SHARE) * clamp01(supply / 0.15)
         capacity = self.vmax_mmol_min * temp_q10 * (extrahepatic + HEPATIC_SHARE * self.hepatic_function * supply)
-        endogenous_source = aerobic + anaerobic / minutes + seizure_rate + mh_rate
+        endogenous_source = aerobic + anaerobic / minutes + seizure_rate + mh_rate + extra_rate
         infused_source = infused / minutes
         total = self.endogenous_mmol + self.infused_mmol
         # Predict the midpoint amount, then freeze Michaelis-Menten clearance

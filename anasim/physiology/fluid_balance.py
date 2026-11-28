@@ -92,9 +92,68 @@ class PendingBloodSync:
 STORED_BLOOD_PH = 6.5
 STORED_BLOOD_PCO2 = 13.0 * _MMHG_PER_KPA
 STORED_BLOOD_SO2 = 0.60
+DEFAULT_PRBC_STORAGE_DAYS = 21.0
+PRBC_STORAGE_DAYS_RANGE = (1.0, 42.0)
 _STORED_BICARBONATE = plasma_bicarbonate(STORED_BLOOD_PH, STORED_BLOOD_PCO2)
 _STORED_CITRATE = 1.32 / 0.135
 _GLUCOSE_MMOL_PER_G = 1000.0 / 180.16
+
+# Rabcuka 2025 Table 3 SAGM PRBC storage lesion trajectory (Days 2, 7, 21, 35, 42).
+_PRBC_STORAGE_GRID = (
+    # (days, K mmol/L, glucose mmol/L, lactate mmol/L, pH, PCO2 kPa)
+    (2.0, 4.4, 29.9, 7.0, 6.98, 7.8),
+    (7.0, 17.2, 26.7, 13.0, 6.79, 10.6),
+    (21.0, 38.0, 21.8, 22.5, 6.50, 13.0),
+    (35.0, 50.5, 18.5, 28.3, 6.39, 15.0),
+    (42.0, 55.0, 17.1, 30.3, 6.35, 15.6),
+)
+
+
+def prbc_storage_dpg_fraction(storage_days: float) -> float:
+    """Remaining RBC 2,3-DPG fraction (0-1) vs storage age (Bennett-Guerrero 2007)."""
+    days = clamp(float(storage_days), PRBC_STORAGE_DAYS_RANGE[0], PRBC_STORAGE_DAYS_RANGE[1])
+    return math.exp(-0.28 * max(0.0, days - 1.0))
+
+
+def prbc_composition(storage_days: float = DEFAULT_PRBC_STORAGE_DAYS) -> tuple[FluidComposition, float, float, float]:
+    """Return (supernatant FluidComposition, pH, PCO2 mmHg, 2,3-DPG fraction) for SAGM PRBCs."""
+    days = clamp(float(storage_days), PRBC_STORAGE_DAYS_RANGE[0], PRBC_STORAGE_DAYS_RANGE[1])
+    dpg = prbc_storage_dpg_fraction(days)
+    if abs(days - DEFAULT_PRBC_STORAGE_DAYS) <= 1e-6:
+        return FLUID_COMPOSITIONS["blood"], STORED_BLOOD_PH, STORED_BLOOD_PCO2, dpg
+    if days <= _PRBC_STORAGE_GRID[0][0]:
+        _, k, gluc, lac, ph, pco2_kpa = _PRBC_STORAGE_GRID[0]
+    elif days >= _PRBC_STORAGE_GRID[-1][0]:
+        _, k, gluc, lac, ph, pco2_kpa = _PRBC_STORAGE_GRID[-1]
+    else:
+        for idx in range(len(_PRBC_STORAGE_GRID) - 1):
+            d0, k0, g0, l0, ph0, p0 = _PRBC_STORAGE_GRID[idx]
+            d1, k1, g1, l1, ph1, p1 = _PRBC_STORAGE_GRID[idx + 1]
+            if d0 <= days <= d1:
+                t = (days - d0) / (d1 - d0)
+                k = k0 + t * (k1 - k0)
+                gluc = g0 + t * (g1 - g0)
+                lac = l0 + t * (l1 - l0)
+                ph = ph0 + t * (ph1 - ph0)
+                pco2_kpa = p0 + t * (p1 - p0)
+                break
+    pco2_mmhg = pco2_kpa * _MMHG_PER_KPA
+    hco3 = plasma_bicarbonate(ph, pco2_mmhg)
+    na = 154.0 - k
+    cl = na + k + 1.0 - lac - 3.0 * _STORED_CITRATE - hco3
+    comp = FluidComposition(
+        na,
+        k,
+        cl,
+        magnesium=0.5,
+        phosphate=1.0,
+        lactate=lac,
+        citrate=_STORED_CITRATE,
+        carbon=hco3 * (1.0 + 10.0 ** (6.1 - ph)),
+        glucose=gluc,
+    )
+    return comp, ph, pco2_mmhg, dpg
+
 
 FLUID_COMPOSITIONS = {
     "crystalloid": FluidComposition(130.0, 4.0, 109.0, calcium=1.5, lactate=28.0, l_lactate_fraction=0.5),
@@ -105,6 +164,21 @@ FLUID_COMPOSITIONS = {
         magnesium=0.5, phosphate=1.0, lactate=22.5, citrate=_STORED_CITRATE,
         carbon=_STORED_BICARBONATE * (1.0 + 10.0**(6.1 - STORED_BLOOD_PH)),
         glucose=21.8,
+    ),
+    # Citrate-anticoagulated plasma products (Ewalenko 1986; Dzik & Kirkley 1988):
+    # ~19-20 mmol/L citrate (~5 mmol per 250 mL FFP/platelet unit, ~4x SAGM PRBC citrate),
+    # elevated sodium from trisodium citrate, and ~33 g/L diluted donor albumin.
+    "ffp": FluidComposition(
+        168.0, 3.5, 84.0, calcium=1.85, magnesium=0.7, phosphate=3.0,
+        albumin=33.0, lactate=2.0, citrate=20.3, carbon=18.0, glucose=29.7,
+    ),
+    "platelets": FluidComposition(
+        168.0, 3.6, 85.0, calcium=1.85, magnesium=0.7, phosphate=3.0,
+        albumin=33.0, lactate=4.0, citrate=19.0, carbon=16.0, glucose=25.0,
+    ),
+    "cryoprecipitate": FluidComposition(
+        168.0, 3.5, 84.0, calcium=1.85, magnesium=0.7, phosphate=3.0,
+        albumin=33.0, lactate=2.0, citrate=20.0, carbon=17.0, glucose=25.0,
     ),
     "d5w": FluidComposition(0.0, 0.0, 0.0, glucose=50.0 * _GLUCOSE_MMOL_PER_G),
     "d10w": FluidComposition(0.0, 0.0, 0.0, glucose=100.0 * _GLUCOSE_MMOL_PER_G),
@@ -124,6 +198,15 @@ _CITRATE_KD = 1.74  # mmol/L
 _CALCIUM_CENTRAL_FRACTION = 10.9 / (10.9 + 16.5)
 _CALCIUM_MIXING_PER_MIN = 1.25 * (1.0 / 10.9 + 1.0 / 16.5)
 _CALCIUM_CLEARANCE_PER_MIN = 0.183 / (10.9 + 16.5)
+
+# Lu and Nightingale 2000: IV MgSO4 2-cpt disposition (Vc 0.25 L/kg, Vdss 0.37-0.44 L/kg,
+# 100% renal elimination with normal t1/2_beta ~4 h; 4 g load peaks 2.1-3.8 mmol/L and
+# 1-2 g/h maintenance holds 1.7-2.2 mmol/L in normal renal function, accumulating sharply in oliguria).
+_MAGNESIUM_RESTING = 0.8  # mmol/L
+_MAGNESIUM_CENTRAL_FRACTION = 0.72
+_MAGNESIUM_MIXING_PER_MIN = 0.08
+_MAGNESIUM_PERI_EXCHANGE_PER_MIN = 0.032
+_MAGNESIUM_CLEARANCE_L_MIN_70KG = 0.090  # 5.4 L/h -> ~1.55 mmol/L at 1 g/h, ~2.3 mmol/L at 2 g/h
 
 
 def _albumin_binding(albumin_g_l: float, ph: float) -> float:
@@ -177,10 +260,15 @@ class FluidBalance:
         self.cell_na_mmol = 10.0 * self.icf_l
         self.exogenous_calcium_mmol = 0.0
         self.pending_calcium_mmol = 0.0
+        self.magnesium_unmixed_mmol = 0.0
+        self.magnesium_peripheral_mmol = 0.0
+        self.pending_magnesium_mmol = 0.0
+        self._mg_push_tau_s = 60.0
         self._circulation = 1.0
         self._arterial_na = 140.0
         self._arterial_k = 4.0
         self._arterial_cl = 104.0
+        self._arterial_mg = _MAGNESIUM_RESTING
         self._arterial_ica = self.calcium_set_point
         self._arterial_ica_resting = self.calcium_set_point
         self._arterial_ica_ph = resting_ph
@@ -190,6 +278,7 @@ class FluidBalance:
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
         self.stored_rbc_acid_mmol = 0.0
+        self.rbc_23dpg_fraction = 1.0
         self.metabolized_organic_carbon_mmol = 0.0
         self.base_meq = 0.0
         self.donor_rbc_base_meq_l = 0.0
@@ -245,6 +334,22 @@ class FluidBalance:
         if self._circulation >= 0.99:
             return self.concentration("chloride")
         return self._arterial_cl
+
+    def serum_magnesium(self) -> float:
+        """Serum magnesium (mmol/L), including central bolus pass not yet mixed across ECF."""
+        if self.magnesium_unmixed_mmol <= 0.0:
+            return self.concentration("magnesium")
+        return (
+            self.concentration("magnesium")
+            + self.magnesium_unmixed_mmol / (_MAGNESIUM_CENTRAL_FRACTION * self.ecf_l)
+        )
+
+    @property
+    def arterial_magnesium(self) -> float:
+        """Arterial-sample magnesium (mmol/L); frozen during zero-flow arrest."""
+        if self._circulation >= 0.99:
+            return self.serum_magnesium()
+        return self._arterial_mg
 
     def arterial_ionized_calcium(self, ph: float) -> float:
         """Arterial-sample ionized calcium (mmol/L); frozen during zero-flow arrest and lags peripheral infusion during low flow."""
@@ -341,10 +446,23 @@ class FluidBalance:
         self.lactate_loss_pending_l = 0.0
         return lost
 
-    def infuse(self, amount_ml: float, retained_ml: float, hematocrit: float, label: str) -> None:
+    def infuse(
+        self,
+        amount_ml: float,
+        retained_ml: float,
+        hematocrit: float,
+        label: str,
+        *,
+        storage_days: float = DEFAULT_PRBC_STORAGE_DAYS,
+    ) -> None:
         running_blood_base = self._ensure_running_blood_base()
         sync = self._blood_sync
-        fluid = FLUID_COMPOSITIONS["blood" if hematocrit > 0.0 else label]
+        if hematocrit > 0.0:
+            fluid, storage_ph, _, donor_dpg = prbc_composition(storage_days)
+        else:
+            fluid = FLUID_COMPOSITIONS[label]
+            storage_ph = STORED_BLOOD_PH
+            donor_dpg = 1.0
         volume = amount_ml / 1000.0
         cells = retained_ml * hematocrit / 1000.0
         water = volume - cells
@@ -352,11 +470,23 @@ class FluidBalance:
             self.amounts[ion] += water * getattr(fluid, ion)
         self.glucose_mmol += water * fluid.glucose
         self.ecf_l += water
+        prev_rbc_l = self.red_cells_l
         self.red_cells_l += cells
+        if cells > 0.0 and prev_rbc_l + cells > 0.0:
+            self.rbc_23dpg_fraction = (
+                prev_rbc_l * self.rbc_23dpg_fraction + cells * donor_dpg
+            ) / (prev_rbc_l + cells)
         sync.transfused_cells_l += cells
         sync.retained_cells_l += cells
         sync.carbon_mmol += water * fluid.carbon
-        total_base_in = water * fluid.sid + cells * self.donor_rbc_base_meq_l
+        age_acid_scale = (
+            clamp((7.4 - storage_ph) / (7.4 - STORED_BLOOD_PH), 0.2, 1.5)
+            if cells > 0.0 and abs(storage_days - DEFAULT_PRBC_STORAGE_DAYS) > 1e-6
+            else 1.0
+        )
+        rbc_deficit_l = max(0.0, self.donor_rbc_normal_base_meq_l - self.donor_rbc_base_meq_l) * age_acid_scale
+        eff_donor_rbc_base = self.donor_rbc_normal_base_meq_l - rbc_deficit_l if cells > 0.0 else self.donor_rbc_base_meq_l
+        total_base_in = water * fluid.sid + cells * eff_donor_rbc_base
         self.base_meq += total_base_in
         sync.infuse_base_meq += total_base_in
         self.citrate_mmol += water * fluid.citrate
@@ -369,14 +499,13 @@ class FluidBalance:
             # immediate Rabcuka 2025 acid load.
             rbc_l_lactate = cells * fluid.lactate * fluid.l_lactate_fraction
             self.infused_l_lactate_mmol += rbc_l_lactate
-            rbc_deficit = max(0.0, self.donor_rbc_normal_base_meq_l - self.donor_rbc_base_meq_l)
-            self.stored_rbc_acid_mmol += max(0.0, cells * rbc_deficit - rbc_l_lactate)
+            self.stored_rbc_acid_mmol += max(0.0, cells * rbc_deficit_l - rbc_l_lactate)
         self.d_lactate_mmol += water * fluid.lactate * (1.0 - fluid.l_lactate_fraction)
         plasma_water = retained_ml / 1000.0 - cells
         plasma_carbon = plasma_water * fluid.carbon
         sync.blood_carbon_in_mmol += plasma_carbon
         sync.blood_carbon_retained_mmol += plasma_carbon
-        blood_inc = plasma_water * fluid.sid + cells * self.donor_rbc_base_meq_l
+        blood_inc = plasma_water * fluid.sid + cells * eff_donor_rbc_base
         sync.blood_base_in_meq += blood_inc
         sync.blood_base_retained_meq += blood_inc
         self._running_blood_base_meq = running_blood_base + blood_inc
@@ -415,6 +544,9 @@ class FluidBalance:
             else:
                 self.amounts[ion] *= 1.0 - fraction
         self.calcium_unmixed_mmol *= 1.0 - central_ca_frac
+        central_mg_l = _MAGNESIUM_CENTRAL_FRACTION * self.ecf_l
+        central_mg_frac = min(1.0, max(0.0, water / central_mg_l)) if central_mg_l > 0.0 else 1.0
+        self.magnesium_unmixed_mmol *= 1.0 - central_mg_frac
         shed_excess_ca = max(0.0, shed_ca - water * resting_plasma_ca)
         self.exogenous_calcium_mmol = max(
             0.0,
@@ -482,6 +614,7 @@ class FluidBalance:
             self._arterial_na = self.concentration("sodium")
             self._arterial_k = self.concentration("potassium")
             self._arterial_cl = self.concentration("chloride")
+            self._arterial_mg = self.serum_magnesium()
             snap_ph = self.ph if ph is None else ph
             self._arterial_ica = self.ionized_calcium(snap_ph)
             self._arterial_ica_resting = self.ionized_calcium(self.resting_ph)
@@ -510,9 +643,24 @@ class FluidBalance:
             delivered = self.pending_calcium_mmol * -math.expm1(-self._circulation * dt / self._ca_push_tau_s)
             self.pending_calcium_mmol -= delivered
             self._deliver_calcium(delivered)
+        if self.pending_magnesium_mmol > 0.0 and self._circulation > 0.0:
+            delivered_mg = self.pending_magnesium_mmol * -math.expm1(-self._circulation * dt / self._mg_push_tau_s)
+            self.pending_magnesium_mmol -= delivered_mg
+            self._deliver_magnesium(delivered_mg)
         minutes = dt / 60.0
         self._clear_calcium(minutes * self._circulation, renal_function=renal_function)
+        self._step_magnesium(
+            minutes * self._circulation,
+            renal_function=renal_function,
+            renal_perfusion=renal_perfusion,
+        )
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply, temp_c=temp_c)
+        if self.rbc_23dpg_fraction < 1.0:
+            # In-vivo regeneration of transfused RBC 2,3-DPG over ~12-24 h (tau ~14 h).
+            self.rbc_23dpg_fraction = min(
+                1.0,
+                1.0 - (1.0 - self.rbc_23dpg_fraction) * math.exp(-minutes * clamp01(oxygen_supply) / 840.0),
+            )
         self._renal_balance(minutes, ph, paco2, resting_paco2, renal_function, renal_perfusion)
         self._exchange_potassium(
             minutes, epinephrine, ph=ph, paco2=paco2, resting_paco2=resting_paco2,
@@ -525,6 +673,7 @@ class FluidBalance:
             self._arterial_na += (self.concentration("sodium") - self._arterial_na) * alpha
             self._arterial_k += (self.concentration("potassium") - self._arterial_k) * alpha
             self._arterial_cl += (self.concentration("chloride") - self._arterial_cl) * alpha
+            self._arterial_mg += (self.serum_magnesium() - self._arterial_mg) * alpha
             art_ica_at_ph = self.arterial_ionized_calcium(ph)
             self._arterial_ica = art_ica_at_ph + (self.ionized_calcium(ph) - art_ica_at_ph) * alpha
             self._arterial_ica_resting += (self.ionized_calcium(self.resting_ph) - self._arterial_ica_resting) * alpha
@@ -596,7 +745,9 @@ class FluidBalance:
             conc_pi = self.amounts["phosphate"] / ecf_before
             max_na = min(self.amounts["sodium"], urine * conc_na)
             potassium = min(self.amounts["potassium"], urine * 25.0 * (conc_k / 4.0) ** 2)
-            magnesium = min(self.amounts["magnesium"], urine * conc_mg)
+            # Exogenous MgSO4 clears electroneutrally with SO4^2- in _step_magnesium;
+            # keep urine SID balance anchored to resting Mg so MgSO4 does not shift base_meq.
+            magnesium = min(self.amounts["magnesium"], urine * min(conc_mg, _MAGNESIUM_RESTING))
             calcium = min(self.amounts["calcium"], urine * 0.5)
             phosphate = min(self.amounts["phosphate"], urine * conc_pi)
         else:
@@ -801,3 +952,75 @@ class FluidBalance:
         else:
             self._ca_push_tau_s = tau
         self.pending_calcium_mmol = prev + added
+
+    def _deliver_magnesium(self, mmol: float) -> None:
+        if mmol <= 0.0:
+            return
+        self.amounts["magnesium"] += mmol
+        self.magnesium_unmixed_mmol += mmol * (1.0 - _MAGNESIUM_CENTRAL_FRACTION)
+
+    def _step_magnesium(
+        self, minutes: float, *, renal_function: float = 1.0, renal_perfusion: float = 1.0,
+    ) -> None:
+        if minutes <= 0.0:
+            return
+        if self.magnesium_unmixed_mmol > 0.0:
+            self.magnesium_unmixed_mmol *= math.exp(-_MAGNESIUM_MIXING_PER_MIN * minutes)
+            if self.magnesium_unmixed_mmol < 1e-9:
+                self.magnesium_unmixed_mmol = 0.0
+        resting_amount = _MAGNESIUM_RESTING * self.ecf_l
+        excess_ecf = max(0.0, self.amounts["magnesium"] - resting_amount)
+        if excess_ecf <= 0.0 and self.magnesium_peripheral_mmol <= 0.0:
+            return
+        # 2-compartment equilibration between ECF and peripheral tissue/bone store
+        # (Vdss ~0.37-0.44 L/kg, Lu and Nightingale 2000).
+        peri_vol = 0.85 * self.ecf_l
+        if peri_vol > 0.0 and self.ecf_l > 0.0:
+            total_excess = excess_ecf + self.magnesium_peripheral_mmol
+            target_ecf = total_excess * self.ecf_l / (self.ecf_l + peri_vol)
+            transfer = (excess_ecf - target_ecf) * -math.expm1(-_MAGNESIUM_PERI_EXCHANGE_PER_MIN * minutes)
+            transfer = clamp(transfer, -self.magnesium_peripheral_mmol, excess_ecf)
+            self.amounts["magnesium"] -= transfer
+            self.magnesium_peripheral_mmol += transfer
+            excess_ecf = max(0.0, self.amounts["magnesium"] - resting_amount)
+        # 100% renal elimination of excess exogenous MgSO4 (electroneutral with SO4^2-).
+        if excess_ecf > 0.0:
+            cl_l_min = (
+                _MAGNESIUM_CLEARANCE_L_MIN_70KG
+                * (self.lean_mass_kg / 70.0)
+                * clamp01(renal_function)
+                * clamp01(renal_perfusion)
+            )
+            if cl_l_min > 0.0 and self.ecf_l > 0.0:
+                k_el = cl_l_min / self.ecf_l
+                cleared = excess_ecf * -math.expm1(-k_el * minutes)
+                self.amounts["magnesium"] -= cleared
+
+    def give_magnesium_sulfate(
+        self, mmol: float, circulation: float | None = None, *, bolus_push_s: float = 60.0,
+    ) -> None:
+        """Administer IV magnesium sulfate (mmol of Mg2+; 1 g MgSO4·7H2O = 4.057 mmol)."""
+        if mmol <= 0.0:
+            return
+        circ = self._circulation if circulation is None else clamp01(circulation)
+        if circ >= 1.0 and bolus_push_s <= 0.0:
+            self._deliver_magnesium(mmol)
+            return
+        immediate = 0.25 * (circ * circ) * mmol if bolus_push_s <= 10.0 else 0.0
+        if immediate > 0.0:
+            self._deliver_magnesium(immediate)
+        added = mmol - immediate
+        tau = max(5.0, bolus_push_s)
+        prev = self.pending_magnesium_mmol
+        if prev + added > 0.0:
+            self._mg_push_tau_s = (prev * self._mg_push_tau_s + added * tau) / (prev + added)
+        else:
+            self._mg_push_tau_s = tau
+        self.pending_magnesium_mmol = prev + added
+
+    def add_kcl(self, k_meq: float) -> None:
+        """Add electroneutral KCl (mEq) to extracellular fluid without shifting SID/base excess."""
+        if k_meq <= 0.0:
+            return
+        self.amounts["potassium"] += k_meq
+        self.amounts["chloride"] += k_meq

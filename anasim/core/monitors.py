@@ -14,6 +14,7 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resuscitation import (
     compression_mean_pressure,
     compression_pressures,
+    compression_quality_factors,
     compression_waveform_pressure,
 )
 
@@ -30,6 +31,7 @@ from .projection import (
     nmba_twitch_fraction,
     project_arterial,
     project_hemodynamics,
+    pulse_ox_target_spo2,
     stimulus_tolerance,
 )
 from .state import AirwayType, WaveformSample
@@ -276,9 +278,16 @@ def step_cardiac_monitors(
         ecmo.is_arterial_support and (ecmo.state.aortic_cross_clamp or ecmo.state.cardioplegia_arrest)
     )
     compressions = hemo_state.compressions and not pump_override
+    cpr_rate = engine.hemo.cpr_rate
+    _, cpr_pulse_scale, _ = compression_quality_factors(
+        cpr_rate, engine.hemo.cpr_depth_cm, engine.hemo.cpr_recoil,
+    )
     if compressions:
         compression_sbp, compression_dbp = compression_pressures(
-            hemo_state.cpr_perfusion_map, hemo_state.venous_pressure, filling_factor=engine.hemo.cpr_filling_factor,
+            hemo_state.cpr_perfusion_map,
+            hemo_state.venous_pressure,
+            filling_factor=engine.hemo.cpr_filling_factor,
+            pulse_scale=cpr_pulse_scale,
         )
         compression_mean = compression_mean_pressure(compression_sbp, compression_dbp)
     else:
@@ -293,6 +302,7 @@ def step_cardiac_monitors(
     sodium_block = engine.toxicity.conduction_block
     potassium = engine.hemo.effective_potassium
     hyperk_block = engine.hemo.hyperkalemia_block
+    magnesium_block = engine.hemo.magnesium_block
     start_time = engine.state.time
 
     for index in range(substeps):
@@ -317,11 +327,12 @@ def step_cardiac_monitors(
                 compression_sbp, compression_dbp = compression_pressures(
                     hemo_state.cpr_perfusion_map, hemo_state.venous_pressure,
                     filling_factor=engine.hemo.cpr_filling_factor,
+                    pulse_scale=cpr_pulse_scale,
                 )
                 compression_mean = compression_mean_pressure(compression_sbp, compression_dbp)
         # Compressions, when running, envelope any weaker intrinsic beat rather than adding onto MAP.
         if compressions:
-            comp_sample = engine.compression_clock.step(substep_dt, rhythm)
+            comp_sample = engine.compression_clock.step(substep_dt, rhythm, rate=cpr_rate)
             if hemo_state.intrinsic_co > 0.0:
                 intrinsic_art = art_waveform.step(
                     cardiac_sample,
@@ -376,12 +387,20 @@ def step_cardiac_monitors(
             pulse_sample,
             arterial_sample,
         )
+        pacemaker = engine.pacemaker
+        paced_wide = hemo_state.paced_capture and pacemaker.status.wide_qrs
+        pacing_spikes = pacemaker.spike_offsets_s() if hemo_state.paced_capture else ()
+        unpaced_spike = pacemaker.step_unpaced_spike(substep_dt)
         ecg_voltage = ecg_mon.step(substep_dt, cardiac_sample, st_depression,
                                    conduction_failure=conduction_failure,
                                    sodium_block=sodium_block,
                                    potassium=potassium,
                                    hyperkalemia_block=hyperk_block,
-                                   compression_phase=comp_sample.phase if compressions else None)
+                                   magnesium_block=magnesium_block,
+                                   compression_phase=comp_sample.phase if compressions else None,
+                                   paced_wide_qrs=paced_wide,
+                                   pacing_spikes=pacing_spikes,
+                                   unpaced_spike=unpaced_spike)
         pulse_pressure = arterial_sample.systolic - arterial_sample.diastolic
         pp_gate = (
             clamp01((pulse_pressure - MIN_PULSE_PRESSURE_MMHG) / 4.0)
@@ -440,11 +459,8 @@ def step_monitors(
     engine._tol_current = stimulus_tolerance(engine)
     # On peripheral VA ECMO, standard pre-ductal (right-hand/forehead) pulse oximetry
     # monitors upper-body oxygenation so Harlequin desaturation is detected immediately.
-    spo2_sao2 = (
-        engine.extracorporeal.state.upper_body_sao2
-        if engine.extracorporeal.is_arterial_support
-        else state.sao2
-    )
+    # Under methemoglobinemia, two-wavelength pulse oximetry pulls toward ~85% (Barker 1989).
+    spo2_sao2 = pulse_ox_target_spo2(engine)
     cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, spo2_sao2)
     sealed = circuit_connected(engine)
     seal_scale = mask_seal_factor(engine)
@@ -604,8 +620,27 @@ def step_monitors(
     )
     if engine.extracorporeal.is_cpb and engine.extracorporeal.state.reservoir_low_alarm:
         state.alarms["ReservoirLow"] = {"low": True, "high": False}
-    if not engine.circuit.oxygen_supply_connected:
+    if engine.extracorporeal.is_active and engine.extracorporeal.state.arterial_line_high_alarm:
+        state.alarms["ArtLinePressure"] = {"low": False, "high": True}
+    if engine.extracorporeal.is_cpb and engine.extracorporeal.state.coronary_sinus_high_alarm:
+        state.alarms["CSPressure"] = {"low": False, "high": True}
+    gas_supply = engine.circuit.gas_supply
+    if not gas_supply.o2.available:
         state.alarms["O2Supply"] = {"low": True, "high": False}
+    if gas_supply.o2.pipeline_low:
+        state.alarms["O2Pipeline"] = {"low": True, "high": False}
+    if gas_supply.o2.cylinder_low:
+        state.alarms["O2Cylinder"] = {"low": True, "high": False}
+    if gas_supply.air.pipeline_low:
+        state.alarms["AirPipeline"] = {"low": True, "high": False}
+    if gas_supply.air.cylinder_low:
+        state.alarms["AirCylinder"] = {"low": True, "high": False}
+    if gas_supply.n2o.pipeline_low:
+        state.alarms["N2OPipeline"] = {"low": True, "high": False}
+    if gas_supply.n2o.cylinder_low:
+        state.alarms["N2OCylinder"] = {"low": True, "high": False}
+    if engine.vent.is_on and not gas_supply.vent_drive_available:
+        state.alarms["VentDrive"] = {"low": True, "high": False}
     rhythm = engine.hemo.state.rhythm_type
     if not bypass_silence:
         if rhythm == RhythmType.ASYSTOLE:

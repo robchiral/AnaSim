@@ -665,3 +665,126 @@ def test_cpb_pk_pd_and_sweep_sevoflurane():
     assert sevo_eng.state.mac_sevo > 0.65
     assert sevo_eng.state.bis < 60.0
     assert sevo_eng.extracorporeal.state.exhaust_sevo_percent > 0.5
+
+
+def test_extracorporeal_cannula_sizing_pressure_drop_and_venous_drainage():
+    """Arterial line pressure follows Sinard 1991 M-number scaling and undersized cannulas alarm >300 mmHg;
+    smaller venous cannulas reduce passive CPB gravity drainage conductance.
+    """
+    eng = SimulationEngine(
+        Patient(age=60, weight=75, height=175, sex="male"),
+        SimulationConfig(mode="steady_state", dt=0.5, rng_seed=71, arterial_line_enabled=True),
+    )
+    eng.start()
+    eng.start_cpb(blood_flow_l_min=4.5, arterial_cannula_fr=22, venous_cannula_fr=32)
+    _step_for(eng, 10.0, dt=0.5)
+    p_22fr = eng.state.cpb_arterial_line_pressure
+    assert 100.0 < p_22fr < 230.0
+    assert "ArtLinePressure" not in eng.state.alarms
+
+    eng.set_ecmo_cannulas(arterial_fr=15)
+    _step_for(eng, 5.0, dt=0.5)
+    p_15fr = eng.state.cpb_arterial_line_pressure
+    assert p_15fr > 300.0
+    assert p_15fr > p_22fr + 150.0
+    assert "ArtLinePressure" in eng.state.alarms
+
+    # Reducing pump flow brings line pressure back into safe range.
+    eng.set_ecmo_flow(2.8)
+    _step_for(eng, 5.0, dt=0.5)
+    assert eng.state.cpb_arterial_line_pressure < 300.0
+    assert "ArtLinePressure" not in eng.state.alarms
+
+    # Venous cannula size limits passive CPB venous drainage.
+    v_large = SimulationEngine(
+        Patient(age=60, weight=75, height=175, sex="male"),
+        SimulationConfig(mode="steady_state", dt=0.5, rng_seed=72),
+    )
+    v_small = SimulationEngine(
+        Patient(age=60, weight=75, height=175, sex="male"),
+        SimulationConfig(mode="steady_state", dt=0.5, rng_seed=72),
+    )
+    v_large.start()
+    v_small.start()
+    v_large.start_cpb(blood_flow_l_min=5.5, initial_reservoir_ml=800.0, venous_cannula_fr=36)
+    v_small.start_cpb(blood_flow_l_min=5.5, initial_reservoir_ml=800.0, venous_cannula_fr=20)
+    _step_for(v_large, 8.0, dt=0.5)
+    _step_for(v_small, 8.0, dt=0.5)
+    assert v_small.extracorporeal.state.venous_drainage_l_min < v_large.extracorporeal.state.venous_drainage_l_min * 0.75
+
+
+def test_cpb_cardioplegia_buckberg_vs_del_nido_and_retrograde_cad():
+    """Buckberg 4:1 blood vs del Nido 1:4 differ in redose duration, crystalloid hemodilution,
+    K+/Mg2+/lidocaine load, hot-shot energy recovery, and retrograde CS safety / CAD protection.
+    """
+    buck = SimulationEngine(
+        Patient(age=62, weight=75, height=175, sex="male"),
+        SimulationConfig(mode="steady_state", dt=1.0, rng_seed=81, arterial_line_enabled=True),
+    )
+    dn = SimulationEngine(
+        Patient(age=62, weight=75, height=175, sex="male"),
+        SimulationConfig(mode="steady_state", dt=1.0, rng_seed=81, arterial_line_enabled=True),
+    )
+    buck.start()
+    dn.start()
+    buck.start_cpb(blood_flow_l_min=4.5, water_target_c=32.0)
+    dn.start_cpb(blood_flow_l_min=4.5, water_target_c=32.0)
+    k0 = buck.state.potassium
+    hct0 = buck.state.hct
+    mg0 = dn.state.magnesium
+
+    buck.give_cardioplegia("buckberg", route="antegrade", phase="induction")
+    dn.give_cardioplegia("del_nido", route="antegrade", phase="induction")
+    _step_for(buck, 260.0, dt=1.0)
+    _step_for(dn, 260.0, dt=1.0)
+
+    # Both achieve rapid cold cardioplegic arrest and raise serum K+ during induction washout.
+    assert buck.extracorporeal.state.cardioplegia_arrest
+    assert dn.extracorporeal.state.cardioplegia_arrest
+    assert buck.state.cpb_myocardial_temp_c < 20.0
+    assert buck.state.potassium > k0 + 0.6
+    # del Nido 1:4 (80% crystalloid) produces greater hemodilution and systemic lidocaine/Mg2+ than Buckberg 4:1.
+    assert dn.extracorporeal.state.cardioplegia_crystalloid_ml > buck.extracorporeal.state.cardioplegia_crystalloid_ml * 3.0
+    assert dn.state.hct < buck.state.hct - 0.015
+    assert dn.state.hct < hct0 - 0.02
+    assert dn.state.magnesium > mg0 + 0.15
+    assert dn.state.lidocaine_ce > 0.25 and buck.state.lidocaine_ce < 0.01
+
+    # Without redosing over 35 min, Buckberg loses arrest protection (breakthrough) while del Nido holds >60 min.
+    _step_for(buck, 2100.0, dt=2.0)
+    _step_for(dn, 2100.0, dt=2.0)
+    assert buck.extracorporeal.state.cardioplegia_breakthrough
+    assert not buck.extracorporeal.state.cardioplegia_arrest
+    assert dn.extracorporeal.state.cardioplegia_arrest and not dn.extracorporeal.state.cardioplegia_breakthrough
+
+    # Warm terminal hot-shot restores myocardial energy reserve prior to unclamping.
+    e_before = buck.hemo.coronary.energy_reserve
+    buck.give_cardioplegia("buckberg", route="antegrade", phase="hot_shot")
+    _step_for(buck, 160.0, dt=1.0)
+    assert buck.hemo.coronary.energy_reserve > e_before + 0.05
+    assert buck.state.cpb_myocardial_temp_c > 25.0
+
+    # Retrograde coronary sinus pressure >40 mmHg alarms at excessive flow and protects severe CAD better than antegrade.
+    cad_ant = SimulationEngine(
+        Patient(age=65, weight=75, height=175, sex="male", coronary_flow_reserve=1.1),
+        SimulationConfig(mode="steady_state", dt=1.0, rng_seed=82),
+    )
+    cad_ret = SimulationEngine(
+        Patient(age=65, weight=75, height=175, sex="male", coronary_flow_reserve=1.1),
+        SimulationConfig(mode="steady_state", dt=1.0, rng_seed=82),
+    )
+    cad_ant.start()
+    cad_ret.start()
+    cad_ant.start_cpb(blood_flow_l_min=4.5, water_target_c=32.0)
+    cad_ret.start_cpb(blood_flow_l_min=4.5, water_target_c=32.0)
+    cad_ant.give_cardioplegia("del_nido", route="antegrade", phase="induction")
+    cad_ret.give_cardioplegia("del_nido", route="retrograde", phase="induction", flow_ml_min=450.0)
+    _step_for(cad_ret, 10.0, dt=1.0)
+    assert cad_ret.state.cpb_cs_pressure > 40.0
+    assert "CSPressure" in cad_ret.state.alarms
+    _step_for(cad_ant, 240.0, dt=1.0)
+    _step_for(cad_ret, 230.0, dt=1.0)
+    assert cad_ret.state.cpb_cardioplegia_protection > cad_ant.state.cpb_cardioplegia_protection + 0.15
+    _step_for(cad_ant, 1800.0, dt=2.0)
+    _step_for(cad_ret, 1800.0, dt=2.0)
+    assert cad_ret.hemo.coronary.energy_reserve > cad_ant.hemo.coronary.energy_reserve + 0.03

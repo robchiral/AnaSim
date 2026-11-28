@@ -19,9 +19,9 @@ configuration, units, and scripted runs.
 | [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into `SimulationState` and define its fields |
 | [`initialization.py`](../anasim/core/initialization.py) | Initializes awake and steady-state maintenance sessions |
 | [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient parameters, drug models, units, pump limits, and UI metadata |
-| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, glucose and insulin, anticoagulation, neuraxial anesthesia, respiration, gas exchange, clinical crises, and temperature |
-| [`extracorporeal/`](../anasim/extracorporeal/) | Models VV ECMO, VA ECMO, and cardiopulmonary bypass circuits |
-| [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
+| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, pacing, fluids, glucose and insulin, anticoagulation and dilutional hemostasis, neuraxial anesthesia, respiration, gas exchange, clinical crises, and temperature |
+| [`extracorporeal/`](../anasim/extracorporeal/) | Models VV ECMO, VA ECMO, cardiopulmonary bypass circuits, cardioplegia delivery, and cannula pressure-flow |
+| [`machine/`](../anasim/machine/) | Models medical gas supply (pipelines and backup cylinders), breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
 | [`scenarios/`](../anasim/scenarios/) | Defines cases, events, pre-case setup, guided steps, and debrief outcomes |
 | [`web.py`](../anasim/web.py) and [`web_assets/`](../anasim/web_assets/) | Connect the engine and cases to the browser interface |
@@ -68,11 +68,11 @@ monitor measurements.
 
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
-| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `pulmonary_flow`, `pump_flow`, `rhythm_type`, `sao2`, `pa_co2`, `pao2` | Values used by the models and arrest checks; `intrinsic_co` excludes compressions and pump flow, `pulmonary_flow` crosses the native lung, and `pump_flow` is arterial extracorporeal flow |
-| Extracorporeal and anticoagulation | `ecmo_mode`, `ecmo_flow`, `cpb_reservoir_ml`, `upper_sao2`, `lower_sao2`, `heparin_u_ml`, `protamine_ug_ml`, `act_s` | Active circuit mode and flow, CPB reservoir level, regional arterial saturations, free heparin and protamine, and ACT |
-| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `glucose`, `insulin_mu_l`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial pH at patient temperature, 37 °C plasma bicarbonate and standard base excess, blood glucose and plasma insulin, and plasma lactate, electrolytes, and albumin |
+| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `pulmonary_flow`, `pump_flow`, `rhythm_type`, `pacing_mode`, `sao2`, `pa_co2`, `pao2` | Values used by the models and arrest checks; `intrinsic_co` excludes compressions and pump flow, `pulmonary_flow` crosses the native lung, and `pump_flow` is arterial extracorporeal flow |
+| Extracorporeal and anticoagulation | `ecmo_mode`, `ecmo_flow`, `cpb_reservoir_ml`, `cpb_arterial_line_pressure`, `upper_sao2`, `lower_sao2`, `heparin_u_ml`, `protamine_ug_ml`, `act_s`, `fibrinogen_g_l`, `platelets_10e9_l`, `inr` | Active circuit mode and flow, CPB reservoir level and arterial line pressure, regional arterial saturations, free heparin and protamine, ACT, and dilutional coagulation panel |
+| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `glucose`, `insulin_mu_l`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `magnesium`, `methb_pct`, `albumin_g_l` | Arterial pH at patient temperature, 37 °C plasma bicarbonate and standard base excess, blood glucose and plasma insulin, methemoglobin percentage, and plasma lactate, electrolytes, and albumin |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after sensor dynamics, sampling, and smoothing |
-| Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Airway pressures and exhaled gas readings |
+| Ventilation and gas supply | `paw_peak`, `paw_plat`, `peep`, `et_o2`, `o2_pipeline_psig`, `o2_cylinder_psig` | Airway pressures, exhaled gas readings, and pipeline/cylinder source pressures |
 | Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, left atrial pressure, and excess lung water |
 
 Monitors derive displayed readings from physiological values by applying sensor

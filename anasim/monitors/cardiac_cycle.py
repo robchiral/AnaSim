@@ -264,10 +264,20 @@ class CompressionClock:
         self._elapsed_s = 0.0
         self.active = False
 
+    def set_rate(self, rate: float) -> None:
+        new_rate = max(30.0, float(rate))
+        if new_rate != self.rate:
+            phase = self._elapsed_s / self.period_s if self.period_s > 0.0 else 0.0
+            self.rate = new_rate
+            self.period_s = 60.0 / new_rate
+            self._elapsed_s = (phase % 1.0) * self.period_s
+
     def stop(self) -> None:
         self.active = False
 
-    def step(self, dt: float, rhythm_type: RhythmType) -> CardiacCycleSample:
+    def step(self, dt: float, rhythm_type: RhythmType, *, rate: float | None = None) -> CardiacCycleSample:
+        if rate is not None:
+            self.set_rate(rate)
         started = not self.active
         if started:
             self.active = True
@@ -275,7 +285,7 @@ class CompressionClock:
         else:
             self._elapsed_s += dt
             if self._elapsed_s >= self.period_s:
-                self._elapsed_s -= self.period_s
+                self._elapsed_s %= self.period_s
                 started = True
         return CardiacCycleSample(
             phase=self._elapsed_s / self.period_s, beat_started=started, rr_interval_s=self.period_s,

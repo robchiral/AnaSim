@@ -41,9 +41,9 @@ def _high_spinal_onset_reached(engine) -> bool:
     return (
         action_taken_in_case(engine, ACTION_EVENT_START, "high_spinal")
         and (
-            engine.neuraxial.sensory_level >= 11.0
-            or engine.state.map < 80.0
-            or engine.state.hr < 60.0
+            engine.neuraxial.sensory_level >= 19.0
+            or engine.state.map < 72.0
+            or engine.state.hr < 58.0
         )
     )
 
@@ -97,26 +97,27 @@ def _preload_supported(engine) -> bool:
 def create_high_spinal() -> Scenario:
     def _resus_instruction(engine) -> str:
         pos_note = (
-            "Set <b>Position to Left lateral</b> (left uterine displacement), "
+            "set <b>Position to Left lateral</b> in Machine, "
             if engine.patient.gestational_age_weeks > 0.0
             else ""
         )
         return (
-            "Rapidly ascending sensory block with hypotension and bradycardia after an epidural bolus "
-            "indicates <b>accidental intrathecal injection (high / total spinal)</b>. "
-            f"{pos_note}connect <b>Facemask</b> with <b>100% O₂</b> (O₂ ≥ 6 L/min, Air and N₂O 0 L/min), and start a "
-            "<b>≥ 500 mL IV fluid bolus</b>.<br><br>"
-            "<i>Restoring venous preload counters sympathectomy pooling and Bezold-Jarisch reflex bradycardia (Pollard 2001).</i>"
+            "Ascending block with hypotension and bradycardia after an epidural top-up indicates "
+            f"<b>high / total spinal</b>. Call for help, {pos_note}apply <b>Facemask</b> with <b>100% O₂</b> "
+            "(O₂ ≥ 6 L/min, air and N₂O 0 L/min) in Machine, and give a <b>≥ 500 mL IV fluid bolus</b> "
+            "in Circulation.<br><br>"
+            "<i>Use <b>Check block level</b> in Circulation to track ascent. Restoring preload counters "
+            "sympathectomy pooling and reflex bradycardia.</i>"
         )
 
     def check_o2_fluid(engine) -> tuple[bool, str]:
         missing = []
         if engine.patient.gestational_age_weeks > 0.0 and engine.hemo.position != "left_lateral":
-            missing.append("Set Position to Left lateral")
+            missing.append("Set Position to Left lateral in Machine")
         if not _fluid_given(engine):
-            missing.append("Give >= 500 mL resuscitation fluid bolus")
+            missing.append("Give ≥ 500 mL resuscitation fluid bolus in Circulation")
         if engine.state.airway_mode == AirwayType.NONE:
-            missing.append("Connect Facemask or airway")
+            missing.append("Connect Facemask or airway in Machine")
         o2_ok, o2_msg = require_oxygen_flow(6.0)(engine)
         if not o2_ok:
             missing.append(o2_msg)
@@ -127,21 +128,21 @@ def create_high_spinal() -> Scenario:
 
     def check_vasoactive(engine) -> tuple[bool, str]:
         met = _vasoactive_given(engine)
-        return met, "" if met else "Give atropine / ephedrine / epinephrine / phenylephrine"
+        return met, "" if met else "Give epinephrine, atropine, or ephedrine for bradycardia/hypotension"
 
     def check_assist_vent(engine) -> tuple[bool, str]:
         if _airway_supported(engine):
             return True, ""
         missing = []
         if not (engine.bag_mask_active or engine.vent.is_on):
-            missing.append("Start 100% O2 bag-mask ventilation")
+            missing.append("Start 100% O₂ bag-mask ventilation")
         if engine.neuraxial.unconsciousness < 0.8 and loss_of_response(engine, include_non_drug=False) < 0.5:
-            missing.append("Support ventilation until total spinal loss of consciousness (or induce gently)")
+            missing.append("Support ventilation and give cardiostable amnesia/induction for early intubation, or bridge until loss of consciousness")
         return not missing, "; ".join(missing)
 
     def check_airway(engine) -> tuple[bool, str]:
         met = _airway_supported(engine)
-        return met, "" if met else "Secure airway (Tracheal tube or SGA) and start ventilation"
+        return met, "" if met else "Secure airway (Tracheal tube preferred, or rescue SGA) and start ventilation"
 
     def check_stable(engine) -> tuple[bool, str]:
         if not _airway_supported(engine):
@@ -166,9 +167,10 @@ def create_high_spinal() -> Scenario:
         id="high_spinal",
         name="High / total spinal anesthesia",
         briefing=(
-            "Awake patient with an epidural catheter in place just receiving a surgical bolus "
-            "(15 mL of 0.5% bupivacaine). Watch closely for ascending block height, hemodynamic "
-            "collapse, and respiratory compromise."
+            "Awake patient with an indwelling epidural catheter receiving a surgical top-up bolus "
+            "(15 mL of 0.5% bupivacaine) after unrecognized intrathecal catheter migration. "
+            "Watch closely for ascending block height (use Check block level), hemodynamic collapse, "
+            "and respiratory compromise."
         ),
         setup_engine=_setup_high_spinal,
         events=(
@@ -183,15 +185,15 @@ def create_high_spinal() -> Scenario:
                 at=20.0,
                 when=_high_spinal_onset_reached,
                 cue=(
-                    "Moments after the epidural top-up, the patient reports hand tingling, "
-                    "difficulty taking a deep breath, and dizziness. Blood pressure and heart rate are falling."
+                    "Shortly after the epidural top-up, the block climbs past T4: the patient reports hand tingling, "
+                    "difficulty taking a deep breath, and dizziness as blood pressure and heart rate fall."
                 ),
                 apply=lambda _e: None,
             ),
             CaseEvent(
                 id="apnea_loc_cue",
-                at=85.0,
-                when=lambda e: e.neuraxial.sensory_level >= 27.0,
+                at=60.0,
+                when=lambda e: e.neuraxial.sensory_level >= 27.0 and e.neuraxial.respiratory_muscle_strength < 0.55,
                 cue=(
                     "The block has ascended past C4: speech is lost, diaphragmatic effort is failing, "
                     "and hypotension with bradycardia is deepening."
@@ -212,21 +214,22 @@ def create_high_spinal() -> Scenario:
                 id="VASOACTIVE",
                 title="Treat hypotension and bradycardia",
                 instruction=(
-                    "Give <b>atropine</b> (0.5–1 mg IV) and <b>ephedrine</b> (10–25 mg), "
-                    "<b>phenylephrine</b>, or <b>epinephrine</b> (10–50 mcg, escalating promptly if "
-                    "severe bradycardia/hypotension persists).<br><br>"
-                    "<i>T1–T4 cardioaccelerator block plus low preload triggers Bezold-Jarisch vagal bradycardia (Pollard 2001); prompt epinephrine prevents progression to arrest (Caplan 1988).</i>"
+                    "Give <b>epinephrine</b> early (10-50 mcg IV, escalating promptly if severe bradycardia "
+                    "or hypotension persists), alongside <b>atropine</b> (0.5-1 mg) and <b>ephedrine</b> (10-25 mg).<br><br>"
+                    "<i>Avoid phenylephrine monotherapy when bradycardic because reflex vagal slowing can precipitate "
+                    "asystole. Prompt epinephrine prevents progression to cardiac arrest.</i>"
                 ),
                 check_requirements=check_vasoactive,
                 target_tab="Medications",
             ),
             ScenarioStep(
                 id="ASSIST_VENTILATION",
-                title="Assist ventilation as phrenic block ascends",
+                title="Assist ventilation and prepare airway control",
                 instruction=(
-                    "Start <b>Bag-mask</b> ventilation on 100% O₂ under Machine as breathing weakens "
-                    "and continue until total spinal loss of consciousness develops (or give a gentle "
-                    "cardiostable induction dose such as etomidate if intubating earlier)."
+                    "Start <b>Bag-mask</b> ventilation on 100% O₂ in Machine as breathing weakens.<br><br>"
+                    "<i>Do not wait passively for brainstem coma if ventilation is failing: give a cardiostable "
+                    "induction or amnestic dose (<b>etomidate</b>, <b>ketamine</b>, or <b>midazolam</b>) to intubate "
+                    "early, or continue bag-mask support if unconsciousness has already developed.</i>"
                 ),
                 check_requirements=check_assist_vent,
                 target_tab="Machine",
@@ -235,8 +238,9 @@ def create_high_spinal() -> Scenario:
                 id="SECURE_AIRWAY",
                 title="Secure the airway and ventilate",
                 instruction=(
-                    "Place a <b>Tracheal tube</b> (or rescue <b>SGA</b>) and start mechanical ventilation.<br><br>"
-                    "<i>At total spinal loss of consciousness, avoid extra propofol that worsens hypotension.</i>"
+                    "Place a <b>Tracheal tube</b> (preferred over an SGA for aspiration protection) and start "
+                    "mechanical ventilation.<br><br>"
+                    "<i>Provide amnesia if awake; avoid large propofol doses that worsen sympathectomy hypotension.</i>"
                 ),
                 check_requirements=check_airway,
                 target_tab="Machine",
@@ -256,14 +260,14 @@ def create_high_spinal() -> Scenario:
                 id="fluid_resuscitation",
                 label="Restored venous preload with ≥ 500 mL IV fluid",
                 check=_preload_supported,
-                review="Rapid IV fluid loading (plus left uterine displacement in pregnancy) restores preload and attenuates Bezold-Jarisch reflex bradycardia (Pollard 2001).",
+                review="Rapid IV fluid loading (plus left uterine displacement in pregnancy) restores preload and attenuates reflex bradycardia.",
                 milestone=True,
             ),
             CaseOutcome(
                 id="vasoactive_support",
                 label="Treated bradycardia and hypotension with vasoactive drugs",
                 check=_vasoactive_given,
-                review="Use stepwise atropine, ephedrine/phenylephrine, and early epinephrine for high-spinal hypotension and bradycardia (Caplan 1988; Pollard 2001).",
+                review="Use early epinephrine alongside atropine and ephedrine for high-spinal hypotension and bradycardia.",
                 milestone=True,
             ),
             CaseOutcome(

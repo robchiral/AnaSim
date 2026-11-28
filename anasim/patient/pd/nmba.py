@@ -70,6 +70,19 @@ def succinylcholine_phase2_tof_fraction(phase2_exposure: float) -> float:
     return 1.0 / (1.0 + (excess / 20.0) ** 2.2)
 
 
+def magnesium_muscle_strength(eff_magnesium_mmol_l: float) -> float:
+    """Direct presynaptic neuromuscular strength (0-1) under hypermagnesemia (Lu 2000).
+
+    Patellar reflexes disappear at 3.5-5.0 mmol/L and respiratory paralysis
+    develops at 5.0-6.5 mmol/L; normal and therapeutic levels (<= 3.8 mmol/L)
+    preserve full unassisted muscle strength.
+    """
+    if eff_magnesium_mmol_l <= 3.8:
+        return 1.0
+    frac = clamp01((eff_magnesium_mmol_l - 3.8) / 3.0)
+    return 1.0 - frac * frac * (3.0 - 2.0 * frac)
+
+
 def _sugammadex_pk(patient: Patient) -> MammillaryPK:
     """Kleijn 2011 sugammadex PK (umol, umol/L); the complex shares it.
 
@@ -127,6 +140,7 @@ class TOFModel:
         self.ce = self.ce_central = 0.0
         self._ce_peri = 0.0
         self.neostigmine_ce = 0.0
+        self.effective_magnesium_mmol_l = 0.8
         self._sugammadex_given = False
         self._temp_c = self.patient.baseline_temp
 
@@ -384,12 +398,20 @@ class TOFModel:
         temp_ec50 = 1.0 - 0.35 * clamp01((32.5 - t) / 5.5) if t < 32.5 else 1.0
         sevo_mac = max(0.0, mac_sevo)
         sevo_eff = sevo_mac if sevo_mac <= 1.0 else 1.0 + 0.55 * (sevo_mac - 1.0) / (1.0 + 0.35 * (sevo_mac - 1.0))
+        # Hypermagnesemia inhibits presynaptic acetylcholine release and potentiates
+        # nondepolarizing NMBAs (Lu 2000), reversible by IV calcium.
+        mg_pot = (
+            1.0 - 0.45 * clamp01((self.effective_magnesium_mmol_l - 1.2) / 2.8)
+            if self.effective_magnesium_mmol_l > 1.2
+            else 1.0
+        )
         factor = (
             max(0.25, 1.0 - self.sevo_ec50_reduction * sevo_eff)
             * (1.0 - (1.0 - self.f_n2o) * clamp01(mac_n2o))
             * temp_ec50
+            * mg_pot
         )
-        base_pot = clamp(factor, 0.15, 1.0)
+        base_pot = clamp(factor, 0.12, 1.0)
         neo_occ = self._neostigmine_occupancy(neostigmine_ce)
         if neo_occ > 0.0:
             return base_pot * (1.0 + NEOSTIGMINE_EC50_MAX_SHIFT * neo_occ)
@@ -458,6 +480,7 @@ class TOFModel:
 __all__ = [
     "ROCURONIUM_T1_EC50",
     "TOFModel",
+    "magnesium_muscle_strength",
     "succinylcholine_laryngeal_spasm_factor",
     "succinylcholine_phase2_tof_fraction",
     "succinylcholine_twitch_fraction",

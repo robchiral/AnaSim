@@ -595,11 +595,14 @@ test("extracorporeal controls and site-tagged blood gas headers update cleanly",
   assert.equal(glucoseBody.children[1].children[1].children[0].textContent, "L");
 });
 
-test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation has a 6-button fluid grid", async () => {
+test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation has fluid and blood-product grid", async () => {
   const { readFileSync } = await import("node:fs");
   const html = readFileSync(new URL("../anasim/web_assets/index.html", import.meta.url), "utf8");
   const fluidButtons = [...html.matchAll(/data-fluid="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(fluidButtons, ["crystalloid", "crystalloid", "saline", "albumin", "d5w", "blood"]);
+  assert.deepEqual(fluidButtons, [
+    "crystalloid", "crystalloid", "saline", "albumin", "d5w", "blood",
+    "ffp", "platelets", "cryoprecipitate",
+  ]);
   // Verify #c-lipid-bolus accepts fractional odd-weight defaults (e.g. 55 kg -> 82.5 mL).
   const lipidInputTag = html.match(/<input[^>]*id="c-lipid-bolus"[^>]*>/)?.[0] ?? "";
   assert.match(lipidInputTag, /step="any"/);
@@ -648,12 +651,16 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
   };
   const lipidCard = makeCard("details");
   lipidCard.open = true;
+  const magnesiumCard = makeCard("details");
+  magnesiumCard.open = true;
   const neuraxialDrawer = makeCard("details");
   const elements = new Map([
     ["drug-cards", makeCard("div")],
     ["lipid-controls", lipidCard],
+    ["magnesium-controls", magnesiumCard],
     ["neuraxial-module", neuraxialDrawer],
     ["c-lipid-feedback", { hidden: true, textContent: "" }],
+    ["c-magnesium-feedback", { hidden: true, textContent: "" }],
     ["running-infusion-list", makeCard("div")],
     ["running-infusions", { hidden: false }],
     ["drug-search", { value: "", oninput: null, focus() {} }],
@@ -675,13 +682,15 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
     "propofol", "midazolam", "ketamine", "etomidate", "lidocaine", "amiodarone",
     "fentanyl", "remi", "hydromorphone", "morphine", "phenyl", "ephedrine", "nore",
     "epi", "vaso", "dobu", "milri", "atropine", "glyco", "esmolol", "labetalol",
-    "roc", "succinylcholine", "neostigmine", "heparin", "protamine", "insulin", "dantrolene",
+    "roc", "succinylcholine", "neostigmine", "heparin", "protamine", "insulin",
+    "dantrolene", "naloxone", "flumazenil", "methylene_blue",
   ].map((key) => ({
     key, generic_name: key, name: key, bolus_unit: "mg", default_bolus: 1,
     rate_unit: null, tci_unit: null,
   }));
   controls.buildDrugs(stubDrugs);
   assert.equal(lipidCard.open, false, "static lipid card resets closed on new session");
+  assert.equal(magnesiumCard.open, false, "static magnesium card resets closed on new session");
 
   const anesthesia = controls.medicationGroups.find((g) => g.name === "Anesthesia and sedation");
   const endo = controls.medicationGroups.find((g) => g.name === "Endocrine and metabolic");
@@ -690,7 +699,10 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
   assert.equal(endo.section.open, false, "specialty endocrine group starts collapsed");
   assert.equal(rescue.section.open, false, "rescue group starts collapsed");
   assert.deepEqual(endo.keys, ["insulin", "d50w", "d10w"]);
-  assert.deepEqual(rescue.keys, ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"]);
+  assert.deepEqual(rescue.keys, [
+    "dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate",
+    "magnesium_sulfate", "naloxone", "flumazenil", "methylene_blue",
+  ]);
 
   for (const [key, expectedCmd, expectedArgs, fractional] of [
     ["d50w", "fluid", { kind: "d50w", volume_ml: 50 }, 12.5],
@@ -740,9 +752,11 @@ test("airway tools, neuraxial block, crisis procedures, and dynamic position row
   for (const id of [
     "airway-tools-module", "neuraxial-module", "crisis-procedures-module",
     "c-difficult-airway", "c-pneumothorax", "c-pe", "c-vae", "c-high-spinal",
+    "magnesium-controls", "c-last-crisis", "c-methb",
   ]) {
     assert.match(html, new RegExp(`id="${id}"`), `index.html contains #${id}`);
   }
+  assert.match(html, /value="ropivacaine"/, "index.html includes ropivacaine neuraxial option");
 
   const makeEl = (extra = {}) => ({
     value: "", disabled: false, hidden: false, open: false, checked: false,
@@ -1136,4 +1150,102 @@ test("ecmoEditor submits extracorporeal_settings via SettingsEditor and syncNeur
     epidural_drug: "bupivacaine", epidural_conc: 0.125, mode: "none",
   });
   assert.equal(elements.get("c-epidural-rate").value, "0");
+});
+
+test("gas supply, pacemaker, and coagulation panel controls sync and submit", async () => {
+  const makeEl = (value = "") => ({
+    value, hidden: false, disabled: false, open: false, textContent: "", className: "",
+    dataset: {}, attributes: {}, children: [],
+    classList: { toggle() {} },
+    addEventListener() {}, removeEventListener() {}, remove() {},
+    getAttribute(n) { return this.attributes[n] ?? null; },
+    setAttribute(n, v) { this.attributes[n] = v; },
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = [...nodes]; },
+    querySelectorAll() { return []; },
+    querySelector(sel) { return sel === "table" ? coagTable : null; },
+  });
+  const coagBody = makeEl();
+  const coagTable = { tHead: makeEl(), tBodies: [coagBody] };
+  const ids = [
+    "gas-supply-module", "gas-supply-summary", "c-gas-supply-readout", "c-vent-drive",
+    "c-o2-cyl-valve", "c-o2-cyl-replace", "c-air-cyl-valve", "c-air-cyl-replace",
+    "c-n2o-cyl-valve", "c-n2o-cyl-replace",
+    "pacemaker-module", "pacemaker-summary", "c-pace-settings", "c-pace-mode",
+    "c-pace-route", "c-pace-rate", "c-pace-output", "c-pace-readout",
+    "c-abg", "c-abg-site", "c-abg-site-row", "abg-pending", "abg-results",
+    "c-act", "act-pending", "act-results",
+    "c-coag-panel", "coag-pending", "coag-results",
+    "c-glucose", "glucose-pending", "glucose-results",
+  ];
+  const elements = new Map(ids.map((id) => [id, makeEl()]));
+  elements.get("c-vent-drive").value = "electric";
+  elements.get("c-pace-mode").value = "vvi";
+  elements.get("c-pace-route").value = "epicardial";
+  elements.get("c-pace-rate").value = "80";
+  elements.get("c-pace-output").value = "10";
+  globalThis.document = {
+    activeElement: null,
+    getElementById: (id) => elements.get(id) ?? null,
+    createElement: (tag) => ({
+      tag, scope: "", className: "", textContent: "",
+      children: tag === "div" ? [{}, {}] : [],
+      append(...n) { this.children.push(...n); },
+      remove() {},
+    }),
+    querySelectorAll: () => [],
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.destroyed = false;
+  controls.ended = false;
+  controls.time = 200;
+  controls.bloodGases = [];
+  controls.acts = [];
+  controls.glucoses = [];
+  controls.coagPanels = [];
+  controls.settingEditors = [];
+  controls.state = { gas_supply: { o2_cylinder_open: false, air_cylinder_open: false, n2o_cylinder_open: false } };
+  controls.send = async (name, args) => { sent.push([name, args]); return true; };
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    if (name === "coag_panel") {
+      return { coag_panel: { drawn_at: 60, ready_at: 180, inr: 1.8, fibrinogen_g_l: 0.95, platelets_10e9_l: 75 } };
+    }
+    return {};
+  };
+
+  controls.bindGasSupply();
+  await elements.get("c-vent-drive").onchange();
+  await elements.get("c-o2-cyl-valve").onclick();
+  await elements.get("c-o2-cyl-replace").onclick();
+  controls.syncGasSupply({
+    o2_pipeline: false, o2_pipeline_psig: 0, o2_cylinder_open: true, o2_cylinder_psig: 1800,
+    o2_cylinder_l: 620, o2_source: "cylinder", air_pipeline: true, air_pipeline_psig: 50,
+    air_cylinder_open: false, n2o_pipeline: true, n2o_pipeline_psig: 50, n2o_cylinder_open: false,
+    vent_drive_mode: "electric", vent_drive_available: true, vent_drive_l_min: 0,
+  });
+  assert.equal(elements.get("gas-supply-summary").textContent, "O₂ cyl");
+  assert.match(elements.get("c-gas-supply-readout").textContent, /Cyl 1800 psig/);
+
+  controls.bindPacemaker();
+  await elements.get("c-pace-mode").onchange();
+  await elements.get("c-pace-route").onchange();
+  controls.syncPacemaker({
+    mode: "vvi", route: "epicardial", rate: 80, output_ma: 10, capture: true,
+    threshold_ma: 4, inhibited: false, async_competition: false,
+  });
+  assert.equal(elements.get("pacemaker-summary").textContent, "VVI 80/min · Capture");
+  assert.match(elements.get("c-pace-readout").textContent, /capture/i);
+
+  controls.bindLabs();
+  await elements.get("c-coag-panel").onclick();
+  assert.equal(coagBody.children.length, 1);
+  assert.equal(coagBody.children[0].children[1].className, "abg-high");
+  assert.equal(coagBody.children[0].children[2].className, "abg-low");
+  assert.equal(coagBody.children[0].children[3].className, "abg-low");
+  assert.ok(sent.some(([n, a]) => n === "vent_drive" && a.mode === "electric"));
+  assert.ok(sent.some(([n, a]) => n === "gas_cylinder" && a.gas === "o2" && a.valve_open === true));
+  assert.ok(sent.some(([n, a]) => n === "pacing" && a.mode === "vvi"));
+  assert.ok(sent.some(([n]) => n === "coag_panel"));
 });

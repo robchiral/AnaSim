@@ -32,6 +32,7 @@ from anasim.patient.pk_models import (
     MidazolamPK,
     PropofolPKEleveld,
     ProtaminePK,
+    _EpiduralAbsorptionPK,
 )
 from anasim.physiology.airway_crisis import ESOPHAGEAL_RETURN_FRACTION
 from anasim.physiology.disturbances import DisturbanceEffects
@@ -52,6 +53,7 @@ from .projection import (
     circuit_inspired_mixture,
     compute_pit_estimates,
     effective_mask_seal,
+    effective_midazolam_ce,
     extubation_tolerance,
     is_esophageal_intubation,
     is_infraglottic_airway,
@@ -59,8 +61,10 @@ from .projection import (
     mask_circuit_share,
     mask_leak,
     mask_seal_factor,
+    naloxone_dose_ratio,
     project_hemodynamics,
     project_runtime_physiology,
+    pulse_ox_target_spo2,
     reference_arterial_pressures,
     step_coronary_from_state,
     step_respiration,
@@ -170,11 +174,7 @@ def _step_monitors_light(
         and pp_light >= MIN_PULSE_PRESSURE_MMHG
         and not (hemo_state.compressions and not pump_override)
     )
-    spo2_src = (
-        ecmo.state.upper_body_sao2
-        if ecmo.is_arterial_support
-        else state.sao2
-    )
+    spo2_src = pulse_ox_target_spo2(engine)
     state.spo2 = state.display_spo2 = float(spo2_src) if state.spo2_signal_valid else 0.0
 
 
@@ -207,6 +207,15 @@ def _step_simulation_once(engine: SimulationEngine, dt: float, *, update_monitor
     cardiac_output = hemo_pre.co
     pre_circ = engine.hemo.circulation_fraction(cardiac_output)
     engine.neuraxial.step(dt, circulation=pre_circ)
+    nx = engine.neuraxial
+    if nx.epidural_catheter and nx.epidural_infusion_ml_hr > 0.0 and pre_circ > 0.0:
+        epi_pk = engine.pk.get(nx.epidural_infusion_drug)
+        if isinstance(epi_pk, _EpiduralAbsorptionPK):
+            epi_dose_mg = nx.epidural_infusion_ml_hr * nx.epidural_infusion_conc_pct * 10.0 * (dt / 3600.0)
+            epi_pk.add_epidural_dose(epi_dose_mg, with_epinephrine=False)
+    if engine.magnesium_infusion_g_hr > 0.0:
+        mg_mmol = engine.magnesium_infusion_g_hr * 4.05729 * (dt / 3600.0)
+        engine.hemo.fluids.give_magnesium_sulfate(mg_mmol, circulation=pre_circ, bolus_push_s=0.0)
     engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), thermal_mac(engine))
     if engine.disturbance_active or engine.intubation_start_time is not None:
         engine._tol_current = stimulus_tolerance(engine)
@@ -224,22 +233,57 @@ def _step_simulation_once(engine: SimulationEngine, dt: float, *, update_monitor
     fi_sevo, fi_n2o = step_machine(engine, dt, co_now=cardiac_output)
     toxicity = engine.toxicity
     lidocaine = engine.pk["lidocaine"]
+    bupivacaine = engine.pk["bupivacaine"]
+    ropivacaine = engine.pk["ropivacaine"]
     toxicity.step_lipid(dt, lidocaine.circulation)
+    art_ph_pre = engine.resp.state.ph_37
     lidocaine.effect_input_fraction = toxicity.effect_input_fraction
+    bupivacaine.effect_input_fraction = toxicity.effect_input_fraction_for("bupivacaine", ph=art_ph_pre)
+    ropivacaine.effect_input_fraction = toxicity.effect_input_fraction_for("ropivacaine", ph=art_ph_pre)
     step_pk(engine, dt, fi_sevo, fi_n2o, cardiac_output)
     circ = engine.hemo.circulation_fraction(cardiac_output)
     art_ph_37 = engine.resp.state.ph_37
     ven_share = clamp01(circ / 0.10) * (1.0 - circ)
     tox_ph = art_ph_37 * (1.0 - ven_share) + min(art_ph_37, engine.resp.state.venous_ph_37) * ven_share
+    midaz_eff = effective_midazolam_ce(engine)
     toxicity.step(
         dt, neural_ce=lidocaine.state.ce_neuro, cardiac_ce=lidocaine.state.ce_cv,
         ph=tox_ph,
-        propofol_ce=state.propofol_ce, midazolam_ce=state.midazolam_ce,
+        propofol_ce=state.propofol_ce, midazolam_ce=midaz_eff,
         mac_sevo=state.mac_sevo, motor_strength=state.twitch / 100.0,
         cortical_function=engine.cerebral.cortical_function,
         mac_n2o=state.mac_n2o,
         etomidate_ce=state.etomidate_ce,
         sodium=engine.hemo.fluids.arterial_sodium,
+        bupivacaine_neuro_ce=bupivacaine.state.ce_neuro,
+        bupivacaine_cv_ce=bupivacaine.state.ce_cv,
+        ropivacaine_neuro_ce=ropivacaine.state.ce_neuro,
+        ropivacaine_cv_ce=ropivacaine.state.ce_cv,
+        hr=hemo_pre.hr,
+        epi_ce=state.epi_ce,
+        vaso_ce=state.vaso_ce,
+        flumazenil_ce=state.flumazenil_ce,
+    )
+    opioid_raw = opioid_equivalent(
+        engine.pk["remi"].state.ce, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce,
+    )
+    engine.opioid_toxicity.step(
+        dt,
+        fentanyl_ce=state.fentanyl_ce,
+        remi_ce=engine.pk["remi"].state.ce,
+        opioid_ce_raw=opioid_raw,
+        naloxone_ce=state.naloxone_ce,
+        muscle_strength=central_muscle_strength(engine),
+        propofol_ce=state.propofol_ce,
+        midazolam_ce=midaz_eff,
+        mac_sevo=state.mac_sevo,
+        surgical_stress=1.0 if engine.disturbance_active else 0.0,
+        paco2=state.pa_co2,
+    )
+    engine.methemoglobin.step(
+        dt,
+        methylene_blue_ce=state.methylene_blue_ce,
+        circulation=circ,
     )
     engine.thermal.metabolic_factor *= toxicity.metabolic_factor
     mh = engine.malignant_hyperthermia
@@ -248,7 +292,9 @@ def _step_simulation_once(engine: SimulationEngine, dt: float, *, update_monitor
             dantrolene_ce=state.dantrolene_ce, oxygen_supply=engine.resp.oxygen_supply_fraction)
     sepsis_sev = engine.sepsis.severity
     aerobic_heat_gate = clamp01(engine.resp.oxygen_supply_fraction)
-    engine.thermal.metabolic_factor += mh.excess_metabolism + 0.25 * sepsis_sev
+    engine.thermal.metabolic_factor += (
+        mh.excess_metabolism + 0.25 * sepsis_sev + engine.opioid_toxicity.metabolic_factor_add
+    )
     engine.thermal.extra_heat_w = engine.hemo.fluids.lean_mass_kg * (
         mh.extra_heat_w_per_kg + 0.35 * sepsis_sev * aerobic_heat_gate
     )
@@ -290,12 +336,14 @@ def _step_simulation_once(engine: SimulationEngine, dt: float, *, update_monitor
         mh.chest_wall_stiffness
         + engine.pneumothorax.chest_wall_stiffness_add
         + engine.pneumoperitoneum.chest_wall_stiffness_add
+        + engine.opioid_toxicity.chest_wall_stiffness_add
     )
     engine.aeration.pleural_collapse = engine.pneumothorax.lung_collapse_fraction
     engine.aeration.crisis_shunt = 1.0 - (
         (1.0 - engine.pneumothorax.shunt_fraction) * (1.0 - engine.embolism.extra_shunt)
     )
-    state.muscle_rigidity = mh.rigidity
+    state.opioid_rigidity = float(engine.opioid_toxicity.rigidity)
+    state.muscle_rigidity = mh.rigidity or engine.opioid_toxicity.rigidity >= 0.30
     state.seizure_activity = toxicity.seizure_activity
     state.convulsions = toxicity.convulsion_intensity > 0.2
     physiology = step_physiology(engine, dt, disturbances, collect_samples=update_monitors)
@@ -637,6 +685,9 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         mask_leak_gap=mask_leak_gap,
         trigger_manual_breath=single_breath,
         cpr_active=engine.hemo.compressions,
+        cpr_rate=engine.hemo.cpr_rate,
+        cpr_depth_cm=engine.hemo.cpr_depth_cm,
+        cpr_recoil=engine.hemo.cpr_recoil,
     )
 
 
@@ -722,7 +773,9 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
             * engine.embolism.thrombolysis_bleeding_multiplier
             / 60.0
         )
-        hemo.add_volume(-rate_sec * dt)
+        bled_ml = rate_sec * dt
+        hemo.add_volume(-bled_ml)
+        engine.coagulation.record_blood_loss(bled_ml, hemo.blood_volume_0)
 
     warmed = engine.state.fluid_warmer
     core_temp = engine.state.temp_c
@@ -736,7 +789,8 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
         remaining = []
         for infusion in engine.pending_infusions:
             is_blood = infusion.hematocrit > 0.0 or infusion.label == "blood"
-            if is_blood:
+            is_plasma_product = infusion.label in ("ffp", "platelets", "cryoprecipitate")
+            if is_blood or is_plasma_product:
                 channel = "blood"
             elif infusion.label == "lipid":
                 channel = "lipid"
@@ -760,7 +814,14 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
                         hematocrit=infusion.hematocrit,
                         retention_fraction=infusion.retention_fraction,
                         label=infusion.label,
+                        storage_days=infusion.storage_days,
                     )
+                    if is_plasma_product:
+                        engine.coagulation.record_transfusion(
+                            infusion.label,
+                            amount_this_step,
+                            hemo.fluids.plasma_l * 1000.0,
+                        )
                     infusate_temp = 37.0 if warmed else (6.0 if is_blood else 21.0)
                     engine.thermal.add_fluid_heat_j(
                         amount_this_step, infusate_temp, core_temp, is_blood=is_blood,
@@ -1041,6 +1102,23 @@ def step_machine(
             uptake_n2 += circuit_share * inflow_stpd * (composition.fin2 - tracheal_fin2)
     pre_reservoir = circuit.reservoir_volume
     pre_bellows = circuit.bellows_fraction
+    s_vent = engine.vent.settings
+    pip_now = (
+        engine.vent.monitors.paw_peak
+        if engine.vent.has_measured_breath and engine.vent.monitors.paw_peak > 0.0
+        else (s_vent.peep + s_vent.p_insp)
+    )
+    drive_demand = circuit.gas_supply.ventilator_drive_gas_demand_l_min(
+        vent_is_on=engine.vent.is_on and circuit.gas_supply.vent_drive_available,
+        mode=s_vent.mode,
+        rr=s_vent.rr,
+        vt_l=s_vent.tv / 1000.0,
+        ie_ratio=s_vent.ie_ratio,
+        t_insp=s_vent.t_insp,
+        pip_cmh2o=pip_now,
+        fgf_l_min=circuit.fgf_total(),
+        mv_supported_l_min=engine.vent.monitors.mv_supported if engine.vent.has_measured_breath else None,
+    )
     circuit.step(
         dt,
         uptake_o2,
@@ -1049,6 +1127,7 @@ def step_machine(
         uptake_n2,
         leak_l_min=leak_l_min,
         rebreathed_share=rebreathed_share,
+        drive_gas_l_min=drive_demand,
     )
     circuit.vaporizer_on = bool(engine.config.sevoflurane_enabled and engine.vaporizer.state.is_on)
     if not circuit.vaporizer_on:
@@ -1185,6 +1264,7 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
         hematocrit=engine.hemo.get_hematocrit(),
         baseline_hct=engine.hemo.baseline_hct,
         circulation=engine.hemo.circulation_fraction(co_curr),
+        ionized_calcium_mmol_l=engine.hemo.fluids.ionized_calcium(engine.resp.state.ph_37),
     )
     if not was_prot_rxn and engine.event_active("protamine_reaction"):
         from anasim.core.action_log import ACTION_EVENT_START
@@ -1496,7 +1576,15 @@ def update_airway_complications(
                 if state.airway_mode == AirwayType.MASK
                 else clamp01(max(engine.airway_crisis.base_pathology_obstruction, engine.airway_crisis.trauma_obstruction))
             )
-        upper_obstruction = clamp01(max(engine.airway_obstruction_manual, engine.laryngospasm_severity, collapse, pathology))
+        upper_obstruction = clamp01(
+            max(
+                engine.airway_obstruction_manual,
+                engine.laryngospasm_severity,
+                collapse,
+                pathology,
+                engine.opioid_toxicity.glottic_obstruction,
+            )
+        )
 
     bronch = 1.0 - (1.0 - engine.bronchospasm_manual) * (1.0 - engine.anaphylaxis.severity)
     if bronch > 0.0:
@@ -1567,7 +1655,7 @@ def step_physiology(
     """Advance physiology models and return a projected runtime snapshot."""
     state = engine.state
     connected = circuit_connected(engine)
-    vent_active = connected and engine.vent.is_on
+    vent_active = connected and engine.vent.is_on and engine.circuit.gas_supply.vent_drive_available
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
     vent = engine.vent
     spirometry = vent.monitors
@@ -1674,10 +1762,51 @@ def step_physiology(
     hypo_epi_cv = hypo_epi * (1.0 - 0.65 * clamp01(engine.thermal.depth_index))
     step_lactate(engine, dt)
 
+    mean_cpb_pump = 0.0
+    hct_now = hemo.get_hematocrit()
+    blood_visc_ratio = math.exp(2.2 * (hct_now - 0.41)) * (1.0 + 0.025 * max(0.0, 37.0 - state.temp_c))
+    if ecmo.is_cpb:
+        cpg_out = ecmo.step_cardioplegia(
+            dt,
+            core_temp_c=state.temp_c,
+            patient_k_meq_l=hemo.fluids.concentration("potassium"),
+            patient_mg_mmol_l=hemo.fluids.serum_magnesium(),
+            coronary_flow_reserve=hemo.coronary._reserve,
+            viscosity_ratio=blood_visc_ratio,
+        )
+        if cpg_out.net_crystalloid_ml > 0.0:
+            before_bv = hemo.blood_volume
+            hemo.add_volume(
+                cpg_out.net_crystalloid_ml,
+                hematocrit=0.0,
+                retention_fraction=1.0,
+                label="crystalloid",
+                suppress_tde=True,
+            )
+            added_cpg = max(0.0, hemo.blood_volume - before_bv)
+            ecmo.state.reservoir_volume_ml = min(
+                ecmo.config.cpb_reservoir_max_ml,
+                ecmo.state.reservoir_volume_ml + added_cpg,
+            )
+        if cpg_out.net_k_meq > 0.0:
+            hemo.fluids.add_kcl(cpg_out.net_k_meq)
+        if cpg_out.net_mg_mmol > 0.0:
+            hemo.fluids.give_magnesium_sulfate(
+                cpg_out.net_mg_mmol, circulation=hemo.circulation_fraction(co_now), bolus_push_s=0.0,
+            )
+        if cpg_out.net_lidocaine_mg > 0.0:
+            lido_pk = engine.pk["lidocaine"]
+            lido_pk.state.c1 += cpg_out.net_lidocaine_mg / max(1.0, lido_pk.v1)
+        if cpg_out.delivered_total_ml > 0.0:
+            engine.thermal.add_fluid_heat_j(
+                cpg_out.delivered_total_ml, cpg_out.infusate_temp_c, state.temp_c, is_blood=False,
+            )
+        if cpg_out.hot_shot_energy_boost > 0.0:
+            hemo.coronary.energy_reserve = clamp01(hemo.coronary.energy_reserve + cpg_out.hot_shot_energy_boost)
+
     # Without flow, arterial pressure equals venous pressure, so coronary flow stops.
     step_coronary_from_state(engine, dt, hemo_pre, resp_state.sao2)
 
-    mean_cpb_pump = 0.0
     if ecmo.is_cpb:
         stressed_ml = hemo._calc_stressed_volume()
         mcfp_now = stressed_ml / hemo.cv if hemo.cv > 0.0 else hemo.mcfp_0
@@ -1691,6 +1820,8 @@ def step_physiology(
             venous_compliance_ml_mmhg=hemo.cv,
         )
         hemo.extracorporeal_volume_ml = ecmo.total_circuit_mixing_volume_ml
+    if ecmo.is_active:
+        ecmo.update_line_pressures(hemo_pre.map, blood_visc_ratio)
     ecmo_art_flow = (
         mean_cpb_pump
         if ecmo.is_cpb
@@ -1711,10 +1842,38 @@ def step_physiology(
     vc_threshold_c = engine.thermal.vasoconstriction_threshold(
         remi_thermo_eff, engine.neuraxial.vasoconst_threshold_shift_c,
     )
+    nal_dr = naloxone_dose_ratio(engine)
+    hemo_opioid = opioid_equivalent(state.remi_cp, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce)
+    hemo_remi_cp = state.remi_cp
+    if nal_dr > 1.0:
+        hemo_opioid /= nal_dr
+        hemo_remi_cp /= nal_dr
+    cardioplegia_now = ecmo.is_arterial_support and ecmo.state.cardioplegia_arrest
+    pace_status = engine.pacemaker.evaluate(
+        intrinsic_rhythm=hemo.rhythm_type,
+        intrinsic_hr=hemo.intrinsic_rhythm_hr(),
+        lap=hemo_pre.lap,
+        ischemia=hemo.coronary.ischemia,
+        hypoxia=hemo.myocardial_hypoxia,
+        energy_failure=hemo.coronary.energy_failure,
+        hyperkalemia_block=hemo.hyperkalemia_block,
+        sodium_block=engine.toxicity.conduction_block,
+        magnesium_block=hemo.magnesium_block,
+        temp_c=state.temp_c,
+        cardioplegia_arrest=cardioplegia_now,
+        stimulus_tolerance=engine._tol_current,
+    )
+    hemo.set_pacing_capture(
+        captured=pace_status.captured,
+        mode=pace_status.mode,
+        rate_bpm=pace_status.paced_hr,
+        sv_multiplier=pace_status.sv_multiplier,
+    )
+    pace_discomfort = pace_status.discomfort_stress
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp * engine.pk["propofol"].effect_input_fraction,
-        opioid_equivalent(state.remi_cp, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce),
+        hemo_opioid,
         state.nore_ce,
         pit=hemo_pit,
         paco2=hemo_paco2,
@@ -1725,8 +1884,14 @@ def step_physiology(
         crisis_hr=(
             engine.malignant_hyperthermia.heart_rate_increase
             + engine.toxicity.heart_rate_increase
+            + engine.opioid_toxicity.heart_rate_increase
+            + 18.0 * pace_discomfort
         ),
-        crisis_svr=engine.toxicity.svr_increase,
+        crisis_svr=(
+            engine.toxicity.svr_increase
+            + engine.opioid_toxicity.svr_increase
+            + 2.5 * pace_discomfort
+        ),
         mac_sevo=mac_sevo,
         ce_epi=state.epi_ce + hypo_epi_cv + engine.neuraxial.absorbed_epi_ng_ml,
         ce_phenyl=state.phenyl_ce,
@@ -1749,10 +1914,10 @@ def step_physiology(
         temp_c=state.temp_c,
         peep_cmH2O=total_peep_effect,
         sao2=hemo_sao2,
-        remifentanil_cp=state.remi_cp,
+        remifentanil_cp=hemo_remi_cp,
         ph=resp_state.ph,
         ph_37=resp_state.ph_37,
-        ce_midazolam=state.midazolam_ce,
+        ce_midazolam=effective_midazolam_ce(engine, state.midazolam_ce),
         ce_etomidate=state.etomidate_ce,
         mac_n2o=mac_n2o,
         shivering=state.shivering,
@@ -1779,6 +1944,7 @@ def step_physiology(
         neuraxial_vasomotor_frac=engine.neuraxial.vasomotor_symp_fraction * engine.neuraxial.density,
         osmotic_diuresis_ml_min=glucose_state.osmotic_diuresis_ml_min,
         vasoconstriction_threshold_c=vc_threshold_c,
+        toxic_lung_water_ml_min=engine.toxicity.vaso_lung_water_ml_min,
     )
     fluid_circulation = hemo.circulation_fraction(hemo_state.co)
     osmotic_plasma_ml = hemo.fluids.step(
@@ -1814,6 +1980,14 @@ def step_physiology(
     if rhythm != hemo.rhythm_type:
         hemo.rhythm_type = rhythm
         hemo_state = hemo.state
+    if (
+        pace_status.async_competition
+        and hemo.rhythm_type not in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+        and engine._shock_rng.random() < engine.pacemaker.competition_vf_probability(dt, True)
+    ):
+        hemo.rhythm_type = RhythmType.VFIB
+        hemo.set_pacing_capture(captured=False)
+        hemo_state = hemo.state
 
     if ecmo.is_arterial_support and ecmo._last_pass is not None:
         engine.resp._update_extracorporeal_regional_gases(
@@ -1837,6 +2011,7 @@ def myocardial_substrate(engine: SimulationEngine) -> tuple[float, float, bool]:
         coronary.electrically_silent
         or toxicity.electrically_silent
         or hemo.hyperkalemia_block >= SILENT_BLOCK
+        or hemo.magnesium_block >= SILENT_BLOCK
         or cardioplegia_silent,
     )
 
@@ -1923,6 +2098,7 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
         mh_severity=engine.malignant_hyperthermia.severity,
         circulation=circulation,
         temp_c=engine.state.temp_c,
+        extra_rate_mmol_kg_min=engine.toxicity.vaso_lactate_mmol_kg_min,
     )
     resp.oxygen_deficit_l = 0.0
     no_pulm_flow = engine.extracorporeal.is_active and hemo_state.pulmonary_flow <= 0.0

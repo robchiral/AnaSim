@@ -40,12 +40,15 @@ def acid_base_p50(
     temp_p50: float | None = None,
     pco2_scale: float | None = None,
     at_37: bool = False,
+    dpg_fraction: float = 1.0,
 ) -> float:
     """Dash 2016 Eqs. 9-10 at in-vivo temperature (or 37 °C for ABG warming).
 
     Internal chemistry tracks 37 °C alpha-stat pH and PCO2; converting to
     in-vivo pH and PCO2 applies the Bohr/CO2 shifts consistently with
     temperature-dependent P50. Dash uses pH_RBC = 0.795 pH_plasma + 1.357.
+    2,3-DPG depletion (dpg_fraction < 1.0, e.g. stored PRBCs in Bennett-Guerrero 2007)
+    left-shifts P50 by up to 28% (Dash 2016 Eq. 9c).
     """
     if at_37:
         ph, pco2, t_p50 = ph_37, pco2_37, 26.8
@@ -58,7 +61,10 @@ def acid_base_p50(
     delta_co2 = pco2 - 40.0
     ph_factor = 26.8 + delta_ph * (-25.535 + delta_ph * (10.646 - 1.764 * delta_ph))
     co2_factor = 26.8 + delta_co2 * (0.1273 + 0.0001083 * delta_co2)
-    return t_p50 * ph_factor * co2_factor / 26.8**2
+    p50 = t_p50 * ph_factor * co2_factor / 26.8**2
+    if dpg_fraction < 1.0:
+        p50 *= 1.0 - 0.28 * (1.0 - clamp01(dpg_fraction))
+    return p50
 
 
 def saturation_at_p50(pao2: float, p50: float) -> float:

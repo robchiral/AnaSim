@@ -63,9 +63,13 @@ from .hemo_volume import (
 )
 from .resuscitation import (
     COMPRESSION_AFTERLOAD_COUPLING,
+    COMPRESSION_DEPTH_CM,
     COMPRESSION_OUTPUT_FRACTION,
+    COMPRESSION_RATE,
+    COMPRESSION_RECOIL,
     compression_mean_pressure,
     compression_pressures,
+    compression_quality_factors,
 )
 from .thermal import age_vasoconstriction_shift, cold_vasoparesis
 from .toxicity import SILENT_BLOCK
@@ -258,6 +262,13 @@ class HemodynamicModel:
         self._cardioplegia_arrest = False
         self._cpb_open_drainage = False
         self._cpb_reservoir_ml = 0.0
+        self.cpr_rate = COMPRESSION_RATE
+        self.cpr_depth_cm = COMPRESSION_DEPTH_CM
+        self.cpr_recoil = COMPRESSION_RECOIL
+        self._pacing_captured = False
+        self._pacing_mode = "off"
+        self._pacing_rate_bpm = 0.0
+        self._pacing_sv_mult = 1.0
         self.total_osmotic_plasma_shift_ml = 0.0
         self.hb_mass = self.baseline_hb * (self.blood_volume / 100.0)  # g
         self.red_cell_volume_ml = self.baseline_hct * self.blood_volume
@@ -349,6 +360,10 @@ class HemodynamicModel:
         self.hyperkalemia_block = 0.0
         self.effective_potassium = self.fluids.concentration("potassium")
         self.hyperkalemia_arrhythmia = 0.0
+        self.magnesium_block = 0.0
+        self.effective_magnesium = self.fluids.concentration("magnesium")
+        self._mg_svr_factor = 1.0
+        self._mg_sv_factor = 1.0
         self._ca_sv_factor = 1.0
         self._ca_tpr_factor = 1.0
         self._protamine_svr_factor = 1.0
@@ -475,12 +490,21 @@ class HemodynamicModel:
         label: str = "crystalloid",
         *,
         suppress_tde: bool = False,
+        storage_days: float = 21.0,
     ):
         """Add fluid or blood (positive) or remove blood (negative).
 
         Retained volume also gives a transient Frank-Starling SV rise via tde_sv.
         """
-        _volume_add_volume(self, amount_ml, hematocrit, retention_fraction, label, suppress_tde=suppress_tde)
+        _volume_add_volume(
+            self,
+            amount_ml,
+            hematocrit,
+            retention_fraction,
+            label,
+            suppress_tde=suppress_tde,
+            storage_days=storage_days,
+        )
 
     def _update_hb_conc(self):
         self.hb_conc = self.hb_mass / (self.blood_volume / 100.0)
@@ -823,6 +847,7 @@ class HemodynamicModel:
             self.coronary.electrically_silent
             or self.sodium_block >= SILENT_BLOCK
             or self.hyperkalemia_block >= SILENT_BLOCK
+            or self.magnesium_block >= SILENT_BLOCK
         )
 
     def _effective_lap(self) -> float:
@@ -879,6 +904,7 @@ class HemodynamicModel:
             * min(1.0, self._ca_sv_factor)
             * self._hypothermia_sv_factor
             * (1.0 - 0.55 * self.hyperkalemia_block)
+            * self._mg_sv_factor
             * self._amiodarone_ees_factor
         )
         lv_pump_factor = min(1.0, structural_factor, lv_output_ratio)
@@ -1158,6 +1184,7 @@ class HemodynamicModel:
             * self._hypothermia_hr_factor
             * (1.0 - self.sodium_block)
             * (1.0 - 0.75 * self.hyperkalemia_block)
+            * (1.0 - 0.75 * self.magnesium_block)
         )
 
     def _apply_afterload_coupling(
@@ -1312,29 +1339,41 @@ class HemodynamicModel:
             sinus_span = max(1.0, self._sinus_ceil - self._sinus_knee)
             sinus_raw = self._sinus_knee + sinus_span * math.tanh((sinus_raw - self._sinus_knee) / sinus_span)
         sinus_hr = clamp(sinus_raw, HR_MIN, HR_MAX)
-        current_hr = self._rhythm_rate(sinus_hr)
-        reflex_tpr_factor = 1.0
-        if (
-            rhythm is not RhythmType.SINUS
-            and rhythm not in PULSELESS_RHYTHMS
-            and not self._electrically_silent
-            and not self._compressions
-            and self.smoothed_baro_hr > 0.0
-        ):
-            # When the rhythm holds rate low during hypotension, vasoconstriction compensates.
-            reflex_hr = self.smoothed_baro_hr
-            blocked_hr = max(0.0, reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr)))
-            # Blocked drug chronotropy must not dilute the vascular reflex.
-            reflex_hr_base = max(hr_base + eff_crisis_hr + eff_dist_hr - reflex_hr - self.smoothed_epi_hr, HR_MIN)
-            anoxic_intact = (1.0 - self.myocardial_hypoxia) * (1.0 - self.coronary.energy_failure)
-            distributive_intact = (1.0 - sepsis_sev) * (1.0 - clamp01((anaph_sev - 0.65) / 0.35))
-            reflex_tpr_gain = self._venous_tone * distributive_intact * self.acidosis_factor * anoxic_intact
-            reflex_tpr_factor = 1.0 + (blocked_hr / reflex_hr_base) * reflex_tpr_gain
-        current_hr = self._effective_beating_hr(current_hr)
+        electrically_silent = self._electrically_silent
+        pacing_active = (
+            self._pacing_captured
+            and self._pacing_rate_bpm > 0.0
+            and not electrically_silent
+            and not self._cardioplegia_arrest
+            and rhythm is not RhythmType.VFIB
+        )
+        if pacing_active:
+            current_hr = clamp(self._pacing_rate_bpm, HR_MIN, HR_MAX)
+            reflex_tpr_factor = 1.0
+        else:
+            current_hr = self._rhythm_rate(sinus_hr)
+            reflex_tpr_factor = 1.0
+            if (
+                rhythm is not RhythmType.SINUS
+                and rhythm not in PULSELESS_RHYTHMS
+                and not electrically_silent
+                and not self._compressions
+                and self.smoothed_baro_hr > 0.0
+            ):
+                # When the rhythm holds rate low during hypotension, vasoconstriction compensates.
+                reflex_hr = self.smoothed_baro_hr
+                blocked_hr = max(0.0, reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr)))
+                # Blocked drug chronotropy must not dilute the vascular reflex.
+                reflex_hr_base = max(hr_base + eff_crisis_hr + eff_dist_hr - reflex_hr - self.smoothed_epi_hr, HR_MIN)
+                anoxic_intact = (1.0 - self.myocardial_hypoxia) * (1.0 - self.coronary.energy_failure)
+                distributive_intact = (1.0 - sepsis_sev) * (1.0 - clamp01((anaph_sev - 0.65) / 0.35))
+                reflex_tpr_gain = self._venous_tone * distributive_intact * self.acidosis_factor * anoxic_intact
+                reflex_tpr_factor = 1.0 + (blocked_hr / reflex_hr_base) * reflex_tpr_gain
+            current_hr = self._effective_beating_hr(current_hr)
 
         term = self._hr_sv_factor(current_hr)
         if (
-            (rhythm is RhythmType.SINUS or rhythm not in RHYTHM_SV_FACTOR)
+            (pacing_active or rhythm is RhythmType.SINUS or rhythm not in RHYTHM_SV_FACTOR)
             and (self._unstim_rate > 0.0 or self._unstim_rate_unloaded > 0.0)
         ):
             preload_avail = (
@@ -1379,6 +1418,7 @@ class HemodynamicModel:
             * self._hyperosmolar_svr_factor
             * self._protamine_svr_factor
             * self._neuraxial_svr_factor
+            * self._mg_svr_factor
             * self._hct_viscosity_tpr
         )
         pneumo_eff_svr = 1.0 + (self._pneumo_svr_factor - 1.0) * (0.30 + 0.70 * self._pneumo_humoral_gain)
@@ -1421,19 +1461,21 @@ class HemodynamicModel:
         )
         current_sv = max(0.0, current_sv) * coronary_sv_keep * self.acidosis_factor
 
-        if rhythm is not RhythmType.SINUS:
+        if rhythm is not RhythmType.SINUS and not (pacing_active and rhythm is RhythmType.ASYSTOLE):
             current_sv *= self._rhythm_sv_factor(current_hr)
+        if pacing_active:
+            current_sv *= self._pacing_sv_mult
         current_sv *= (
             (1.0 - self.toxic_contractility_loss)
             * self._ca_sv_factor
             * self._hypothermia_sv_factor
             * (1.0 - 0.55 * self.hyperkalemia_block)
+            * self._mg_sv_factor
         )
 
-        electrically_silent = self._electrically_silent
         if (
             electrically_silent
-            or (rhythm is not RhythmType.SINUS and rhythm in PULSELESS_RHYTHMS)
+            or (not pacing_active and rhythm is not RhythmType.SINUS and rhythm in PULSELESS_RHYTHMS)
             or current_hr <= 0.0
         ):
             current_hr = current_sv = 0.0
@@ -1484,6 +1526,7 @@ class HemodynamicModel:
             * min(1.0, self._ca_sv_factor)
             * self._hypothermia_sv_factor
             * (1.0 - 0.55 * self.hyperkalemia_block)
+            * self._mg_sv_factor
             * self._amiodarone_ees_factor,
             0.05,
             2.5,
@@ -1616,17 +1659,27 @@ class HemodynamicModel:
             load = max(0.2, eff_tpr / self.base_tpr)
             afterload = (1.0 + COMPRESSION_AFTERLOAD_COUPLING) / (1.0 + COMPRESSION_AFTERLOAD_COUPLING * load)
             cpr_filling = self._last_cpr_filling
-            cpr_co = COMPRESSION_OUTPUT_FRACTION * self.base_co_l_min * cpr_filling * afterload
+            co_mult, pulse_mult, rap_leaning_add = compression_quality_factors(
+                self.cpr_rate, self.cpr_depth_cm, self.cpr_recoil,
+            )
+            cpr_co = COMPRESSION_OUTPUT_FRACTION * self.base_co_l_min * cpr_filling * afterload * co_mult
             cpr_perfusion_map = clamp(cpr_co * 1000.0 * eff_tpr, 0.0, 300.0)
             co = max(intrinsic_co, cpr_co)
             pulmonary_flow = co
             perfusion_map = max(intrinsic_map, cpr_perfusion_map)
             svr_val = 1000.0 * eff_tpr if co > 0.0 else 0.0
             # Venous return, (MCFP - RAP) / resistance, sets atrial pressure; pleural
-            # pressure (e.g., tension PTX) provides an intrathoracic floor on RAP.
-            venous_pressure = max(0.0, self._last_rap, self._last_mcfp - co * self.venous_return_resistance)
+            # pressure (e.g., tension PTX) and incomplete chest-wall recoil (leaning;
+            # Zuercher 2010) raise diastolic RAP.
+            venous_pressure = (
+                max(0.0, self._last_rap, self._last_mcfp - co * self.venous_return_resistance)
+                + rap_leaning_add
+            )
             cpr_sbp, cpr_dbp = compression_pressures(
-                cpr_perfusion_map, venous_pressure, filling_factor=clamp01(cpr_filling),
+                cpr_perfusion_map,
+                venous_pressure,
+                filling_factor=clamp01(cpr_filling),
+                pulse_scale=pulse_mult,
             )
             cpr_art_map = clamp(compression_mean_pressure(cpr_sbp, cpr_dbp), 0.0, 300.0)
             map_val = max(intrinsic_map, cpr_art_map)
@@ -1654,6 +1707,18 @@ class HemodynamicModel:
             map_val = self.lumen_map(intrinsic_map, venous_pressure)
 
         rhythm = self._rhythm_type
+        paced_capture = (
+            self._pacing_captured
+            and not electrically_silent
+            and not self._cardioplegia_arrest
+            and rhythm is not RhythmType.VFIB
+            and current_hr > 0.0
+        )
+        effective_rhythm = (
+            RhythmType.ASYSTOLE
+            if (electrically_silent or self._cardioplegia_arrest or (current_hr <= 0.0 and rhythm is not RhythmType.VFIB))
+            else (RhythmType.SINUS if (paced_capture and rhythm is RhythmType.ASYSTOLE) else rhythm)
+        )
         result = HemoState(
             map=map_val,
             hr=current_hr,
@@ -1674,9 +1739,7 @@ class HemodynamicModel:
             rv_co=rv_co_val,
             lv_inflow=lv_inflow_val,
             preload_factor=self._last_preload_factor,
-            rhythm_type=RhythmType.ASYSTOLE
-            if (electrically_silent or self._cardioplegia_arrest or (current_hr <= 0.0 and rhythm is not RhythmType.VFIB))
-            else rhythm,
+            rhythm_type=effective_rhythm,
             compressions=self._compressions,
             intrinsic_co=intrinsic_co,
             intrinsic_map=intrinsic_map,
@@ -1686,11 +1749,71 @@ class HemodynamicModel:
             pulmonary_flow=pulmonary_flow,
             pump_flow=pump_flow,
             nonpulsatile_map=nonpulsatile_map,
+            paced_capture=paced_capture,
+            paced_mode=self._pacing_mode if paced_capture else "off",
         )
         if _cache:
             self._cached_state = result
             self._prev_co = result.co
         return result
+
+    def set_cpr_quality(
+        self,
+        *,
+        rate: float | None = None,
+        depth_cm: float | None = None,
+        recoil: float | None = None,
+    ) -> None:
+        """Update CPR compression rate (/min), depth (cm), and full-recoil fraction (0-1)."""
+        changed = False
+        if rate is not None and float(rate) != self.cpr_rate:
+            self.cpr_rate = float(rate)
+            changed = True
+        if depth_cm is not None and float(depth_cm) != self.cpr_depth_cm:
+            self.cpr_depth_cm = float(depth_cm)
+            changed = True
+        if recoil is not None and float(recoil) != self.cpr_recoil:
+            self.cpr_recoil = float(recoil)
+            changed = True
+        if changed:
+            self.invalidate_state_cache()
+
+    def set_pacing_capture(
+        self,
+        *,
+        captured: bool,
+        mode: str = "off",
+        rate_bpm: float = 0.0,
+        sv_multiplier: float = 1.0,
+    ) -> None:
+        """Apply evaluated cardiac pacing capture and SV modifier."""
+        cap = bool(captured)
+        m = str(mode)
+        r = float(rate_bpm) if cap else 0.0
+        sv_m = float(sv_multiplier) if cap else 1.0
+        if (
+            cap != self._pacing_captured
+            or m != self._pacing_mode
+            or r != self._pacing_rate_bpm
+            or sv_m != self._pacing_sv_mult
+        ):
+            self._pacing_captured = cap
+            self._pacing_mode = m
+            self._pacing_rate_bpm = r
+            self._pacing_sv_mult = sv_m
+            self.invalidate_state_cache()
+
+    def intrinsic_rhythm_hr(self) -> float:
+        """Return the patient's unpaced intrinsic ventricular rate (bpm) for pacemaker sensing."""
+        rhythm = self._rhythm_type
+        if self._electrically_silent or self._cardioplegia_arrest or rhythm in PULSELESS_RHYTHMS:
+            return 0.0
+        sinus_raw = self._calc_hr() + self.crisis_hr + self.dist_hr
+        if sinus_raw > self._sinus_knee:
+            sinus_span = max(1.0, self._sinus_ceil - self._sinus_knee)
+            sinus_raw = self._sinus_knee + sinus_span * math.tanh((sinus_raw - self._sinus_knee) / sinus_span)
+        sinus_hr = clamp(sinus_raw, HR_MIN, HR_MAX)
+        return float(self._effective_beating_hr(self._rhythm_rate(sinus_hr)))
 
     def _rhythm_rate(self, sinus_hr: float) -> float:
         """Ventricular rate from the underlying sinus rate; untreated AF with RVR is 110-180+ bpm."""
@@ -1801,6 +1924,7 @@ class HemodynamicModel:
              neuraxial_cardioaccel_block: float = 0.0,
              neuraxial_vasomotor_frac: float = 0.0,
              osmotic_diuresis_ml_min: float = 0.0,
+             toxic_lung_water_ml_min: float = 0.0,
              vasoconstriction_threshold_c: float | None = None) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
@@ -2068,11 +2192,31 @@ class HemodynamicModel:
             self.hyperkalemia_block = clamp01((eff_k - 6.2) / 3.0)
             self.hyperkalemia_arrhythmia = clamp01((eff_k - 6.8) / 2.2)
 
+            # Lu and Nightingale 2000: hypermagnesemia causes dose-dependent vasodilation,
+            # myocardial depression, PR/QRS widening (>5.5 mmol/L), AV block (>7.5 mmol/L),
+            # and asystole (>12.5 mmol/L), directly antagonized by ionized calcium.
+            magnesium = self.fluids.arterial_magnesium
+            ca_mg_antag = clamp((ica_membrane - base_ica) / 0.45, 0.0, 0.65)
+            eff_mg = 0.8 + max(0.0, magnesium - 0.8) * (1.0 - ca_mg_antag)
+            self.effective_magnesium = eff_mg
+            if eff_mg > 1.2:
+                self._mg_svr_factor = 1.0 - 0.38 * clamp01((eff_mg - 1.2) / 6.8)
+                self._mg_sv_factor = 1.0 - 0.35 * clamp01((eff_mg - 3.5) / 7.5)
+                self.magnesium_block = clamp01((eff_mg - 5.5) / 7.1)
+            else:
+                self._mg_svr_factor = 1.0
+                self._mg_sv_factor = 1.0
+                self.magnesium_block = 0.0
+
             if self._electrically_silent and not self._cardioplegia_arrest and self._rhythm_type is not RhythmType.ASYSTOLE:
                 self._silent_arrest_s += sub_dt
                 if self._silent_arrest_s >= ARREST_CONFIRM_S:
                     toxic_cause = (
-                        (self.sodium_block >= SILENT_BLOCK or self.hyperkalemia_block >= SILENT_BLOCK)
+                        (
+                            self.sodium_block >= SILENT_BLOCK
+                            or self.hyperkalemia_block >= SILENT_BLOCK
+                            or self.magnesium_block >= SILENT_BLOCK
+                        )
                         and not self.coronary.electrically_silent
                     )
                     self.rhythm_type = RhythmType.ASYSTOLE
@@ -2085,7 +2229,8 @@ class HemodynamicModel:
                 # Primary asystole requires reversible causes addressed plus CPR or
                 # active mechanical aortic-root coronary perfusion (VA ECMO or unclamped CPB).
                 # Reversible conduction-block asystole (LAST + lipid, extrapolated from rat
-                # bupivacaine resuscitation in Hiller 2009, or hyperkalemia + CaCl2) can restart once block clears.
+                # bupivacaine resuscitation in Hiller 2009, or hyperkalemia/hypermagnesemia + CaCl2)
+                # can restart once block clears.
                 # CAD + anemia with adequate reserve (Eres >= 0.40) can restart at SD >= 0.75.
                 coronary_ok = (
                     (coronary.supply_demand_ratio >= 1.0 and coronary.energy_reserve > 0.0)
@@ -2105,6 +2250,7 @@ class HemodynamicModel:
                     and not coronary.irreversible
                     and self.sodium_block < 0.70
                     and self.hyperkalemia_block < 0.70
+                    and self.magnesium_block < 0.70
                     and temp_c >= 29.5
                     and self.myocardial_hypoxia < 0.50
                     and ph_eff >= 7.0
@@ -2148,6 +2294,7 @@ class HemodynamicModel:
                 base_co,
                 pulmonary_flow_prev=pulm_flow_prev,
                 osmotic_diuresis_ml_min=osmotic_diuresis_ml_min,
+                toxic_lung_water_ml_min=toxic_lung_water_ml_min,
             )
 
             self._update_anesthetic_factors(
@@ -2435,12 +2582,16 @@ class HemodynamicModel:
                 combined_svr_factor - 1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone
             )
 
-            if (rhythm is not RhythmType.SINUS and rhythm in RHYTHM_SV_FACTOR) or self._compressions:
+            if ((rhythm is not RhythmType.SINUS and rhythm in RHYTHM_SV_FACTOR) and not self._pacing_captured) or self._compressions:
                 self._unstim_rate = 0.0
             else:
-                rhythm_hr = self._rhythm_rate(sinus_est)
+                rhythm_hr = (
+                    clamp(self._pacing_rate_bpm, HR_MIN, HR_MAX)
+                    if (self._pacing_captured and self._pacing_rate_bpm > 0.0)
+                    else self._rhythm_rate(sinus_est)
+                )
                 paced_excess = max(0.0, rhythm_hr - sinus_est)
-                beating_hr = self._effective_beating_hr(rhythm_hr)
+                beating_hr = rhythm_hr if self._pacing_captured else self._effective_beating_hr(rhythm_hr)
                 actual_tachy = max(0.0, beating_hr - self.base_hr)
                 self._unstim_rate = min(max(0.0, vagal_hr + paced_excess), actual_tachy) / self.base_hr
             if cfg.unstim_sv_tau_s > 0.0 and sub_dt > 0.0:
@@ -2631,6 +2782,10 @@ class HemodynamicModel:
         self._last_lv_emptying = 1.0
         self._dobu_pvr_factor = 1.0
         self._pneumo_humoral_gain = 1.0
+        self.magnesium_block = 0.0
+        self.effective_magnesium = self.fluids.concentration("magnesium")
+        self._mg_svr_factor = 1.0
+        self._mg_sv_factor = 1.0
         ce_prop = max(0.0, cp_prop) * self._prop_cv_potency
         self._update_anesthetic_factors(ce_prop, cp_remi, mac_sevo)
         anesthetic_depth = clamp01(mac_sevo + cp_prop / 4.0)

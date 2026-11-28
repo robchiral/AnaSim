@@ -11,6 +11,7 @@ from .base import (
     CaseOutcome,
     Scenario,
     ScenarioStep,
+    equilibrate_maintenance_fio2,
     format_unmet_int,
     infusion_running,
     join_messages,
@@ -57,11 +58,11 @@ def _ecmo_perfused_map(engine, threshold: float = 65.0) -> tuple[bool, str]:
 
 
 def _prepare_vv_ecmo_ards(engine) -> None:
-    """Severe ARDS hypoxemia despite FiO2 1.0 and lung-protective ventilation."""
+    """Severe ARDS hypoxemia and permissive hypercapnia despite FiO₂ 1.0 and PEEP 14 cmH₂O."""
     engine.config.arterial_line_enabled = True
     engine.set_fgf(6.0, 0.0, 0.0)
     engine.set_vent_power(True)
-    engine.set_vent_settings(mode="VCV", rr=18.0, vt=0.38, peep=12.0, ie="1:2")
+    engine.set_vent_settings(mode="VCV", rr=14.0, vt=0.35, peep=14.0, ie="1:2")
     engine.set_ards_shunt(0.62)
     preroll_scenario(engine, 120.0, dt=2.0, settle_s=15.0, sample_interval_s=5.0)
 
@@ -84,6 +85,19 @@ def _require_vv_active(engine) -> tuple[bool, str]:
     return True, ""
 
 
+def _require_lung_rest(engine) -> tuple[bool, str]:
+    """Require ultra-protective lung-rest ventilator settings once VV ECMO is established."""
+    settings = engine.vent.settings
+    msgs = []
+    if settings.rr > 12.0:
+        msgs.append(f"Ventilator RR: {settings.rr:g}/≤12/min (lung rest)")
+    if settings.mode == "VCV" and settings.tv > 320.0:
+        msgs.append(f"Ventilator VT: {settings.tv:.0f}/≤320 mL (lung rest)")
+    elif settings.mode == "PCV" and settings.p_insp > 15.0:
+        msgs.append(f"Inspiratory pressure: {settings.p_insp:g}/≤15 cmH₂O (lung rest)")
+    return not msgs, join_messages(msgs)
+
+
 def _require_vv_abg_confirmed(engine) -> tuple[bool, str]:
     starts = engine.actions.since_case(ACTION_EXTRACORPOREAL, labels=("start_vv_ecmo",))
     since = starts[-1].time if starts else 0.0
@@ -102,7 +116,7 @@ def _vv_stable(engine) -> bool:
     return (
         not state.cardiac_arrest
         and engine.spontaneous_circulation
-        and state.sao2 >= 92.0
+        and state.sao2 >= 88.0
         and state.map >= 65.0
     )
 
@@ -113,8 +127,8 @@ def create_vv_ecmo_ards() -> Scenario:
         name="VV ECMO for severe ARDS",
         setup_engine=_prepare_vv_ecmo_ards,
         briefing=(
-            "Severe ARDS on lung-protective ventilation with 100% oxygen and PEEP 12 cmH₂O. "
-            "Hypoxemia persists despite maximal conventional ventilation."
+            "Severe ARDS on lung-protective ventilation with 100% oxygen, low tidal volume, and PEEP 14 cmH₂O. "
+            "Refractory hypoxemia and permissive hypercapnia persist despite maximal conventional ventilation."
         ),
         steps=[
             ScenarioStep(
@@ -124,22 +138,25 @@ def create_vv_ecmo_ards() -> Scenario:
                     "Open <b>Extracorporeal support</b> in the <b>Circulation</b> tab and start <b>VV ECMO</b>. "
                     "Target a circuit blood flow of at least <b>3.0 L/min</b> and sweep gas of at least <b>2.0 L/min</b> "
                     "at 100% sweep FiO₂.<br><br>"
-                    "<i>Consider systemic heparinization (50–100 U/kg in Drugs) if there is no bleeding contraindication.</i>"
+                    "<i>Consider systemic heparinization at <b>50-100 U/kg</b> in Drugs (adjust the bolus card down "
+                    "from its 300 U/kg CPB default) if there is no bleeding contraindication.</i>"
                 ),
                 check_requirements=_require_vv_started,
                 target_tab="Circulation",
             ),
             ScenarioStep(
                 id="STABILIZE_VV_ECMO",
-                title="Titrate VV ECMO and stabilize",
+                title="Transition to lung-rest ventilation and stabilize",
                 instruction=(
-                    "Adjust <b>blood flow</b> (monitoring <b>SpO₂</b> and watching inline <b>Pre-O₂ SvO₂</b> for "
-                    "rising recirculation) and <b>sweep gas</b> until <b>SpO₂ ≥ 92%</b>. "
-                    "Use low-dose <b>norepinephrine</b> in <b>Drugs</b> if needed to keep <b>MAP ≥ 65 mmHg</b>."
+                    "Titrate <b>blood flow</b> (watch inline <b>Pre-O₂ SvO₂</b> for recirculation) and <b>sweep gas</b> "
+                    "to <b>SpO₂ ≥ 88%</b>, using low-dose <b>norepinephrine</b> if needed for <b>MAP ≥ 65 mmHg</b>.<br><br>"
+                    "Switch the ventilator in <b>Machine</b> to <b>lung-rest settings</b>: <b>RR ≤ 12/min</b>, "
+                    "<b>VT ≤ 320 mL</b> (or low driving pressure), PEEP ~10 cmH₂O, and FiO₂ ≤ 50% as tolerated."
                 ),
                 check_requirements=require_all(
                     _require_vv_active,
-                    require_oxygenation(92.0),
+                    _require_lung_rest,
+                    require_oxygenation(88.0),
                     require_map_at_least(65.0),
                     require_tracheal_ventilation,
                 ),
@@ -149,14 +166,15 @@ def create_vv_ecmo_ards() -> Scenario:
                 id="CONFIRM_VV_ABG",
                 title="Confirm CO₂ clearance by ABG",
                 instruction=(
-                    "Open the <b>Labs</b> tab and draw an <b>arterial blood gas</b> (wait for the analyzer result) "
-                    "to verify <b>PaCO₂ ≤ 50 mmHg</b>; increase sweep gas and recheck if PaCO₂ remains elevated.<br><br>"
-                    "<i>With ultra-protective ventilation on VV ECMO, EtCO₂ underestimates PaCO₂; guide sweep gas by ABG.</i>"
+                    "Draw an <b>arterial blood gas</b> in <b>Labs</b> and confirm <b>PaCO₂ ≤ 50 mmHg</b>; "
+                    "adjust sweep gas gradually and recheck if elevated.<br><br>"
+                    "<i>On lung-rest ventilation, EtCO₂ underestimates PaCO₂. Avoid dropping PaCO₂ by more than "
+                    "50% rapidly, which increases intracranial hemorrhage risk.</i>"
                 ),
                 check_requirements=require_all(
                     _require_vv_active,
                     _require_vv_abg_confirmed,
-                    require_oxygenation(92.0),
+                    require_oxygenation(88.0),
                     require_map_at_least(65.0),
                     require_tracheal_ventilation,
                 ),
@@ -172,16 +190,23 @@ def create_vv_ecmo_ards() -> Scenario:
                 milestone=True,
             ),
             CaseOutcome(
+                "lung_rest",
+                "Transitioned to ultra-protective lung-rest ventilation",
+                lambda engine: engine.extracorporeal.is_vv and _require_lung_rest(engine)[0],
+                "Reduce tidal volume/driving pressure and respiratory rate to ultra-protective lung-rest settings once on VV ECMO.",
+                milestone=True,
+            ),
+            CaseOutcome(
                 "oxygenation",
-                "Systemic oxygenation restored",
-                lambda engine: engine.state.sao2 >= 92.0,
-                "Titrate VV ECMO blood flow and sweep FiO₂ until arterial saturation reaches at least 92%.",
+                "Systemic oxygenation restored (SpO₂ ≥ 88%)",
+                lambda engine: engine.state.sao2 >= 88.0,
+                "Titrate VV ECMO blood flow and sweep FiO₂ until arterial saturation reaches at least 88% (typically 85-88%).",
             ),
             CaseOutcome(
                 "decarboxylation",
                 "CO₂ clearance confirmed by ABG",
                 lambda engine: _require_vv_abg_confirmed(engine)[0] and engine.state.pa_co2 <= 50.0,
-                "Verify PaCO₂ ≤ 50 mmHg on an arterial blood gas and adjust sweep gas flow accordingly.",
+                "Verify PaCO₂ ≤ 50 mmHg on an arterial blood gas and titrate sweep gas gradually to avoid rapid PaCO₂ shifts.",
             ),
             CaseOutcome(
                 "stability",
@@ -199,12 +224,12 @@ def create_vv_ecmo_ards() -> Scenario:
 
 
 def _prepare_va_ecmo_harlequin(engine) -> None:
-    """Peripheral femoral VA ECMO with recovering LV and hypoxic lungs."""
+    """Peripheral femoral VA ECMO with recovering LV and hypoxic lungs on low-FiO₂ ventilation."""
     engine.config.arterial_line_enabled = True
-    engine.set_fgf(0.5, 4.0, 0.0)
     engine.set_vent_power(True)
     engine.set_vent_settings(mode="VCV", rr=10.0, vt=0.36, peep=5.0, ie="1:2")
-    engine.set_ards_shunt(0.60)
+    equilibrate_maintenance_fio2(engine, target_fio2=0.24, min_air_l_min=3.5, air_vo2_factor=12.0)
+    engine.set_ards_shunt(0.66)
     engine.start_va_ecmo(
         blood_flow_l_min=3.0,
         sweep_gas_l_min=4.0,
@@ -293,12 +318,12 @@ def create_va_ecmo_harlequin() -> Scenario:
                 id="CORRECT_HARLEQUIN",
                 title="Restore upper-body oxygenation",
                 instruction=(
-                    "Optimize native lung ventilation in the <b>Machine</b> tab (set <b>100% O₂</b>, increase "
-                    "<b>PEEP</b> to 10–14 cmH₂O, and raise tidal volume to ~450 mL) and increase <b>VA ECMO blood flow</b> "
-                    "in <b>Circulation</b> (e.g. to <b>5.0 L/min</b>) to shift the aortic mixing zone proximally "
+                    "In <b>Machine</b>, set <b>100% O₂</b>, raise <b>PEEP</b> to 10-14 cmH₂O, and increase tidal volume "
+                    "to ~450 mL. In <b>Circulation</b>, raise <b>VA ECMO blood flow</b> cautiously (toward <b>5.0 L/min</b>) "
                     "until right-hand <b>SpO₂ ≥ 92%</b>.<br><br>"
-                    "<i>If high VA flow closes the aortic valve and flattens the pulse oximeter pleth, "
-                    "confirm upper-body oxygenation with a repeat <b>Right radial</b> ABG in <b>Labs</b>.</i>"
+                    "<i>Higher femoral VA flow raises LV afterload and can close the aortic valve (if the pleth flattens, "
+                    "confirm with a <b>Right radial</b> ABG). Refractory cases require V-AV ECMO, axillary/central "
+                    "cannulation, or conversion to VV ECMO.</i>"
                 ),
                 check_requirements=require_all(
                     _require_upper_oxygenation,
@@ -313,7 +338,7 @@ def create_va_ecmo_harlequin() -> Scenario:
                 "differential_abg",
                 "Differential blood gases compared",
                 lambda engine: _require_differential_abg(engine)[0],
-                "Compare right-radial (pre-ductal) and femoral (post-ductal) blood gases to diagnose Harlequin syndrome.",
+                "Compare right-radial (upper-body) and femoral (lower-body) blood gases to diagnose Harlequin syndrome.",
                 milestone=True,
             ),
             CaseOutcome(
@@ -326,7 +351,7 @@ def create_va_ecmo_harlequin() -> Scenario:
                 "upper_sao2",
                 "Upper-body oxygenation restored",
                 lambda engine: engine.state.upper_sao2 >= 92.0,
-                "Restore pre-ductal (cerebral and coronary) saturation to at least 92%.",
+                "Restore right-radial (cerebral and coronary) saturation to at least 92%.",
             ),
             CaseOutcome(
                 "stability",
@@ -344,7 +369,7 @@ def create_va_ecmo_harlequin() -> Scenario:
 
 
 def _prepare_cpb_weaning(engine) -> None:
-    """Mid-case hypothermic CPB with aortic cross-clamp, cardioplegic arrest, and full heparinization."""
+    """Mid-case mildly hypothermic CPB with aortic cross-clamp, cardioplegic arrest, and full heparinization."""
     engine.config.arterial_line_enabled = True
     engine.set_fgf(1.0, 1.0, 0.0)
     engine.give_drug_bolus("heparin", 300.0 * engine.patient.weight)
@@ -355,7 +380,7 @@ def _prepare_cpb_weaning(engine) -> None:
         prime_volume_ml=1400.0,
         initial_reservoir_ml=800.0,
         heater_cooler_on=True,
-        water_target_c=29.0,
+        water_target_c=31.5,
         bypass_alarm_mode=True,
     )
     engine.set_cpb_cardioplegia(True)
@@ -424,9 +449,11 @@ def create_cpb_weaning() -> Scenario:
                 id="REWARM_AND_UNCLAMP",
                 title="Rewarm and release cross-clamp",
                 instruction=(
-                    "In <b>Circulation → Extracorporeal support</b>, set the heater-cooler water target to "
-                    "<b>37.0 °C</b> (with heater-cooler on) and <b>release the aortic cross-clamp</b> so coronary "
-                    "perfusion and sinus rhythm return. Continue rewarming until core temperature reaches <b>≥ 36.0 °C</b>."
+                    "In <b>Circulation → Extracorporeal support</b>, set the heater-cooler to <b>37.0 °C</b> "
+                    "and <b>release the aortic cross-clamp</b> until organized rhythm returns and core temperature "
+                    "reaches <b>≥ 36.0 °C</b>.<br><br>"
+                    "<i>Avoid exceeding 37 °C arterial outlet temperature. Check ABG (K⁺, Ca²⁺, Hb, pH), confirm "
+                    "pacing/defibrillation readiness, and assess de-airing and ventricles on TEE.</i>"
                 ),
                 check_requirements=_require_rewarm_unclamp,
                 target_tab="Circulation",
@@ -435,11 +462,10 @@ def create_cpb_weaning() -> Scenario:
                 id="VENTILATE_AND_FILL",
                 title="Resume ventilation and fill the heart",
                 instruction=(
-                    "In <b>Machine</b>, set <b>100% O₂</b> and <b>start the ventilator</b>. "
-                    "Then in <b>Circulation → Extracorporeal support</b>, clamp the <b>venous line to 0%</b> "
-                    "and step CPB blood flow down to <b>2.0 L/min</b> so blood transfers from the reservoir back "
-                    "into the patient until the arterial line shows strong pulsatility (<b>pulse pressure ≥ 25 mmHg</b>) "
-                    "and pulmonary blood flow restores <b>EtCO₂ > 20 mmHg</b>."
+                    "In <b>Machine</b>, set <b>100% O₂</b>, recruit the lungs, and <b>start the ventilator</b>.<br><br>"
+                    "In <b>Circulation → Extracorporeal support</b>, step <b>CPB flow</b> down toward <b>2.0 L/min</b> "
+                    "and restrict the <b>venous line (0-10% open)</b> while watching reservoir volume until "
+                    "<b>pulse pressure ≥ 25 mmHg</b> and <b>EtCO₂ > 20 mmHg</b>."
                 ),
                 check_requirements=_require_ventilate_and_fill,
                 target_tab="Machine",
@@ -448,11 +474,10 @@ def create_cpb_weaning() -> Scenario:
                 id="SEPARATE_FROM_CPB",
                 title="Separate from bypass",
                 instruction=(
-                    "Turn off <b>bypass alarm mode</b> and click <b>Stop support</b> in "
-                    "<b>Circulation → Extracorporeal support</b>. Start low-dose <b>norepinephrine</b> in <b>Drugs</b> "
-                    "if needed for post-bypass hemodilutional hypotension, and confirm <b>MAP ≥ 65 mmHg</b>, "
-                    "<b>SpO₂ ≥ 92%</b>, and <b>EtCO₂ > 25 mmHg</b>.<br><br>"
-                    "<i>Reverse heparin with protamine only after bypass has ended and hemostasis is reviewed.</i>"
+                    "Turn off <b>bypass alarm mode</b> and click <b>Stop support</b> in <b>Circulation</b>. "
+                    "Support <b>MAP ≥ 65 mmHg</b>, <b>SpO₂ ≥ 92%</b>, and <b>EtCO₂ > 25 mmHg</b> with norepinephrine "
+                    "or inotropes (epinephrine, dobutamine, milrinone) guided by TEE.<br><br>"
+                    "<i>Confirm cardiotomy pump suckers are off before giving protamine.</i>"
                 ),
                 check_requirements=require_all(
                     _require_separated,
@@ -508,9 +533,9 @@ _PROTAMINE_TARGET_MG_KG = 2.1
 
 
 def _prepare_protamine_reversal(engine) -> None:
-    """Recently separated from a 60-min CPB run with ~200 U/kg residual circulating heparin."""
+    """Recently separated from a 60-min CPB run with ~200 U/kg residual circulating heparin on ~50% air/O₂."""
     engine.config.arterial_line_enabled = True
-    engine.set_fgf(2.0, 0.0, 0.0)
+    engine.set_fgf(1.0, 1.0, 0.0)
     engine.set_vent_power(True)
     engine.give_drug_bolus("heparin", 300.0 * engine.patient.weight)
     # 60 min preroll loads the peripheral heparin compartment and leaves ~195-200 U/kg in plasma.
@@ -529,11 +554,12 @@ def _reverse_heparin_instruction(engine) -> str:
     weight = engine.patient.weight
     est_mg = int(display_int(_PROTAMINE_TARGET_MG_KG * weight))
     return (
-        f"The patient received 300 U/kg heparin 60 minutes ago before bypass (~{est_mg} mg protamine "
-        f"equivalent estimated remaining for {weight:.0f} kg). Open <b>Drugs → Anticoagulation and reversal → "
-        f"Protamine</b> and deliver roughly <b>{est_mg} mg</b> slowly (e.g. a <b>15–25 mg/min infusion</b> over "
-        "6–10 minutes rather than a rapid IV bolus, which triggers Type I vasodilation and hypotension). "
-        "Keep <b>MAP ≥ 65 mmHg</b>; once the reversal dose is in, stop the infusion and confirm with a repeat ACT."
+        "First confirm <b>cardiotomy pump suckers are OFF</b> to prevent circuit thrombosis.<br><br>"
+        f"In <b>Drugs → Protamine</b>, give a slow <b>10-25 mg test dose</b>, then infuse roughly "
+        f"<b>{est_mg} mg</b> total slowly (<b>15-25 mg/min</b> over 10-15 min) while keeping "
+        "<b>MAP ≥ 65 mmHg</b>.<br><br>"
+        "<i>Slow infusion avoids Type I vasodilation; watch for Type II anaphylactoid or Type III "
+        "pulmonary hypertensive reactions during the test dose.</i>"
     )
 
 
@@ -608,11 +634,11 @@ def create_protamine_reversal() -> Scenario:
                 id="CONFIRM_REVERSAL_ACT",
                 title="Confirm ACT normalization",
                 instruction=(
-                    "Stop the protamine infusion in <b>Drugs</b>, then draw a confirmatory <b>ACT</b> in the "
-                    "<b>Labs</b> tab and wait 60 seconds for a result <b>≤ 150 s</b> with stable hemodynamics "
-                    "(<b>MAP ≥ 65 mmHg</b>).<br><br>"
-                    "<i>If the repeat ACT remains elevated, consider either residual heparin (give a small "
-                    "additional slow protamine dose) or transient excess protamine (which clears over several minutes).</i>"
+                    "Stop the protamine infusion in <b>Drugs</b>, then draw a confirmatory <b>ACT</b> in "
+                    "<b>Labs</b> (3-5 min after completion in clinical practice) and confirm <b>ACT ≤ 150 s</b> "
+                    "with <b>MAP ≥ 65 mmHg</b>.<br><br>"
+                    "<i>If ACT stays high, distinguish residual heparin from transient protamine excess, "
+                    "and watch for heparin rebound over the next 1-4 hours.</i>"
                 ),
                 check_requirements=require_all(
                     _require_post_protamine_act,

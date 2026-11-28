@@ -85,6 +85,28 @@ class ExtracorporealState:
     reservoir_volume_ml: float = 0.0
     venous_drainage_l_min: float = 0.0
     reservoir_low_alarm: bool = False
+    arterial_cannula_fr: int = 22
+    venous_cannula_fr: int = 32
+    arterial_line_pressure_mmhg: float = 0.0
+    arterial_line_high_alarm: bool = False
+
+    # Cardioplegia telemetry (Buckberg 4:1 blood / del Nido 1:4)
+    cardioplegia_protocol: str = "buckberg"
+    cardioplegia_route: str = "antegrade"
+    cardioplegia_phase: str = "induction"
+    cardioplegia_active_infusion: bool = False
+    cardioplegia_remaining_ml: float = 0.0
+    cardioplegia_flow_ml_min: float = 0.0
+    cardioplegia_total_ml: float = 0.0
+    cardioplegia_crystalloid_ml: float = 0.0
+    cardioplegia_dose_count: int = 0
+    cardioplegia_protection: float = 0.0
+    cardioplegia_redose_due_s: float = 0.0
+    cardioplegia_breakthrough: bool = False
+    cardioplegia_delivery_pressure_mmhg: float = 0.0
+    coronary_sinus_pressure_mmhg: float = 0.0
+    coronary_sinus_high_alarm: bool = False
+    myocardial_temp_c: float = 37.0
 
     # Gas exchange telemetry
     recirculation_fraction: float = 0.0

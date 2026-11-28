@@ -175,3 +175,39 @@ def test_ppeak_and_vte_alarms_cover_lowered_pmax_loose_mask_disconnect_and_mode_
     switched.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5.0, ie="1:2")
     advance_time(switched, 12.0, dt=0.5)
     assert "VTe" not in switched.state.alarms
+
+
+def test_separate_pipeline_and_cylinder_supply_alarms(engine_factory):
+    """Pipeline, backup cylinder, and total O2 loss raise separate alarms."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    engine.step(0.5)
+    assert "O2Pipeline" not in engine.state.alarms
+    assert "O2Cylinder" not in engine.state.alarms
+    assert "AirPipeline" not in engine.state.alarms
+
+    # Wall O2 failure with backup E-cylinder open clears O2Supply while keeping O2Pipeline active.
+    engine.set_pipeline_connected("o2", False)
+    engine.step(0.5)
+    assert engine.state.alarms.get("O2Supply", {}).get("low") is True
+    assert engine.state.alarms.get("O2Pipeline", {}).get("low") is True
+    assert "O2Cylinder" not in engine.state.alarms
+
+    engine.set_cylinder_valve("o2", True)
+    engine.step(0.5)
+    assert "O2Supply" not in engine.state.alarms
+    assert engine.state.alarms.get("O2Pipeline", {}).get("low") is True
+    assert "O2Cylinder" not in engine.state.alarms
+
+    # Low open backup cylinder (< 500 psig) raises O2Cylinder without yet triggering O2Supply.
+    engine.replace_cylinder("o2", 0.20)
+    engine.step(0.5)
+    assert engine.state.o2_cylinder_psig < 500.0
+    assert engine.state.alarms.get("O2Cylinder", {}).get("low") is True
+    assert "O2Supply" not in engine.state.alarms
+
+    # Disconnecting Air and N2O pipelines raises their respective pipeline alarms.
+    engine.set_pipeline_connected("air", False)
+    engine.set_pipeline_connected("n2o", False)
+    engine.step(0.5)
+    assert engine.state.alarms.get("AirPipeline", {}).get("low") is True
+    assert engine.state.alarms.get("N2OPipeline", {}).get("low") is True

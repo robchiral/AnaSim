@@ -1,4 +1,4 @@
-"""Heparin-protamine anticoagulation, ACT, heparin rebound, and protamine hemodynamic reactions."""
+"""Heparin-protamine anticoagulation, ACT, heparin rebound, protamine reactions, and dilutional hemostasis."""
 
 from __future__ import annotations
 
@@ -13,6 +13,19 @@ HEPARIN_UNITS_PER_MG_PROTAMINE = 100.0
 BASELINE_ACT_S = 120.0
 MAX_ACT_S = 999.0
 ACT_ANALYSIS_TIME_S = 60.0
+COAG_PANEL_ANALYSIS_TIME_S = 120.0
+
+# Baseline dilutional hemostasis values (Hiippala 1995 major-surgery cohort).
+BASELINE_FIBRINOGEN_G_L = 3.2
+BASELINE_PLATELETS_10E9_L = 250.0
+BASELINE_FACTOR_ACTIVITY_PCT = 100.0
+# First-order washout exponents per blood volume lost (Hiippala 1995):
+# - Fibrinogen < 1.0 g/L at 142% CBV (95% CI 117-169%): ln(3.2/1.0)/1.42 ~= 0.82
+# - Prothrombin / FV / FVII critical depletion at 201-236% CBV: k ~= 0.70
+# - Platelets < 50e9/L at 230% CBV (95% CI 169-294%): ln(250/50)/2.30 ~= 0.70
+WASHOUT_K_FIBRINOGEN = 0.82
+WASHOUT_K_FACTORS = 0.70
+WASHOUT_K_PLATELETS = 0.70
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,9 +40,24 @@ class ACTResult:
         return self.drawn_at + ACT_ANALYSIS_TIME_S
 
 
+@dataclass(frozen=True, slots=True)
+class CoagPanelResult:
+    """Laboratory coagulation panel (INR, Clauss fibrinogen, platelet count)."""
+
+    drawn_at: float
+    fibrinogen_g_l: float
+    platelets_10e9_l: float
+    inr: float
+    factor_activity_pct: float
+
+    @property
+    def ready_at(self) -> float:
+        return self.drawn_at + COAG_PANEL_ANALYSIS_TIME_S
+
+
 @dataclass(slots=True)
 class CoagulationState:
-    """Live anticoagulation and protamine hemodynamic-reaction state."""
+    """Live anticoagulation, dilutional hemostasis, and protamine reaction state."""
 
     heparin_u_ml: float = 0.0  # Free circulating plasma heparin (U/mL)
     protamine_ug_ml: float = 0.0  # Free circulating plasma protamine (mcg/mL = mg/L)
@@ -38,7 +66,11 @@ class CoagulationState:
     protamine_venous_pool_frac: float = 0.0  # Type I unstressed venous capacitance shift (0-0.18)
     protamine_pvr_factor: float = 1.0  # Pulmonary vascular resistance multiplier (>= 1.0)
     protamine_reaction_active: bool = False  # Catastrophic Type III pulmonary vasoconstriction event
-    bleeding_multiplier: float = 1.0  # Surgical hemorrhage amplification from anticoagulation (>= 1.0)
+    fibrinogen_g_l: float = BASELINE_FIBRINOGEN_G_L  # Plasma fibrinogen (g/L)
+    platelets_10e9_l: float = BASELINE_PLATELETS_10E9_L  # Platelet count (x10^9/L = K/uL)
+    factor_activity_pct: float = BASELINE_FACTOR_ACTIVITY_PCT  # Composite clotting factor activity (%)
+    inr: float = 1.0  # International normalized ratio
+    bleeding_multiplier: float = 1.0  # Surgical hemorrhage amplification (>= 1.0)
 
 
 class CoagulationModel:
@@ -119,6 +151,76 @@ class CoagulationModel:
             self.reaction_active = True
             self.reaction_armed = False
 
+    @staticmethod
+    def _compute_inr(factor_activity_pct: float, fibrinogen_g_l: float) -> float:
+        """Compute PT/INR from composite clotting factor activity (%) and severe hypofibrinogenemia."""
+        fac = max(8.0, factor_activity_pct)
+        inr = (100.0 / fac) ** 0.50
+        if fibrinogen_g_l < 1.0:
+            inr += 0.35 * clamp01((1.0 - fibrinogen_g_l) / 0.8)
+        return clamp(inr, 0.8, 8.0)
+
+    def _compute_bleeding_multiplier(
+        self,
+        act_s: float,
+        *,
+        temp_c: float = 37.0,
+        ionized_calcium_mmol_l: float = 1.2,
+    ) -> float:
+        """Amplify active hemorrhage from anticoagulation, dilutional coagulopathy, hypothermia, and hypocalcemia."""
+        st = self.state
+        hep_bleed = 0.40 * clamp01((act_s - 150.0) / 330.0)
+        fib_def = clamp01((1.5 - st.fibrinogen_g_l) / 1.0)
+        plt_def = clamp01((80.0 - st.platelets_10e9_l) / 60.0)
+        fac_def = clamp01((50.0 - st.factor_activity_pct) / 35.0)
+        dil_bleed = 0.35 * fib_def + 0.25 * plt_def + 0.25 * fac_def
+        cold_bleed = 0.25 * clamp01((35.5 - temp_c) / 3.5)
+        ca_bleed = 0.25 * clamp01((0.90 - ionized_calcium_mmol_l) / 0.40)
+        return 1.0 + hep_bleed + dil_bleed + cold_bleed + ca_bleed
+
+    def record_blood_loss(self, loss_ml: float, cbv_ml: float) -> None:
+        """Wash out fibrinogen, clotting factors, and platelets during hemorrhage (Hiippala 1995)."""
+        if loss_ml <= 0.0 or cbv_ml <= 0.0:
+            return
+        frac = loss_ml / max(500.0, cbv_ml)
+        st = self.state
+        st.fibrinogen_g_l = max(0.2, st.fibrinogen_g_l * math.exp(-WASHOUT_K_FIBRINOGEN * frac))
+        st.factor_activity_pct = max(8.0, st.factor_activity_pct * math.exp(-WASHOUT_K_FACTORS * frac))
+        st.platelets_10e9_l = max(10.0, st.platelets_10e9_l * math.exp(-WASHOUT_K_PLATELETS * frac))
+        st.inr = self._compute_inr(st.factor_activity_pct, st.fibrinogen_g_l)
+
+    def record_transfusion(self, label: str, volume_ml: float, plasma_volume_ml: float) -> None:
+        """Update dilutional hemostasis for plasma, platelet, or cryoprecipitate transfusion."""
+        if volume_ml <= 0.0:
+            return
+        pv = max(500.0, plasma_volume_ml)
+        st = self.state
+        if label == "ffp":
+            st.fibrinogen_g_l = min(6.0, (st.fibrinogen_g_l * pv + 2.5 * volume_ml) / (pv + volume_ml))
+            st.factor_activity_pct = min(130.0, (st.factor_activity_pct * pv + 100.0 * volume_ml) / (pv + volume_ml))
+            st.platelets_10e9_l = max(10.0, st.platelets_10e9_l * pv / (pv + volume_ml))
+        elif label == "platelets":
+            # One 250 mL apheresis unit raises adult platelet count by ~35 x 10^9/L in 3 L plasma.
+            plt_gain = 35.0 * (3000.0 / pv) * (volume_ml / 250.0)
+            st.platelets_10e9_l = min(600.0, st.platelets_10e9_l + plt_gain)
+            st.fibrinogen_g_l = min(6.0, (st.fibrinogen_g_l * pv + 2.2 * volume_ml) / (pv + volume_ml))
+            st.factor_activity_pct = min(130.0, (st.factor_activity_pct * pv + 80.0 * volume_ml) / (pv + volume_ml))
+        elif label == "cryoprecipitate":
+            # One 100 mL adult 10-unit pool supplies ~1.8 g fibrinogen (~18 g/L) plus concentrated FVIII/vWF/FXIII.
+            st.fibrinogen_g_l = min(8.0, (st.fibrinogen_g_l * pv + 18.0 * volume_ml) / (pv + volume_ml))
+            st.factor_activity_pct = min(140.0, (st.factor_activity_pct * pv + 160.0 * volume_ml) / (pv + volume_ml))
+        else:
+            return
+        st.inr = self._compute_inr(st.factor_activity_pct, st.fibrinogen_g_l)
+
+    def sync_hemostasis(self, *, temp_c: float = 37.0, ionized_calcium_mmol_l: float = 1.2) -> None:
+        """Recompute INR and active-hemorrhage bleeding multiplier from current hemostasis."""
+        st = self.state
+        st.inr = self._compute_inr(st.factor_activity_pct, st.fibrinogen_g_l)
+        st.bleeding_multiplier = self._compute_bleeding_multiplier(
+            st.act_s, temp_c=temp_c, ionized_calcium_mmol_l=ionized_calcium_mmol_l,
+        )
+
     def compute_act(
         self,
         heparin_u_ml: float,
@@ -171,6 +273,7 @@ class CoagulationModel:
         hematocrit: float = 0.42,
         baseline_hct: float = 0.42,
         circulation: float = 1.0,
+        ionized_calcium_mmol_l: float = 1.2,
     ) -> CoagulationState:
         """Advance heparin PK, protamine PK, plasma neutralization, ACT, and protamine hemodynamics."""
         circ = clamp01(circulation)
@@ -220,7 +323,10 @@ class CoagulationModel:
             st.protamine_venous_pool_frac = 0.0
             st.protamine_pvr_factor = 1.0
             st.protamine_reaction_active = False
-            st.bleeding_multiplier = 1.0
+            st.inr = self._compute_inr(st.factor_activity_pct, st.fibrinogen_g_l)
+            st.bleeding_multiplier = self._compute_bleeding_multiplier(
+                st.act_s, temp_c=temp_c, ionized_calcium_mmol_l=ionized_calcium_mmol_l,
+            )
             return st
 
         if self.reaction_armed and (
@@ -316,9 +422,7 @@ class CoagulationModel:
         catastrophic_pvr = 3.2 * self.reaction_severity
         pvr_factor = 1.0 + mild_pvr + catastrophic_pvr
 
-        # Therapeutic anticoagulation or severe protamine excess amplifies active surgical bleeding.
-        bleeding_mult = 1.0 + 0.40 * clamp01((act_s - 150.0) / 330.0)
-
+        # Anticoagulation, dilutional coagulopathy, hypothermia, and severe hypocalcemia amplify bleeding.
         st = self.state
         st.heparin_u_ml = hep_u_ml
         st.protamine_ug_ml = prot_ug_ml
@@ -327,5 +431,8 @@ class CoagulationModel:
         st.protamine_venous_pool_frac = clamp(venous_pool_frac, 0.0, 0.18)
         st.protamine_pvr_factor = clamp(pvr_factor, 1.0, 4.8)
         st.protamine_reaction_active = self.reaction_active
-        st.bleeding_multiplier = bleeding_mult
+        st.inr = self._compute_inr(st.factor_activity_pct, st.fibrinogen_g_l)
+        st.bleeding_multiplier = self._compute_bleeding_multiplier(
+            act_s, temp_c=temp_c, ionized_calcium_mmol_l=ionized_calcium_mmol_l,
+        )
         return st

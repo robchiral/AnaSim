@@ -746,6 +746,10 @@ def test_sevoflurane_fentanyl_incision_response(engine_factory, sevo, fentanyl, 
         start=True, age=42, weight=57, height=160, sex="female",
     )
     engine.disable_tci("remi")
+    engine.infusion_rates["fentanyl"] = 0.0
+    for pk_model in (engine.pk["fentanyl"], engine.pump_pk.get("fentanyl")):
+        if pk_model is not None:
+            pk_model.set_state_vector(pk_model.state_vector() * 0.0)
     if fentanyl:
         engine.enable_tci("fentanyl", fentanyl, mode="plasma")
     vaporizer = sevo

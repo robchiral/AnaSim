@@ -17,6 +17,7 @@ from .extracorporeal import (
 )
 from .hemorrhage import create_hemorrhage_response
 from .induction import create_induction_balanced, create_induction_tiva
+from .last_crisis import create_last_crisis
 from .malignant_hyperthermia import create_malignant_hyperthermia
 from .neuraxial import create_high_spinal
 from .oxygen_supply import create_oxygen_supply_failure
@@ -104,7 +105,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "anaphylaxis_response",
         "Anaphylaxis response",
-        "Severe anaphylaxis after an intraoperative antibiotic dose.",
+        "Severe anaphylaxis after an intraoperative antibiotic infusion.",
         "steady_state",
         "tiva",
         create_anaphylaxis_scenario,
@@ -158,7 +159,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "tension_pneumothorax",
         "Tension pneumothorax",
-        "Rising peak and plateau airway pressures with obstructive shock under N2O: stop N2O, decompress, and stabilize.",
+        "Rising peak and plateau airway pressures with obstructive shock under N₂O: stop N₂O, decompress, and stabilize.",
         "steady_state",
         "balanced",
         create_tension_pneumothorax,
@@ -167,7 +168,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "venous_air_embolism",
         "Venous air embolism (VAE)",
-        "Abrupt EtCO2 drop and shock during sitting craniotomy: stop N2O, flood field, aspirate CVC air, and position.",
+        "Abrupt EtCO₂ drop and shock during sitting craniotomy: deliver 100% O₂, flood field, aspirate CVC air, and support RV perfusion.",
         "steady_state",
         "balanced",
         create_venous_air_embolism,
@@ -176,7 +177,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "pulmonary_embolism",
         "Massive pulmonary embolism",
-        "Sudden dead-space EtCO2 plunge and RV obstructive shock: deliver 100% O2, support MAP, anticoagulate, and lyse.",
+        "Sudden dead-space EtCO₂ plunge and RV obstructive shock: deliver 100% O₂, support MAP, anticoagulate, and initiate rescue reperfusion.",
         "steady_state",
         "tiva",
         create_pulmonary_embolism,
@@ -189,6 +190,15 @@ SCENARIO_REGISTRY = (
         "awake",
         "tiva",
         create_high_spinal,
+        category="crisis",
+    ),
+    ScenarioSpec(
+        "last_crisis",
+        "Local anesthetic toxicity (LAST)",
+        "Accidental intravascular bupivacaine epidural top-up: treat seizures, ventilate with 100% O₂, and give 20% lipid rescue.",
+        "awake",
+        "tiva",
+        create_last_crisis,
         category="crisis",
     ),
     ScenarioSpec(
@@ -240,6 +250,7 @@ __all__ = [
     "create_high_spinal",
     "create_induction_balanced",
     "create_induction_tiva",
+    "create_last_crisis",
     "create_malignant_hyperthermia",
     "create_oxygen_supply_failure",
     "create_protamine_reversal",

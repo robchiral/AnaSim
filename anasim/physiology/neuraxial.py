@@ -17,8 +17,19 @@ from dataclasses import dataclass
 
 from anasim.core.utils import clamp, clamp01
 
-NEURAXIAL_DRUGS = ("bupivacaine", "lidocaine")
+NEURAXIAL_DRUGS = ("bupivacaine", "ropivacaine", "lidocaine")
 SPINAL_BARICITIES = ("hyperbaric", "isobaric")
+
+_NEURAXIAL_SPINAL_EQUIV = {
+    "bupivacaine": 1.0,
+    "ropivacaine": 0.75,
+    "lidocaine": 1.0 / 4.5,
+}
+_NEURAXIAL_EPIDURAL_EQUIV = {
+    "bupivacaine": 1.0,
+    "ropivacaine": 0.75,
+    "lidocaine": 0.25,
+}
 
 # Continuous dermatome scale: 0 = None, 1..5 = S5..S1, 6..10 = L5..L1,
 # 11..22 = T12..T1, 23..29 = C8..C2, 30 = Brainstem (total spinal).
@@ -139,8 +150,11 @@ class NeuraxialModel:
             return 0.0
         w = self._spinal_weight
         dilute_lag = 8.5 * clamp01((0.42 - self._epidural_density) / 0.15)
-        ep_lag = 4.6 + dilute_lag
-        return max(0.0, s - (w * 2.8 + (1.0 - w) * ep_lag))
+        # Ropivacaine exhibits slightly greater sensory-motor separation than
+        # racemic bupivacaine (Knudsen 1997).
+        ropi_lag = 1.2 if self.last_drug == "ropivacaine" else 0.0
+        ep_lag = 4.6 + dilute_lag + ropi_lag
+        return max(0.0, s - (w * (2.8 + 0.6 * ropi_lag) + (1.0 - w) * ep_lag))
 
     @property
     def bromage_score(self) -> int:
@@ -280,13 +294,15 @@ class NeuraxialModel:
         """Administer a subarachnoid (spinal) local anesthetic bolus."""
         drug_norm = str(drug).strip().lower()
         if drug_norm not in NEURAXIAL_DRUGS:
-            raise ValueError(f"Unsupported neuraxial drug {drug!r}; choose bupivacaine or lidocaine")
+            raise ValueError(
+                f"Unsupported neuraxial drug {drug!r}; choose bupivacaine, ropivacaine, or lidocaine"
+            )
         bar_norm = str(baricity).strip().lower()
         if bar_norm not in SPINAL_BARICITIES:
             raise ValueError(f"Unsupported baricity {baricity!r}; choose hyperbaric or isobaric")
         dose = clamp(float(dose_mg), 1.0, 150.0)
-        # Convert lidocaine dose to bupivacaine-equivalent mass (~4.5:1 potency ratio).
-        bupi_eq = dose if drug_norm == "bupivacaine" else dose / 4.5
+        # Convert dose to bupivacaine-equivalent mass (~0.75:1 ropivacaine, ~4.5:1 lidocaine).
+        bupi_eq = dose * _NEURAXIAL_SPINAL_EQUIV[drug_norm]
         age_shift = 0.06 * (self.age - 40.0)  # Veering 1988: ~2.4 segments higher at 73 vs 33 yr
         preg_shift = 3.0 if self.pregnant else 0.0
         bar_shift = 0.0 if bar_norm == "hyperbaric" else -1.5
@@ -300,10 +316,14 @@ class NeuraxialModel:
             raw_target = clamp(17.0 + 0.40 * (bupi_eq - 12.5) + age_shift + preg_shift + bar_shift, 8.0, 32.5)
             target = min(34.5, raw_target * 1.12)
             overdose = clamp01((bupi_eq - 25.0) / 20.0)
-            base_tau_on = (200.0 if drug_norm == "bupivacaine" else 140.0) * (1.0 if bar_norm == "hyperbaric" else 1.2)
+            base_tau_on = (
+                200.0 if drug_norm == "bupivacaine" else (210.0 if drug_norm == "ropivacaine" else 140.0)
+            ) * (1.0 if bar_norm == "hyperbaric" else 1.2)
             tau_on = base_tau_on + (65.0 - base_tau_on) * overdose
         age_dur = 1.0 + 0.20 * clamp01((self.age - 40.0) / 35.0)
-        tau_off = (5400.0 if drug_norm == "bupivacaine" else 2700.0) * age_dur
+        tau_off = (
+            5400.0 if drug_norm == "bupivacaine" else (4500.0 if drug_norm == "ropivacaine" else 2700.0)
+        ) * age_dur
         if self._spinal_depot <= 0.05 or high_spinal:
             self._spinal_depot = max(self._spinal_depot, target)
         else:
@@ -328,22 +348,30 @@ class NeuraxialModel:
         *,
         with_epinephrine: bool = False,
         accidental_intrathecal: bool = False,
+        accidental_intravascular: bool = False,
     ) -> None:
-        """Administer an epidural bolus (or accidental intrathecal injection causing total spinal)."""
+        """Administer an epidural bolus, or accidental intrathecal/intravascular injection."""
         drug_norm = str(drug).strip().lower()
         if drug_norm not in NEURAXIAL_DRUGS:
-            raise ValueError(f"Unsupported neuraxial drug {drug!r}; choose bupivacaine or lidocaine")
+            raise ValueError(
+                f"Unsupported neuraxial drug {drug!r}; choose bupivacaine, ropivacaine, or lidocaine"
+            )
         vol = clamp(float(volume_ml), 1.0, 30.0)
         conc = clamp(float(concentration_pct), 0.05, 2.0)
         self.epidural_catheter = True
         dose_mg = vol * conc * 10.0  # 1% = 10 mg/mL
+        if accidental_intravascular:
+            # Catheter migrated into an epidural vein: no neuraxial block forms;
+            # the engine delivers the full mass directly into systemic venous blood.
+            self.last_drug = drug_norm
+            return
         if accidental_intrathecal:
             self.give_spinal(drug=drug_norm, dose_mg=max(dose_mg, 40.0), high_spinal=True)
             self.last_mode = "high_spinal"
             return
         age_shift = 0.05 * (self.age - 40.0)
         preg_shift = 2.5 if self.pregnant else 0.0
-        bupi_conc_eq = conc if drug_norm == "bupivacaine" else conc / 4.0
+        bupi_conc_eq = conc * _NEURAXIAL_EPIDURAL_EQUIV[drug_norm]
         # Calibrated volume-spread curve (0.5% surgical: 10 mL -> ~T8, 15 mL -> ~T5, 20 mL -> ~T3;
         # dilute 0.1% labor boluses produce narrower analgesia around T10-T8, COMET 2001).
         conc_scale = clamp(0.65 + 0.70 * bupi_conc_eq, 0.70, 1.0)
@@ -363,8 +391,12 @@ class NeuraxialModel:
                 old_depot * self._epidural_density + added_weight * density
             ) / (old_depot + added_weight)
             self._epidural_depot = new_depot
-        self._epidural_tau_on = 360.0 if drug_norm == "bupivacaine" else 240.0
-        self._epidural_tau_off = 4800.0 if drug_norm == "bupivacaine" else 2400.0
+        self._epidural_tau_on = (
+            360.0 if drug_norm == "bupivacaine" else (390.0 if drug_norm == "ropivacaine" else 240.0)
+        )
+        self._epidural_tau_off = (
+            4800.0 if drug_norm == "bupivacaine" else (4200.0 if drug_norm == "ropivacaine" else 2400.0)
+        )
         self.last_drug = drug_norm
         if self.last_mode != "high_spinal":
             self.last_mode = "epidural"
@@ -382,12 +414,18 @@ class NeuraxialModel:
         """Start or adjust continuous epidural infusion (mL/hr)."""
         drug_norm = str(drug).strip().lower()
         if drug_norm not in NEURAXIAL_DRUGS:
-            raise ValueError(f"Unsupported neuraxial drug {drug!r}; choose bupivacaine or lidocaine")
+            raise ValueError(
+                f"Unsupported neuraxial drug {drug!r}; choose bupivacaine, ropivacaine, or lidocaine"
+            )
         rate = clamp(float(ml_hr), 0.0, 25.0)
         if rate > 0.0:
             self.epidural_catheter = True
-            self._epidural_tau_on = 360.0 if drug_norm == "bupivacaine" else 240.0
-            self._epidural_tau_off = 4800.0 if drug_norm == "bupivacaine" else 2400.0
+            self._epidural_tau_on = (
+                360.0 if drug_norm == "bupivacaine" else (390.0 if drug_norm == "ropivacaine" else 240.0)
+            )
+            self._epidural_tau_off = (
+                4800.0 if drug_norm == "bupivacaine" else (4200.0 if drug_norm == "ropivacaine" else 2400.0)
+            )
         self.epidural_infusion_ml_hr = rate
         self.epidural_infusion_drug = drug_norm
         self.epidural_infusion_conc_pct = clamp(float(concentration_pct), 0.05, 0.5)
@@ -464,11 +502,7 @@ class NeuraxialModel:
         inf_target = 0.0
         inf_density = 0.0
         if self.epidural_infusion_ml_hr > 0.0:
-            bupi_inf_conc = (
-                self.epidural_infusion_conc_pct
-                if self.epidural_infusion_drug == "bupivacaine"
-                else self.epidural_infusion_conc_pct / 4.0
-            )
+            bupi_inf_conc = self.epidural_infusion_conc_pct * _NEURAXIAL_EPIDURAL_EQUIV[self.epidural_infusion_drug]
             potency_scale = clamp(0.65 + 2.8 * bupi_inf_conc, 0.70, 1.05)
             inf_target = clamp(
                 (9.5 + 0.55 * self.epidural_infusion_ml_hr + 0.04 * (self.age - 40.0) + (2.0 if self.pregnant else 0.0))

@@ -251,3 +251,69 @@ def test_anticoagulation_hemorrhage_and_clinical_safety_warnings():
     _step_for(ctrl, 60.0)
     _step_for(hep, 60.0)
     assert hep.state.blood_out_ml > ctrl.state.blood_out_ml * 1.25
+
+
+def test_hiippala_1995_dilutional_coagulopathy_lethal_triad_and_targeted_rescue():
+    """Hiippala 1995: during massive blood loss replaced with red cells and plasma-poor fluids,
+    fibrinogen falls below 1.0 g/L first (~142% CBV), clotting factors / INR worsen next, and
+    platelets reach 50 x 10^9/L last (~230% CBV). Dilutional coagulopathy, hypothermia, and
+    severe hypocalcemia amplify active bleeding; FFP, platelets, and cryoprecipitate selectively
+    restore factors/INR, platelet count, and fibrinogen; measure_coag_panel posts after 120 s.
+    """
+    eng = _steady_engine(dt=1.0)
+    cbv = eng.hemo.blood_volume_0
+    assert eng.state.fibrinogen_g_l == pytest.approx(3.2, abs=0.01)
+    assert eng.state.platelets_10e9_l == pytest.approx(250.0, abs=1.0)
+    assert eng.state.inr == pytest.approx(1.0, abs=0.01)
+    assert eng.coagulation.state.bleeding_multiplier == 1.0
+
+    # 1. Exact Hiippala 1995 washout milestones (142% CBV and 230% CBV)
+    eng.coagulation.record_blood_loss(1.42 * cbv, cbv)
+    assert eng.coagulation.state.fibrinogen_g_l == pytest.approx(1.00, abs=0.08)
+    assert eng.coagulation.state.platelets_10e9_l > 80.0
+    assert eng.coagulation.state.inr > 1.50
+
+    eng.coagulation.record_blood_loss((2.30 - 1.42) * cbv, cbv)
+    assert eng.coagulation.state.fibrinogen_g_l < 0.60
+    assert eng.coagulation.state.platelets_10e9_l == pytest.approx(50.0, abs=5.0)
+    assert eng.coagulation.state.inr > 2.2
+
+    # 2. Lethal triad amplifies bleeding_multiplier cumulatively
+    eng.coagulation.sync_hemostasis(temp_c=37.0, ionized_calcium_mmol_l=1.20)
+    mult_dil = eng.coagulation.state.bleeding_multiplier
+    assert mult_dil > 1.55
+    eng.coagulation.sync_hemostasis(temp_c=33.0, ionized_calcium_mmol_l=0.70)
+    mult_triad = eng.coagulation.state.bleeding_multiplier
+    assert mult_triad > mult_dil + 0.25
+
+    # 3. Live hemorrhage + targeted rescue + measure_coag_panel turnaround
+    live = _steady_engine(dt=1.0)
+    live.blood_infusion_rate_ml_min = 300.0
+    # Simulate 1.5 CBV cumulative blood loss via active hemorrhage with PRBC/crystalloid maintenance
+    live.coagulation.record_blood_loss(1.50 * live.hemo.blood_volume_0, live.hemo.blood_volume_0)
+    live.step(1.0)
+    panel_pre = live.measure_coag_panel()
+    assert panel_pre.ready_at == pytest.approx(panel_pre.drawn_at + 120.0)
+    assert panel_pre.fibrinogen_g_l < 1.0
+    assert panel_pre.inr > 1.55
+    assert panel_pre.platelets_10e9_l < 100.0
+
+    # Cryoprecipitate (2 pools = 200 mL) selectively raises fibrinogen rapidly
+    fib_before_cryo = live.state.fibrinogen_g_l
+    plt_before_cryo = live.state.platelets_10e9_l
+    live.give_cryoprecipitate(200.0)
+    _step_for(live, 60.0, dt=1.0)
+    assert live.state.fibrinogen_g_l > fib_before_cryo + 0.90
+    assert abs(live.state.platelets_10e9_l - plt_before_cryo) < 5.0
+
+    # FFP (1000 mL = 4 U) raises clotting factor activity and improves INR
+    inr_before_ffp = live.state.inr
+    live.give_ffp(1000.0)
+    _step_for(live, 240.0, dt=1.0)
+    assert live.state.inr < inr_before_ffp - 0.15
+
+    # Platelets (500 mL = 2 apheresis units) selectively raises platelet count
+    plt_before_plt = live.state.platelets_10e9_l
+    live.give_platelets(500.0)
+    _step_for(live, 120.0, dt=1.0)
+    assert live.state.platelets_10e9_l > plt_before_plt + 40.0

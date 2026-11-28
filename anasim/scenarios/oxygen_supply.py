@@ -25,7 +25,9 @@ from .base import (
 
 def _prepare_oxygen_supply_failure(engine) -> None:
     """Start on low-flow air/oxygen maintenance (~35% FiO2 across weights) so O2 loss causes hypoxic rebreathing."""
-    engine.set_oxygen_supply_connected(True)
+    engine.set_pipeline_connected("o2", True)
+    engine.set_cylinder_valve("o2", False)
+    engine.replace_cylinder("o2", 1.0)
     equilibrate_maintenance_fio2(engine, target_fio2=0.35, min_air_l_min=0.75, air_vo2_factor=3.5)
 
 
@@ -35,9 +37,9 @@ def _backup_oxygen_reconnected(engine) -> bool:
         return False
     saw_failure = False
     for record in engine.actions.since_case(ACTION_OXYGEN_SUPPLY):
-        if record.label == "disconnected":
+        if record.label in ("disconnected", "pipeline_disconnected"):
             saw_failure = True
-        elif record.label == "connected" and saw_failure:
+        elif record.label in ("connected", "cylinder_open", "pipeline_connected") and saw_failure:
             return True
     return False
 
@@ -55,7 +57,7 @@ def _require_oxygen_recovery(engine) -> tuple[bool, str]:
     fio2 = engine.circuit.composition.fio2
     recovered = (
         engine.circuit.oxygen_supply_connected
-        and fio2 >= 0.85
+        and fio2 >= 0.50
     )
     if recovered:
         return True, ""
@@ -63,8 +65,8 @@ def _require_oxygen_recovery(engine) -> tuple[bool, str]:
     messages = []
     if not engine.circuit.oxygen_supply_connected:
         messages.append("Connect backup oxygen")
-    if fio2 < 0.85:
-        messages.append(f"Circuit FiO₂: {format_unmet_int(fio2 * 100, low=85)}%/85%+")
+    if fio2 < 0.50:
+        messages.append(f"Circuit FiO₂: {format_unmet_int(fio2 * 100, low=50)}%/50%+")
     return False, join_messages(messages)
 
 
@@ -83,7 +85,7 @@ def create_oxygen_supply_failure() -> Scenario:
         ),),
         actions=(CaseAction(
             "backup_oxygen", "Connect backup oxygen",
-            lambda engine: engine.set_oxygen_supply_connected(True),
+            lambda engine: engine.set_cylinder_valve("o2", True),
             lambda engine: not engine.circuit.oxygen_supply_connected,
             completed_label="Backup oxygen connected",
         ),),
@@ -107,12 +109,11 @@ def create_oxygen_supply_failure() -> Scenario:
                 id="CONNECT_BACKUP_OXYGEN",
                 title="Move to backup oxygen",
                 instruction=(
-                    "Act immediately without waiting for FiO₂ or SpO₂ to fall. Call for help, "
-                    "select <b>Connect backup oxygen</b>, and set <b>O₂ 10 L/min</b> with air and N₂O at "
-                    "<b>0 L/min</b> to flush the circuit.<br><br>"
-                    "<i>The fail-safe cuts N₂O, not air. If machine oxygen delivery remains uncertain, "
-                    "disconnect the patient and ventilate with a self-inflating bag and an independent "
-                    "oxygen cylinder (not the machine's auxiliary O₂ outlet).</i>"
+                    "Act immediately: call for help, disconnect the wall oxygen pipeline, select "
+                    "<b>Connect backup oxygen</b>, and turn <b>air and N₂O to 0 L/min</b> with <b>O₂ ≥ 1 L/min</b> "
+                    "(use brief high flow only if FiO₂ or SpO₂ has dropped, then reduce flow to conserve the E-cylinder).<br><br>"
+                    "<i>The fail-safe cuts N₂O, not air. Switch to manual ventilation on O₂-driven bellows, or use "
+                    "a self-inflating bag with an independent cylinder if machine delivery is uncertain.</i>"
                 ),
                 check_requirements=require_all(
                     lambda engine: (
@@ -123,7 +124,7 @@ def create_oxygen_supply_failure() -> Scenario:
                         action_taken_in_case(engine, ACTION_FGF),
                         "Set fresh gas flow",
                     ),
-                    require_oxygen_flow(),
+                    require_oxygen_flow(1.0),
                 ),
                 target_tab="Machine",
             ),
@@ -131,8 +132,9 @@ def create_oxygen_supply_failure() -> Scenario:
                 id="CONFIRM_RECOVERY",
                 title="Confirm oxygen recovery",
                 instruction=(
-                    "Continue ventilation until circuit <b>FiO₂ ≥ 85%</b> and <b>SpO₂ ≥ 94%</b>.<br><br>"
-                    "<i>Once recovered, reduce flow to conserve cylinder oxygen and secure a reliable supply.</i>"
+                    "Continue ventilation until circuit <b>FiO₂ ≥ 50%</b> and <b>SpO₂ ≥ 94%</b>.<br><br>"
+                    "<i>Keep O₂ flow low (0.5-2 L/min) once recovered to conserve cylinder oxygen while "
+                    "arranging a replacement supply.</i>"
                 ),
                 check_requirements=require_all(
                     _require_oxygen_recovery,

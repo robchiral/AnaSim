@@ -104,10 +104,20 @@ class SimulationState:
     arrest_reason: str = ""
     rhythm_type: RhythmType = RhythmType.SINUS
     chest_compressions: bool = False
+    cpr_rate: float = 110.0  # /min
+    cpr_depth_cm: float = 5.5  # cm
+    cpr_recoil: float = 1.0  # Full decompression fraction, 0-1
+    shock_energy_j: float = 200.0  # Selected biphasic defibrillator energy, J
+    pacing_mode: str = "off"
+    pacing_route: str = "transcutaneous"
+    pacing_rate: float = 70.0  # bpm
+    pacing_output_ma: float = 0.0  # mA
+    pacing_capture: bool = False
+    pacing_threshold_ma: float = 55.0  # mA
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
-    # ketamine, lidocaine, amiodarone, dantrolene, succinylcholine, and esmolol
-    # mcg/mL, vasopressin mU/L, others ng/mL.
+    # ketamine, lidocaine, bupivacaine, ropivacaine, methylene_blue, amiodarone,
+    # dantrolene, succinylcholine, and esmolol mcg/mL, vasopressin mU/L, others ng/mL.
     propofol_ce: float = 0.0
     propofol_cp: float = 0.0
     remi_ce: float = 0.0
@@ -118,6 +128,8 @@ class SimulationState:
     morphine_cp: float = 0.0
     hydromorphone_ce: float = 0.0
     hydromorphone_cp: float = 0.0
+    naloxone_ce: float = 0.0
+    flumazenil_ce: float = 0.0
     atropine_ce: float = 0.0
     ephedrine_ce: float = 0.0
     succinylcholine_ce: float = 0.0
@@ -125,6 +137,9 @@ class SimulationState:
     etomidate_ce: float = 0.0
     ketamine_ce: float = 0.0
     lidocaine_ce: float = 0.0
+    bupivacaine_ce: float = 0.0
+    ropivacaine_ce: float = 0.0
+    methylene_blue_ce: float = 0.0
     amiodarone_ce: float = 0.0
     dantrolene_ce: float = 0.0  # mcg/mL
     # Combined drug effects: remifentanil-equivalent opioid (ng/mL) and
@@ -168,6 +183,7 @@ class SimulationState:
     seizure_activity: float = 0.0  # Toxic seizure intensity, 0-1; independent of motor block
     convulsions: bool = False
     muscle_rigidity: bool = False
+    opioid_rigidity: float = 0.0  # Opioid-induced chest-wall/glottic rigidity intensity, 0-1
     surface_cooling: bool = False
     tol: float = 0.0  # Probability of tolerating laryngoscopy
     map: float = 90.0
@@ -192,6 +208,8 @@ class SimulationState:
     potassium: float = 4.0  # mmol/L
     chloride: float = 104.0  # mmol/L
     ionized_calcium: float = 1.2  # mmol/L, at 37 °C alpha-stat pH
+    magnesium: float = 0.8  # Serum total magnesium, mmol/L
+    methb_pct: float = 0.0  # Methemoglobin fraction, %
     albumin_g_l: float = 42.0
     phosphate: float = 1.0  # mmol/L
     glucose: float = 90.0  # mg/dL
@@ -266,6 +284,18 @@ class SimulationState:
     lung_water: float = 0.0
 
     fio2: float = 0.21
+    # Medical gas supply pressures (psig) and backup E-cylinder volumes (L).
+    o2_pipeline_psig: float = 50.0
+    air_pipeline_psig: float = 50.0
+    n2o_pipeline_psig: float = 50.0
+    o2_cylinder_psig: float = 1900.0
+    air_cylinder_psig: float = 1900.0
+    n2o_cylinder_psig: float = 745.0
+    o2_cylinder_l: float = 660.0
+    air_cylinder_l: float = 625.0
+    n2o_cylinder_l: float = 1590.0
+    o2_supply_source: str = "pipeline"
+    vent_drive_gas_l_min: float = 0.0
     temp_c: float = 37.0
     bair_hugger_target: float = 0.0  # °C; 0 is off
     fluid_warmer: bool = False
@@ -301,14 +331,26 @@ class SimulationState:
     ecmo_co2_removal: float = 0.0  # STPD mL/min
     cpb_reservoir_ml: float = 0.0  # Open venous reservoir level, mL
     cpb_cross_clamp: bool = False
+    cpb_arterial_line_pressure: float = 0.0  # Extracorporeal arterial return line pressure, mmHg
+    cpb_cardioplegia_protocol: str = "buckberg"
+    cpb_cardioplegia_route: str = "antegrade"
+    cpb_cardioplegia_active: bool = False
+    cpb_cardioplegia_protection: float = 0.0
+    cpb_cardioplegia_redose_due_s: float = 0.0
+    cpb_cs_pressure: float = 0.0  # Retrograde coronary sinus pressure, mmHg
+    cpb_myocardial_temp_c: float = 37.0
     upper_sao2: float = 98.0  # Upper-body / right-radial arterial saturation, %
     lower_sao2: float = 98.0  # Lower-body / femoral arterial saturation, %
 
-    # Anticoagulation and reversal (heparin / protamine / ACT).
+    # Anticoagulation, reversal, and dilutional hemostasis.
     heparin_u_ml: float = 0.0  # Free circulating unfractionated heparin, U/mL
     protamine_ug_ml: float = 0.0  # Free circulating protamine, mcg/mL
     act_s: float = 120.0  # Activated clotting time, s
     protamine_reaction: bool = False  # Catastrophic Type III pulmonary vasoconstriction active
+    fibrinogen_g_l: float = 3.2  # Plasma fibrinogen, g/L
+    platelets_10e9_l: float = 250.0  # Platelet count, x10^9/L (K/uL)
+    inr: float = 1.0  # International normalized ratio
+    rbc_23dpg_fraction: float = 1.0  # Circulating RBC 2,3-DPG fraction relative to fresh blood
 
     # Thoracic and embolic crisis telemetry.
     pneumothorax_pressure: float = 0.0  # Intrapleural tension above baseline, mmHg

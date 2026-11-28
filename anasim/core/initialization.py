@@ -10,7 +10,10 @@ from scipy.optimize import minimize
 
 from anasim.patient.patient import Patient
 from anasim.patient.pd import BISModel, ClinicalResponseModel
-from anasim.patient.pd.anesthesia import hypothermia_narcosis_fraction
+from anasim.patient.pd.anesthesia import (
+    FENTANYL_REMI_POTENCY,
+    hypothermia_narcosis_fraction,
+)
 from anasim.physiology.disturbances import DisturbanceEffects
 
 from . import monitors as monitor_core
@@ -41,6 +44,8 @@ class StartupProfile:
     settle_dt_seconds: float = 1.0
     primary_bounds: tuple[float, float] = (0.0, 1.0)
     remi_bounds: tuple[float, float] = (0.0, 1.0)
+    opioid_drug: str = "remi"
+    opioid_infusion: bool = True
     fgf_o2_l_min: float = 2.0
 
 
@@ -48,6 +53,7 @@ class StartupProfile:
 class StartupTargets:
     prop_ce: float = 0.0
     remi_ce: float = 0.0
+    fentanyl_ce: float = 0.0
     mac: float = 0.0
 
 
@@ -64,7 +70,9 @@ BALANCED_PROFILE = StartupProfile(
     tol_target=0.9,
     primary_hypnotic="volatile",
     primary_bounds=(0.8, 1.2),
-    remi_bounds=(0.0, 3.0),
+    remi_bounds=(0.0, 2.2),
+    opioid_drug="fentanyl",
+    opioid_infusion=False,
     fgf_o2_l_min=6.0,
 )
 
@@ -174,7 +182,7 @@ def _solve_startup_targets(
 
     def objective(x):
         primary_load = x[0]
-        remi_ce = x[1]
+        opioid_ce = x[1]
         if profile.primary_hypnotic == "volatile":
             prop_ce = 0.0
             mac = primary_load
@@ -182,8 +190,11 @@ def _solve_startup_targets(
             prop_ce = primary_load * bis_model.c50
             mac = 0.0
 
+        opioid_remi_eq = (
+            opioid_ce * FENTANYL_REMI_POTENCY if profile.opioid_drug == "fentanyl" else opioid_ce
+        )
         bis_val = bis_model.compute_bis(prop_ce, mac_sevo=mac)
-        tol_val = response_model.tolerance(prop_ce, remi_ce, mac_sevo=mac)
+        tol_val = response_model.tolerance(prop_ce, opioid_remi_eq, mac_sevo=mac)
         tol_deficit = max(0.0, profile.tol_target - tol_val)
         return (
             ((bis_val - profile.bis_target) ** 2) / (STARTUP_BIS_BAND_SCALE ** 2)
@@ -198,10 +209,13 @@ def _solve_startup_targets(
         method="L-BFGS-B",
         options={"ftol": 1e-14, "gtol": 1e-12},
     )
-    primary_load, remi_ce = map(float, result.x)
+    primary_load, opioid_ce = map(float, result.x)
+    opioid_kwargs = (
+        {"fentanyl_ce": opioid_ce} if profile.opioid_drug == "fentanyl" else {"remi_ce": opioid_ce}
+    )
     if profile.primary_hypnotic == "volatile":
-        return StartupTargets(remi_ce=remi_ce, mac=primary_load)
-    return StartupTargets(prop_ce=primary_load * bis_model.c50, remi_ce=remi_ce)
+        return StartupTargets(mac=primary_load, **opioid_kwargs)
+    return StartupTargets(prop_ce=primary_load * bis_model.c50, **opioid_kwargs)
 
 
 def _configure_controlled_ventilation(engine: SimulationEngine, targets: StartupTargets) -> None:
@@ -241,6 +255,7 @@ def _seed_steady_state_subsystems(
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
     engine.infusion_rates["propofol"] = 0.0
     engine.infusion_rates["remi"] = 0.0
+    engine.infusion_rates["fentanyl"] = 0.0
     engine.infusion_rates["nore"] = 0.0
 
     p = engine.patient
@@ -250,12 +265,16 @@ def _seed_steady_state_subsystems(
         nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
     nominal_pk = {
         key: get_drug_spec(key).pk_model(nominal_patient, engine.config)
-        for key in ("propofol", "remi")
+        for key in ("propofol", "remi", "fentanyl")
     }
-    for key, target_ce in (("propofol", targets.prop_ce), ("remi", targets.remi_ce)):
+    for key, target_ce, keep_infusion in (
+        ("propofol", targets.prop_ce, True),
+        ("remi", targets.remi_ce, profile.opioid_infusion),
+        ("fentanyl", targets.fentanyl_ce, profile.opioid_infusion),
+    ):
         if target_ce <= 0.0:
             continue
-        if engine.config.tci_enabled:
+        if engine.config.tci_enabled and keep_infusion:
             engine.infusion_rates[key] = _seed_tci_history(
                 engine, key, target_ce, profile.history_minutes,
             )
@@ -266,7 +285,7 @@ def _seed_steady_state_subsystems(
                 reference_model=nom_model,
             )
             nom_model.set_state_vector(_infusion_history(nom_model, profile.history_minutes) * rate_per_min)
-            engine.infusion_rates[key] = _maintenance_rate(nom_model, target_ce)
+            engine.infusion_rates[key] = _maintenance_rate(nom_model, target_ce) if keep_infusion else 0.0
     engine.resp.initialize_drug_effects(
         engine.pk["propofol"].state.ce_resp,
         engine.pk["remi"].state.ce_resp,

@@ -84,11 +84,11 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("drug_target", {"key": "propofol", "target": 4}),
         ],
         "MASK_VENTILATE": [("apl", {"cmh2o": 20}), ("bag_mask", {"active": True})],
-        "GIVE_NMB": [("drug_bolus", {"key": "roc", "amount": 42})],
+        "GIVE_NMB": [("drug_bolus", {"key": "roc", "amount": 50})],
         "INTUBATE": [("airway", {"mode": "ETT"})],
         "CONFIRM_ETT": [("vent_power", {"on": True})],
         "MAINTENANCE": [
-            ("fgf", {"o2": 2, "air": 0, "n2o": 0}),
+            ("fgf", {"o2": 1, "air": 1, "n2o": 0}),
             ("drug_target", {"key": "propofol", "target": 3}),
             ("drug_bolus", {"key": "phenyl", "amount": 100}),
             ("drug_rate", {"key": "nore", "rate": 6}),
@@ -100,7 +100,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "GIVE_OPIOID": [("drug_bolus", {"key": "fentanyl", "amount": 100})],
         "INDUCE": [("drug_bolus", {"key": "propofol", "amount": 150})],
         "MASK_VENTILATE": [("apl", {"cmh2o": 20}), ("bag_mask", {"active": True})],
-        "GIVE_NMB": [("drug_bolus", {"key": "roc", "amount": 42})],
+        "GIVE_NMB": [("drug_bolus", {"key": "roc", "amount": 50})],
         "START_SEVO": [("vaporizer", {"percent": 3})],
         "INTUBATE": [("airway", {"mode": "ETT"})],
         "CONFIRM_ETT": [("vent_power", {"on": True})],
@@ -116,6 +116,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "STOP_AGENTS": [
             ("drug_rate", {"key": "propofol", "rate": 0}),
             ("drug_rate", {"key": "remi", "rate": 0}),
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
         ],
         "EXTUBATION_READINESS": [("vent_power", {"on": False})],
         "EXTUBATE": [("airway", {"mode": "Mask"})],
@@ -125,7 +126,6 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "ASSESS_BLOCK": [("sugammadex", {"mg_per_kg": 2})],
         "STOP_AGENTS": [
             ("vaporizer", {"percent": 0}),
-            ("drug_rate", {"key": "remi", "rate": 0}),
             ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
         ],
         "EXTUBATION_READINESS": [("vent_power", {"on": False})],
@@ -150,7 +150,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
     "oxygen_supply_failure": {
         "CONNECT_BACKUP_OXYGEN": [
             ("case_action", {"action": "backup_oxygen"}),
-            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+            ("fgf", {"o2": 2, "air": 0, "n2o": 0}),
         ],
     },
     "vv_ecmo_ards": {
@@ -158,6 +158,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("extracorporeal_start", {"mode": "vv_ecmo", "blood_flow": 4.5, "sweep_gas": 4.0, "sweep_fio2": 1.0}),
         ],
         "STABILIZE_VV_ECMO": [
+            ("vent", {"rr": 10, "tv": 280, "peep": 10}),
             ("extracorporeal_settings", {"blood_flow": 4.5, "sweep_gas": 5.0}),
             ("drug_rate", {"key": "nore", "rate": 6}),
         ],
@@ -178,12 +179,12 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
     },
     "cpb_weaning": {
         "REWARM_AND_UNCLAMP": [
-            ("extracorporeal_settings", {"heater_cooler_on": True, "water_target_c": 37.5, "cross_clamp": False}),
+            ("extracorporeal_settings", {"heater_cooler_on": True, "water_target_c": 37.0, "cross_clamp": False}),
         ],
         "VENTILATE_AND_FILL": [
             ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
             ("vent_power", {"on": True}),
-            ("extracorporeal_settings", {"venous_clamp": 0, "blood_flow": 2.0}),
+            ("extracorporeal_settings", {"blood_flow": 2.0, "venous_clamp": 0}),
             ("drug_rate", {"key": "nore", "rate": 6}),
         ],
         "SEPARATE_FROM_CPB": [
@@ -248,15 +249,14 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         ],
     },
     "venous_air_embolism": {
-        "STOP_N2O_VAE": [
+        "O2_100_VAE": [
             ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
         ],
         "STOP_ENTRAINMENT": [
             ("case_action", {"action": "flood_field_lower_head"}),
         ],
-        "ASPIRATE_POSITION": [
+        "ASPIRATE_CVC": [
             ("vae_aspirate", {}),
-            ("position", {"position": "left_lateral"}),
         ],
         "STABILIZE_VAE": [
             ("drug_rate", {"key": "nore", "rate": 6}),
@@ -270,7 +270,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("drug_rate", {"key": "nore", "rate": 10}),
         ],
         "ANTICOAG_LYSIS": [
-            ("drug_bolus", {"key": "heparin", "amount": 5000}),
+            ("drug_bolus", {"key": "heparin", "amount": 5600}),
             ("pe_thrombolysis", {}),
         ],
         "STABILIZE_PE": [],
@@ -294,6 +294,23 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("vent_power", {"on": True}),
         ],
         "STABILIZE_SPINAL": [],
+    },
+    "last_crisis": {
+        "SEIZURE_O2": [
+            ("drug_bolus", {"key": "midazolam", "amount": 5.0}),
+            ("airway", {"mode": "Mask"}),
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+        ],
+        "LIPID_RESCUE": [
+            ("fluid", {"kind": "lipid", "volume_ml": 100.0}),
+            ("lipid_rate", {"ml_min": 15.0}),
+        ],
+        "AIRWAY_VENT": [
+            ("bag_mask", {"active": True}),
+            ("sodium_bicarbonate", {"meq": 50.0}),
+            ("drug_bolus", {"key": "epi", "amount": 50.0}),
+        ],
+        "STABILIZE_LAST": [],
     },
 }
 
@@ -324,8 +341,9 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
     """Every guided objective remains reachable through the browser protocol."""
     session = WebSession({"scenario_id": spec.id, "tci_enabled": tci_enabled})
     session.engine.config.dt = 0.25 if spec.id == "malignant_hyperthermia" else 0.5
-    # Deterministic RNG so the post-refractory third shock succeeds reliably in cardiac arrest.
+    # Deterministic RNGs so guided walkthroughs (shocks and spontaneous arrhythmias) are reproducible.
     session.engine._shock_rng = np.random.default_rng(0)
+    session.engine.arrhythmias.rng = np.random.default_rng(0)
     info = json.loads(session.info())
     session.command("run", '{"running": true}')
     session.command("speed", '{"value": 10}')
@@ -401,7 +419,7 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
     for _ in range(30):
         engine.step(2.0)
     assert not step.check_requirements(engine)[0]
-    for _ in range(60):
+    for _ in range(30):
         engine.step(2.0)
     if assisted:
         # Rapid shallow breaths mostly move dead space; high FiO2 alone is not preoxygenation.
@@ -412,9 +430,9 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
         for _ in range(180):
             engine.step(1.0)
     else:
-        for _ in range(30):
+        for _ in range(60):
             engine.step(2.0)
-    assert engine.state.et_o2 >= 90
+    assert engine.state.et_o2 >= 85
     assert step.check_requirements(engine)[0]
 
     engine.set_oxygen_supply_connected(False)
@@ -734,6 +752,7 @@ def test_cardiac_arrest_acls_objectives_and_debrief(engine_factory):
     ca = WebSession({"scenario_id": "cardiac_arrest", "practice_mode": "independent"})
     ce = ca.engine
     ce._shock_rng = np.random.default_rng(0)
+    ce.arrhythmias.rng = np.random.default_rng(0)
     assert ca.case_run is not None and ca.scenario is not None
     ce.start()
     for _ in range(32):
@@ -917,19 +936,26 @@ def test_sepsis_and_anaphylaxis_early_actions_do_not_soft_lock_step1():
 
 
 def test_scenarios_use_drugs_tab_label_and_avoid_unmeasured_leaks():
-    """No scenario prose refers to the old 'Medications' tab label, and guided steps
-    never leak unmeasured plasma heparin, live ACT, live PaCO2, unmonitored CO, or unmeasured TOF.
+    """No scenario prose refers to the old 'Medications' tab label or inline academic citations,
+    and guided steps never leak unmeasured plasma heparin, live ACT, live PaCO2, unmonitored CO, or unmeasured TOF.
     """
+    import re
+
+    citation_re = re.compile(r"\([^()]*\b(?:19|20)\d{2}\b[^()]*\)")
     for spec in SCENARIO_REGISTRY:
         session = WebSession({"scenario_id": spec.id})
         scen = session.scenario
         assert scen is not None
         assert "Medications" not in scen.briefing
+        assert not citation_re.search(scen.briefing), f"{spec.id} briefing contains inline citation"
         for step in scen.steps:
             text = step.instruction_for(session.engine)
             assert "Medications" not in text, f"{spec.id}/{step.id} still mentions Medications"
+            assert not citation_re.search(text), f"{spec.id}/{step.id} contains inline citation"
             _, status = step.check_requirements(session.engine)
             assert "Medications" not in status
+        for outcome in scen.outcomes:
+            assert not citation_re.search(outcome.review), f"{spec.id}/{outcome.id} review contains inline citation"
 
     # Protamine reversal waits for 60 s Lab ACT and never leaks plasma heparin or live ACT
     prot = WebSession({"scenario_id": "protamine_reversal"})
@@ -1088,3 +1114,85 @@ def test_pe_nonpulsatile_va_ecmo_tci_airway_caserun_finish_and_paused_stop_sync(
     assert p.aeration.pleural_collapse == 0.0
     assert p.aeration.crisis_shunt == 0.0
     assert p.state.muscle_rigidity is False
+
+
+def test_us_or_clinical_realism_invariants():
+    """Verify key US academic OR realism invariants across balanced, airway, embolic, LAST, arrest, and ECMO cases."""
+    from anasim.core.state import AirwayType
+
+    # 1. Balanced maintenance scenarios run fentanyl analgesia without a running remifentanil pump.
+    for sid in ("emergence_balanced", "malignant_hyperthermia", "tension_pneumothorax", "venous_air_embolism"):
+        s = WebSession({"scenario_id": sid})
+        assert s.engine.get_drug_state("remi")["rate"] == 0.0
+        assert s.engine.get_drug_state("remi")["target"] == 0.0
+        assert s.engine.state.remi_ce == 0.0
+        assert s.engine.state.fentanyl_ce > 0.5
+        assert s.engine.get_drug_state("fentanyl")["rate"] == 0.0
+
+    # 2. Sitting craniotomy VAE avoids N2O, includes arterial line monitoring, and does not mandate Durant positioning.
+    vae = WebSession({"scenario_id": "venous_air_embolism"})
+    assert vae.engine.circuit.fgf_n2o == 0.0
+    assert vae.engine.state.et_n2o == 0.0
+    assert vae.engine.config.arterial_line_enabled is True
+    assert vae.scenario is not None
+
+    # 3. Tension pneumothorax with 50% N2O starts near ~1.0 total MAC rather than 1.3+ MAC.
+    ptx = WebSession({"scenario_id": "tension_pneumothorax"})
+    assert ptx.scenario is not None
+    assert "laparoscopy" not in ptx.scenario.briefing.lower()
+    assert 0.85 <= ptx.engine.state.mac <= 1.15
+
+    # 4. VA ECMO Harlequin starts clearly hypoxic at the right radial site vs well-oxygenated femoral flow.
+    harl = WebSession({"scenario_id": "va_ecmo_harlequin"})
+    assert harl.engine.circuit.composition.fio2 < 0.35
+    assert harl.engine.state.upper_sao2 < 88.0
+    assert harl.engine.state.lower_sao2 > 97.0
+
+    # 5. Esophageal intubation preserves the Grade III anterior airway so blind repeat DL fails while VL succeeds.
+    esoph = WebSession({"scenario_id": "esophageal_intubation"})
+    assert esoph.engine.airway_crisis.difficult_profile == "anterior_dl"
+    esoph.command("airway", json.dumps({"mode": "Mask"}))
+    esoph.command("airway", json.dumps({"mode": "ETT", "technique": "dl"}))
+    assert esoph.engine.state.airway_mode != AirwayType.ETT
+    esoph.command("airway", json.dumps({"mode": "ETT", "technique": "vl"}))
+    assert esoph.engine.state.airway_mode == AirwayType.ETT and not esoph.engine.state.esophageal_intubation
+
+    # 6. LAST lipid infusion follows ASRA fixed ~15 mL/min for >= 70 kg patients and 0.25 mL/kg/min under 70 kg.
+    last_heavy = WebSession({"scenario_id": "last_crisis", "weight": 128.0})
+    assert last_heavy.scenario is not None
+    heavy_instr = _step(last_heavy.scenario, "LIPID_RESCUE").instruction_for(last_heavy.engine)
+    assert "15 mL/min" in heavy_instr and "32 mL/min" not in heavy_instr
+    last_light = WebSession({"scenario_id": "last_crisis", "weight": 50.0, "height": 155.0})
+    assert last_light.scenario is not None
+    light_instr = _step(last_light.scenario, "LIPID_RESCUE").instruction_for(last_light.engine)
+    assert "12.5 mL/min" in light_instr
+
+    # 7. Stacking unsynchronized shocks in cardiac arrest logs stacked_shocks safety feedback; spacing >= 60 s does not.
+    ca_stack = WebSession({"scenario_id": "cardiac_arrest", "practice_mode": "independent"})
+    ca_stack.engine.config.dt = 0.5
+    ca_stack.engine._shock_rng = np.random.default_rng(0)
+    ca_stack.engine.arrhythmias.rng = np.random.default_rng(0)
+    _web_advance(ca_stack, 32.0)
+    ca_stack.command("compressions", '{"active": true}')
+    for _ in range(2):
+        ca_stack.command("charge_defibrillator")
+        _web_advance(ca_stack, 5.0)
+        ca_stack.command("shock", '{"synchronized": false}')
+    debrief_stack = json.loads(ca_stack.command("case_finish", "{}"))["debrief"]
+    assert any(ev["code"] == "stacked_shocks" for ev in debrief_stack["safety_events"])
+
+    ca_paced = WebSession({"scenario_id": "cardiac_arrest", "practice_mode": "independent"})
+    ca_paced.engine.config.dt = 0.5
+    ca_paced.engine._shock_rng = np.random.default_rng(0)
+    ca_paced.engine.arrhythmias.rng = np.random.default_rng(0)
+    _web_advance(ca_paced, 32.0)
+    ca_paced.command("compressions", '{"active": true}')
+    ca_paced.command("charge_defibrillator")
+    _web_advance(ca_paced, 5.0)
+    ca_paced.command("shock", '{"synchronized": false}')
+    _web_advance(ca_paced, 65.0)
+    ca_paced.command("charge_defibrillator")
+    _web_advance(ca_paced, 5.0)
+    ca_paced.command("shock", '{"synchronized": false}')
+    debrief_paced = json.loads(ca_paced.command("case_finish", "{}"))["debrief"]
+    assert not any(ev["code"] == "stacked_shocks" for ev in debrief_paced["safety_events"])

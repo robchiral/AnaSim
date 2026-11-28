@@ -18,14 +18,14 @@
   "summary": {
     "mean_log_gain_per_cmh2o": 0.028880335195469294,
     "median_log_gain_per_cmh2o": 0.03190892218578194,
-    "anasim_mean_log_gain_per_cmh2o": 0.0059132553250303525,
-    "anasim_median_log_gain_per_cmh2o": 0.0032195341090256345,
+    "anasim_mean_log_gain_per_cmh2o": 0.02116667616284237,
+    "anasim_median_log_gain_per_cmh2o": 0.02685286438756566,
     "up_n": 12,
     "up_recorded_median": 0.03206889017328101,
-    "up_anasim_median": 0.0021532122081903953,
+    "up_anasim_median": 0.025430590520429674,
     "down_n": 3,
     "down_recorded_median": 0.027169264993049013,
-    "down_anasim_median": 0.02473128422777659,
+    "down_anasim_median": 0.031974096920010464,
     "ci_95": [
       0.02083550534762228,
       0.03761549536178963
@@ -2257,9 +2257,9 @@
       },
       "log_gain_per_cmh2o": 0.010185388215292978,
       "anasim": {
-        "before_compliance": 27.09772856202551,
-        "after_compliance": 26.777365107477458,
-        "log_gain_per_cmh2o": -0.003964320787262371
+        "before_compliance": 27.046590126346658,
+        "after_compliance": 26.790987851309577,
+        "log_gain_per_cmh2o": -0.0031651274705570315
       }
     },
     {
@@ -2309,9 +2309,9 @@
       },
       "log_gain_per_cmh2o": 0.04880140178982383,
       "anasim": {
-        "before_compliance": 34.44366085399303,
-        "after_compliance": 35.00261038122927,
-        "log_gain_per_cmh2o": 0.0032195341090256345
+        "before_compliance": 35.43756010516108,
+        "after_compliance": 40.5297632598281,
+        "log_gain_per_cmh2o": 0.02685286438756566
       }
     },
     {
@@ -2361,9 +2361,9 @@
       },
       "log_gain_per_cmh2o": 0.001459855051667423,
       "anasim": {
-        "before_compliance": 34.20984706774461,
-        "after_compliance": 34.20957717982133,
-        "log_gain_per_cmh2o": -3.944609681412337e-06
+        "before_compliance": 34.19416152615698,
+        "after_compliance": 34.23072645586864,
+        "log_gain_per_cmh2o": 0.0005343806072695067
       }
     },
     {
@@ -2413,9 +2413,9 @@
       },
       "log_gain_per_cmh2o": 0.03353885695695683,
       "anasim": {
-        "before_compliance": 35.31058969307555,
-        "after_compliance": 36.06931049087402,
-        "log_gain_per_cmh2o": 0.004251893723015548
+        "before_compliance": 37.09609479543407,
+        "after_compliance": 41.82746937438381,
+        "log_gain_per_cmh2o": 0.02400831665329369
       }
     },
     {
@@ -2465,9 +2465,9 @@
       },
       "log_gain_per_cmh2o": 0.03421203530428309,
       "anasim": {
-        "before_compliance": 36.88282508593801,
-        "after_compliance": 37.164976149327785,
-        "log_gain_per_cmh2o": 0.0015241637116525752
+        "before_compliance": 36.780178654974456,
+        "after_compliance": 42.86410360166037,
+        "log_gain_per_cmh2o": 0.030615130645136525
       }
     },
     {
@@ -2517,9 +2517,9 @@
       },
       "log_gain_per_cmh2o": 0.03190892218578194,
       "anasim": {
-        "before_compliance": 29.77706404070121,
-        "after_compliance": 30.412004540016135,
-        "log_gain_per_cmh2o": 0.004219796508985573
+        "before_compliance": 33.17916691442542,
+        "after_compliance": 35.142513474580824,
+        "log_gain_per_cmh2o": 0.011497886253577233
       }
     },
     {
@@ -2569,9 +2569,9 @@
       },
       "log_gain_per_cmh2o": 0.03378209177953933,
       "anasim": {
-        "before_compliance": 30.796185643028476,
-        "after_compliance": 30.967784150490797,
-        "log_gain_per_cmh2o": 0.0013891509042932783
+        "before_compliance": 30.242868146369762,
+        "after_compliance": 34.674354233834414,
+        "log_gain_per_cmh2o": 0.034184987427564595
       }
     },
     {
@@ -2621,9 +2621,9 @@
       },
       "log_gain_per_cmh2o": 0.03222885816078008,
       "anasim": {
-        "before_compliance": 41.97373238700216,
-        "after_compliance": 41.907118263717926,
-        "log_gain_per_cmh2o": -0.0007941519044151751
+        "before_compliance": 41.998080833652054,
+        "after_compliance": 41.93182898044587,
+        "log_gain_per_cmh2o": -0.000789371358954088
       }
     },
     {
@@ -2673,9 +2673,9 @@
       },
       "log_gain_per_cmh2o": 0.027169264993049013,
       "anasim": {
-        "before_compliance": 44.225888387033244,
-        "after_compliance": 39.08168358010819,
-        "log_gain_per_cmh2o": 0.02473128422777659
+        "before_compliance": 44.2601919271112,
+        "after_compliance": 37.720932774478634,
+        "log_gain_per_cmh2o": 0.031974096920010464
       }
     },
     {
@@ -2725,9 +2725,9 @@
       },
       "log_gain_per_cmh2o": 0.029323537503942627,
       "anasim": {
-        "before_compliance": 33.39112118950588,
-        "after_compliance": 34.17585451388223,
-        "log_gain_per_cmh2o": 0.004645870873580597
+        "before_compliance": 36.112757481013034,
+        "after_compliance": 39.560902716148796,
+        "log_gain_per_cmh2o": 0.018239025933953844
       }
     },
     {
@@ -2777,9 +2777,9 @@
       },
       "log_gain_per_cmh2o": 0.01675020626499425,
       "anasim": {
-        "before_compliance": 33.5572621010179,
-        "after_compliance": 34.119280085774044,
-        "log_gain_per_cmh2o": 0.003321865372248976
+        "before_compliance": 33.48273790916275,
+        "after_compliance": 39.26134559602114,
+        "log_gain_per_cmh2o": 0.03184208849963293
       }
     },
     {
@@ -2829,9 +2829,9 @@
       },
       "log_gain_per_cmh2o": 0.07275021820409328,
       "anasim": {
-        "before_compliance": 36.89172248451765,
-        "after_compliance": 32.16618010126696,
-        "log_gain_per_cmh2o": 0.027414321958518055
+        "before_compliance": 36.903309685491806,
+        "after_compliance": 31.27807179724477,
+        "log_gain_per_cmh2o": 0.033076793986307765
       }
     },
     {
@@ -2881,9 +2881,9 @@
       },
       "log_gain_per_cmh2o": 0.01659582269233827,
       "anasim": {
-        "before_compliance": 38.12118745837959,
-        "after_compliance": 38.58909417353441,
-        "log_gain_per_cmh2o": 0.0024398946701177323
+        "before_compliance": 38.66288332007012,
+        "after_compliance": 44.75145572121363,
+        "log_gain_per_cmh2o": 0.02924878435885102
       }
     },
     {
@@ -2933,9 +2933,9 @@
       },
       "log_gain_per_cmh2o": 0.03327992075667384,
       "anasim": {
-        "before_compliance": 32.51531663189953,
-        "after_compliance": 32.820191090693214,
-        "log_gain_per_cmh2o": 0.001866529746263058
+        "before_compliance": 32.661261948229736,
+        "after_compliance": 38.07779618411551,
+        "log_gain_per_cmh2o": 0.03068832183650668
       }
     },
     {
@@ -2985,9 +2985,9 @@
       },
       "log_gain_per_cmh2o": 0.01121864807282261,
       "anasim": {
-        "before_compliance": 34.598392902010666,
-        "after_compliance": 29.9472595443858,
-        "log_gain_per_cmh2o": 0.01443694137133662
+        "before_compliance": 34.62195386846238,
+        "after_compliance": 28.71927063368994,
+        "log_gain_per_cmh2o": 0.018691963762476792
       }
     }
   ]

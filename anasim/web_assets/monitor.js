@@ -29,7 +29,16 @@ const ALARM_LABELS = {
   FiO2: "FiO₂",
   BIS: "BIS",
   Temp: "Temp",
+  O2Pipeline: "O₂ pipeline",
+  O2Cylinder: "O₂ cylinder",
+  AirPipeline: "Air pipeline",
+  AirCylinder: "Air cylinder",
+  N2OPipeline: "N₂O pipeline",
+  N2OCylinder: "N₂O cylinder",
+  VentDrive: "Vent drive gas",
   ReservoirLow: "CPB reservoir",
+  ArtLinePressure: "Art line pressure",
+  CSPressure: "CS pressure",
 };
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -573,6 +582,7 @@ export class Monitor {
       const spo2SignalLost = vitals?.spo2 === null;
       for (const [key, raw] of Object.entries(active)) {
         if (key === "Asystole" || key === "VFIB" || key === "VTACH" || key === "Arrest" || key === "O2Supply") continue;
+        if (key === "O2Pipeline" && controls && controls.o2_connected === false) continue;
         if (key === "HR" && rhythmAlarm) continue;
         const side = alarmSide(raw);
         if (!side) continue;
@@ -583,7 +593,15 @@ export class Monitor {
         }
         const label = ALARM_LABELS[key] ?? key;
         const text = `${label} ${side.toUpperCase()}`;
-        if ((key === "SpO2" && side === "low") || (key === "FiO2" && side === "low") || key === "ReservoirLow") {
+        if (
+          (key === "SpO2" && side === "low")
+          || (key === "FiO2" && side === "low")
+          || key === "O2Pipeline"
+          || key === "VentDrive"
+          || key === "ReservoirLow"
+          || key === "ArtLinePressure"
+          || key === "CSPressure"
+        ) {
           highPriority.push(text);
         } else {
           mediumPriority.push(text);

@@ -108,3 +108,57 @@ def test_pending_sync_can_be_cancelled_and_does_not_fire_on_vf_or_compressions(e
     assert not engine.actions.since_case(ACTION_SHOCK)
     assert engine.defibrillator.status(engine.state.time) == "ready"
     assert engine.defibrillate(synchronized=True) == ShockResult.NOT_DELIVERED
+
+
+def test_selectable_shock_energy_charge_time_bmi_efficacy_and_stunning(engine_factory):
+    """Selectable biphasic energies (50-360 J) scale charge time, energy/BMI conversion efficacy
+    (Mittal 1999/2000; Glover 2008; Stec 2011; Schmidt 2020), and post-shock stunning.
+    """
+    dev = Defibrillator()
+    assert dev.charge_time_s(200.0) == pytest.approx(CHARGE_TIME_S)
+    assert dev.charge_time_s(50.0) < dev.charge_time_s(200.0) < dev.charge_time_s(360.0)
+    dev.charge(0.0, energy_j=100.0)
+    assert dev.status(3.9) == "charging" and dev.status(4.05) == "ready"
+    dev.set_energy(360.0)
+    assert dev.status(4.05) == "idle"  # Changing energy dial disarms an active charge.
+
+    def rate_for(rhythm, energy_j, *, bmi=24.0, synced=True, trials=600):
+        rng = np.random.default_rng(42)
+        hits = sum(
+            shock_outcome(
+                rhythm, synchronized=synced, energy_failure=0.0, electrically_silent=False,
+                vulnerable=False, antiarrhythmic=0.0, rng=rng, energy_j=energy_j, bmi=bmi,
+            ) == RhythmType.SINUS
+            for _ in range(trials)
+        )
+        return hits / trials
+
+    # AFib cardioversion rises sharply with energy and drops at high BMI (CHESS; BEST AF).
+    af_50 = rate_for(RhythmType.AFIB, 50.0)
+    af_100 = rate_for(RhythmType.AFIB, 100.0)
+    af_200 = rate_for(RhythmType.AFIB, 200.0)
+    af_360 = rate_for(RhythmType.AFIB, 360.0)
+    af_100_obese = rate_for(RhythmType.AFIB, 100.0, bmi=40.0)
+    af_360_obese = rate_for(RhythmType.AFIB, 360.0, bmi=40.0)
+    assert af_50 < af_100 < af_200 < af_360
+    assert af_100_obese < af_100 - 0.08
+    assert af_360_obese > af_100_obese + 0.25
+
+    # SVT requires lower energy than AFib (Stec 2011), while VF fails frequently at 50 J.
+    assert rate_for(RhythmType.SVT, 50.0) > af_50 + 0.20
+    assert rate_for(RhythmType.VFIB, 50.0, synced=False) < 0.45
+    assert rate_for(RhythmType.VFIB, 200.0, synced=False) > 0.85
+
+    # Higher delivered energy increases post-shock myocardial stunning in the engine.
+    low_e = engine_factory(start=True)
+    high_e = engine_factory(start=True)
+    low_e.charge_defibrillator(50.0)
+    high_e.charge_defibrillator(360.0)
+    for _ in range(7):
+        low_e.step(1.0)
+        high_e.step(1.0)
+    assert low_e.defibrillate(synchronized=False) == ShockResult.DELIVERED
+    assert high_e.defibrillate(synchronized=False) == ShockResult.DELIVERED
+    assert high_e.hemo.coronary.shock_stunning > low_e.hemo.coronary.shock_stunning * 3.0
+    assert low_e.actions.since_case(ACTION_SHOCK)[0].amount == pytest.approx(50.0)
+    assert high_e.actions.since_case(ACTION_SHOCK)[0].amount == pytest.approx(360.0)

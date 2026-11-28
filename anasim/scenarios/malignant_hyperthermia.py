@@ -92,13 +92,11 @@ def _require_etco2_normal(engine) -> tuple[bool, str]:
 def _stabilize_instruction(engine) -> str:
     low, high = _mh_normocapnia_bounds(engine)
     return (
-        f"Wean ventilation toward <b>EtCO₂ {low}-{high} mmHg</b> as hypermetabolism resolves. "
-        "Turn off the <b>forced-air warmer</b>. Start <b>surface cooling</b> if temperature is 38 °C or higher "
-        "or rises rapidly, and stop cooling once below 38 °C.<br><br>"
-        "<i>Monitor blood gases, potassium, CK, myoglobin, glucose, coagulation, and urine output. "
-        "Treat hyperkalemia with calcium and insulin with glucose (and bicarbonate per local protocol); "
-        "avoid calcium channel blockers with dantrolene. Arrange at least 24 hours of ICU monitoring, "
-        "redosing per protocol, and MH testing referral.</i>"
+        f"Wean ventilation toward <b>EtCO₂ {low}-{high} mmHg</b> and turn off the <b>forced-air warmer</b>. "
+        "Use <b>surface cooling</b> if temperature exceeds <b>38.5-39 °C</b>, and stop cooling below <b>38.0 °C</b>.<br><br>"
+        "<i>Draw an ABG in Labs and follow K⁺, CK, coagulation, and urine output (≥ 1-2 mL/kg/hr). "
+        "Treat hyperkalemia with calcium and insulin/glucose; avoid calcium channel blockers with dantrolene, "
+        "and arrange ≥ 24 h ICU monitoring.</i>"
     )
 
 
@@ -166,12 +164,10 @@ def create_malignant_hyperthermia() -> Scenario:
                 id="STOP_TRIGGERS",
                 title="Stop triggers and hyperventilate",
                 instruction=(
-                    "Unexplained rising EtCO₂, tachycardia, and rigidity suggest MH; temperature often rises late. "
-                    "Call for help and the MH cart, and ask the surgeon to stop.<br><br>"
-                    "Turn off <b>sevoflurane</b> and avoid succinylcholine. Set <b>100% oxygen</b> "
-                    "(O₂ 10 L/min, air and N₂O 0 L/min), increase minute ventilation to <b>2-3 times baseline</b>, "
-                    "and start <b>propofol</b> in Drugs.<br><br>"
-                    "<i>Add activated charcoal filters if available; do not delay treatment to change the machine.</i>"
+                    "Call for help, the MH cart, and the <b>MHAUS Hotline (1-800-644-9737)</b>, and pause surgery.<br><br>"
+                    "Turn off <b>sevoflurane</b> (avoid succinylcholine), set <b>100% O₂</b> (10 L/min, air and N₂O 0), "
+                    "increase ventilation to <b>2-3 times baseline</b>, and start <b>propofol</b> in Drugs.<br><br>"
+                    "<i>Add charcoal filters if available; do not delay care to swap the machine.</i>"
                 ),
                 check_requirements=require_all(
                     _require_vaporizer_off, oxygen,
@@ -183,9 +179,10 @@ def create_malignant_hyperthermia() -> Scenario:
                 id="DANTROLENE",
                 title="Give dantrolene",
                 instruction=(
-                    "Give <b>dantrolene 2.5 mg/kg IV</b> rapidly (175 mg for 70 kg), and repeat until "
-                    "EtCO₂, HR, and rigidity improve.<br><br>"
-                    "<i>Doses above 10 mg/kg are occasionally needed; if signs persist, reconsider the diagnosis.</i>"
+                    "Give <b>dantrolene 2.5 mg/kg IV</b> rapidly (175 mg for 70 kg), repeating <b>1-2.5 mg/kg "
+                    "every 5-10 min</b> until EtCO₂, HR, and rigidity improve.<br><br>"
+                    "<i>Ryanodex mixes 250 mg in 5 mL; conventional 20 mg vials need 60 mL sterile water each "
+                    "and extra hands to mix. Reconsider the diagnosis if > 10 mg/kg is ineffective.</i>"
                 ),
                 check_requirements=_require_dantrolene,
                 target_tab="Medications",

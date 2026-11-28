@@ -448,3 +448,290 @@ def test_last_seizures_generate_lactic_acidosis(engine_factory, advance_time):
     engine.give_drug_bolus("lidocaine", 500.0)
     advance_time(engine, 300.0, dt=1.0)
     assert engine.state.lactate > lac0 + 1.0
+
+
+def test_bupivacaine_ropivacaine_pk_epidural_absorption_and_cc_cns_margins(patient_factory):
+    """Bupivacaine and ropivacaine arterial 3-cpt PK, biphasic epidural absorption, and comparative CC/CNS margins."""
+    from anasim.patient.pk_models import BupivacainePK, RopivacainePK
+
+    pt = patient_factory(age=50, weight=70, height=170, sex="male")
+    bupi = BupivacainePK(pt)
+    ropi = RopivacainePK(pt)
+    assert bupi.v1 == pytest.approx(6.85, rel=0.05)
+    assert ropi.v1 == pytest.approx(6.85, rel=0.05)
+    assert bupi.v3 > ropi.v3 * 1.5  # Olofsen 2008: Vdss ~67 vs ~45 L
+
+    # Epinephrine slows fast epidural systemic absorption.
+    b_plain, b_epi = BupivacainePK(pt), BupivacainePK(pt)
+    b_plain.add_epidural_dose(100.0, with_epinephrine=False)
+    b_epi.add_epidural_dose(100.0, with_epinephrine=True)
+    peak_plain = peak_epi = 0.0
+    for _ in range(1800):
+        b_plain.step(1.0, 0.0)
+        b_epi.step(1.0, 0.0)
+        peak_plain = max(peak_plain, b_plain.state.c1)
+        peak_epi = max(peak_epi, b_epi.state.c1)
+    assert 0.5 < peak_plain < 2.2
+    assert peak_epi < peak_plain * 0.85
+
+    # Comparative toxicity: at 4.5 mcg/mL, bupivacaine causes severe conduction block + seizures,
+    # ropivacaine causes milder conduction block, and lidocaine causes neither.
+    t_lido, t_ropi, t_bupi = LocalAnestheticToxicity(70), LocalAnestheticToxicity(70), LocalAnestheticToxicity(70)
+    for _ in range(120):
+        _step(t_lido, seconds=1.0, neural_ce=4.5, cardiac_ce=4.5)
+        _step(t_ropi, seconds=1.0, ropivacaine_neuro_ce=4.5, ropivacaine_cv_ce=4.5)
+        _step(t_bupi, seconds=1.0, bupivacaine_neuro_ce=4.5, bupivacaine_cv_ce=4.5)
+    assert t_lido.seizure_activity == 0.0 and t_lido.conduction_block == 0.0
+    assert t_bupi.seizure_activity > 0.7 and t_bupi.conduction_block > 0.25
+    assert t_bupi.conduction_block > t_ropi.conduction_block + 0.20
+
+    # Clarkson 1985 rate-dependent bupivacaine block: tachycardia worsens conduction block.
+    slow, fast = LocalAnestheticToxicity(70), LocalAnestheticToxicity(70)
+    for _ in range(60):
+        _step(slow, seconds=1.0, bupivacaine_cv_ce=4.5, hr=55.0)
+        _step(fast, seconds=1.0, bupivacaine_cv_ce=4.5, hr=145.0)
+    assert fast.conduction_block > slow.conduction_block + 0.15
+
+    # Pregnancy increases bupivacaine cardiotoxicity sensitivity (Morishima 1985; Neal 2018).
+    nonpreg, preg = LocalAnestheticToxicity(70, pregnant=False), LocalAnestheticToxicity(70, pregnant=True)
+    for _ in range(60):
+        _step(nonpreg, seconds=1.0, bupivacaine_cv_ce=4.0)
+        _step(preg, seconds=1.0, bupivacaine_cv_ce=4.0)
+    assert preg.conduction_block > nonpreg.conduction_block + 0.08
+
+
+def test_lipophilicity_lipid_rescue_acidosis_attenuation_and_asra_pressors(engine_factory, advance_time):
+    """Lipid partitioning is strongest for bupivacaine, attenuated by acidemia, and impaired by high-dose epi / vasopressin."""
+    tox = LocalAnestheticToxicity(70)
+    tox.add_lipid(200.0)
+    for _ in range(180):
+        tox.step_lipid(1.0, 1.0)
+    # Lipophilicity ordering: bupivacaine > ropivacaine > lidocaine (Dureau 2016; Mazoit 2009).
+    f_bupi = tox.effect_input_fraction_for("bupivacaine", ph=7.40)
+    f_ropi = tox.effect_input_fraction_for("ropivacaine", ph=7.40)
+    f_lido = tox.effect_input_fraction_for("lidocaine", ph=7.40)
+    assert f_bupi < f_ropi < f_lido < 1.0
+    # Acidemia (pH 7.0) weakens bupivacaine lipid binding (Mazoit 2009).
+    assert tox.effect_input_fraction_for("bupivacaine", ph=7.00) > f_bupi + 0.10
+
+    # ASRA vasopressin harm during bupivacaine LAST CPR: pulmonary edema + lactic acidosis + worse recovery.
+    ctrl = _ventilated(engine_factory)
+    ctrl.trigger_last_crisis("bupivacaine", 75.0)
+    advance_time(ctrl, 30.0, dt=1.0)
+    vaso = copy.deepcopy(ctrl)
+    epi_hi = copy.deepcopy(ctrl)
+    for eng in (ctrl, vaso, epi_hi):
+        eng.set_chest_compressions(True)
+        eng.give_drug_bolus("midazolam", 5.0)
+        eng.give_lipid_emulsion(100.0)
+        eng.set_lipid_infusion(17.5)
+    vaso.give_drug_bolus("vaso", 40.0)
+    epi_hi.give_drug_bolus("epi", 1000.0)
+    for eng in (ctrl, vaso, epi_hi):
+        advance_time(eng, 180.0, dt=1.0)
+    assert vaso.toxicity.vaso_last_harm > 0.3
+    assert vaso.state.lung_water > ctrl.state.lung_water + 0.4
+    assert vaso.state.lactate > ctrl.state.lactate + 0.5
+    assert epi_hi.toxicity.epi_last_harm > 0.3
+    assert epi_hi.toxicity.conduction_block > ctrl.toxicity.conduction_block
+
+    # Clinical safety checks flag all ASRA contraindicated drugs during active LAST.
+    from anasim.core.clinical_actions import check_drug_administration
+
+    assert ctrl.toxicity.active or vaso.toxicity.active
+    for key, amt, code in (
+        ("vaso", 40.0, "vasopressin_in_last"),
+        ("esmolol", 30.0, "beta_blocker_in_last"),
+        ("labetalol", 10.0, "beta_blocker_in_last"),
+        ("lidocaine", 100.0, "lidocaine_in_last"),
+        ("flumazenil", 0.2, "flumazenil_in_last"),
+        ("epi", 1000.0, "high_dose_epi_in_last"),
+        ("propofol", 100.0, "propofol_in_last_cv"),
+    ):
+        fb = check_drug_administration(vaso, key, amount=amt)
+        assert fb is not None and fb.code == code
+    # Small <= 1 mcg/kg epinephrine bolus is permitted without high-dose warning.
+    assert check_drug_administration(vaso, "epi", amount=50.0) is None
+
+
+def test_epidural_intravascular_injection_and_epinephrine_test_dose(engine_factory, advance_time):
+    """Accidental intravascular epidural bolus causes bupivacaine LAST and immediate epi test-dose tachycardia."""
+    eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=3), start=True)
+    hr0 = eng.state.hr
+    eng.give_epidural_bolus(
+        drug="bupivacaine", volume_ml=3.0, concentration_pct=0.5,
+        with_epinephrine=True, accidental_intravascular=True,
+    )
+    advance_time(eng, 45.0, dt=1.0)
+    assert eng.state.hr > hr0 + 12.0  # 15 mcg IV epi positive test dose
+    assert eng.neuraxial.sensory_level == 0.0  # No neuraxial block from IV injection
+    assert eng.state.bupivacaine_ce > 0.5
+
+
+def test_naloxone_reversal_renarcotization_and_opioid_rigidity(engine_factory, advance_time):
+    """Naloxone reverses opioid apnea with withdrawal surge and renarcotization; high-dose fentanyl causes rigidity."""
+    from anasim.core.clinical_actions import check_intubation
+
+    # 1. Morphine respiratory depression -> naloxone reverses -> renarcotization as short-lived naloxone clears.
+    eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=2), start=True)
+    eng.set_airway_mode("Mask")
+    eng.set_fgf(10.0, 0.0, 0.0)
+    eng.give_drug_bolus("morphine", 40.0)
+    advance_time(eng, 900.0, dt=1.0)
+    rr_depressed = eng.state.rr
+    paco2_depressed = eng.state.pa_co2
+    assert rr_depressed < 6.0 and paco2_depressed > 52.0
+
+    hr_pre = eng.state.hr
+    eng.give_drug_bolus("naloxone", 0.4)
+    advance_time(eng, 180.0, dt=1.0)
+    assert eng.state.rr > rr_depressed + 4.0
+    assert eng.state.hr > hr_pre + 5.0  # Acute sympathetic reversal surge
+    rr_reversed = eng.state.rr
+
+    # Wait 75 min: naloxone clears faster than morphine -> renarcotization.
+    advance_time(eng, 4500.0, dt=2.0)
+    assert eng.state.naloxone_ce < 0.45
+    assert eng.state.rr < rr_reversed - 2.0
+
+    # 2. Rapid high-dose fentanyl bolus triggers chest-wall & glottic rigidity; rocuronium or naloxone relieves it.
+    rig = engine_factory(config=SimulationConfig(mode="awake", rng_seed=5), start=True)
+    rig.set_airway_mode("Mask")
+    rig.set_fgf(10.0, 0.0, 0.0)
+    rig.give_drug_bolus("fentanyl", 750.0)
+    advance_time(rig, 120.0, dt=1.0)
+    assert rig.state.opioid_rigidity > 0.55
+    assert rig.state.muscle_rigidity is True
+    assert rig.opioid_toxicity.glottic_obstruction > 0.50
+    fb = check_intubation(rig)
+    assert fb is not None and fb.blocked and fb.code == "opioid_rigidity_blocked"
+
+    rig_nal = copy.deepcopy(rig)
+    rig.give_drug_bolus("roc", 70.0)
+    advance_time(rig, 90.0, dt=1.0)
+    assert rig.state.opioid_rigidity < 0.15
+    assert rig.opioid_toxicity.glottic_obstruction < 0.15
+
+    rig_nal.give_drug_bolus("naloxone", 0.8)
+    advance_time(rig_nal, 120.0, dt=1.0)
+    assert rig_nal.state.opioid_rigidity < 0.15
+
+
+def test_flumazenil_reverses_midazolam_resedates_and_unmasks_last_seizures(engine_factory, advance_time):
+    """Flumazenil rapidly reverses midazolam hypnosis, permits resedation, and unmasks LAST convulsions."""
+    eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
+    eng.set_airway_mode("Mask")
+    eng.set_fgf(10.0, 0.0, 0.0)
+    # Sustained midazolam loading (bolus + 60-min infusion) saturates peripheral compartments,
+    # creating clinically realistic post-flumazenil resedation risk (Klotz and Kanto 1988).
+    eng.give_drug_bolus("midazolam", 15.0)
+    eng.set_drug_rate("midazolam", 60.0)
+    advance_time(eng, 3600.0, dt=2.0)
+    eng.set_drug_rate("midazolam", 0.0)
+    loc_sedated = eng.state.loc
+    bis_sedated = eng.state.bis
+    assert loc_sedated > 0.65 and bis_sedated < 75.0
+
+    eng.give_drug_bolus("flumazenil", 0.2)
+    advance_time(eng, 120.0, dt=1.0)
+    loc_reversed = eng.state.loc
+    bis_reversed = eng.state.bis
+    assert loc_reversed < 0.25 and bis_reversed > bis_sedated + 12.0
+
+    # Resedation: short-lived flumazenil (t1/2 ~53 min) clears faster than loaded midazolam over 90 min.
+    advance_time(eng, 5400.0, dt=2.0)
+    assert eng.state.flumazenil_ce < 1.0
+    assert eng.state.loc > loc_reversed + 0.08
+    assert eng.state.bis < bis_reversed - 1.5
+
+    # Flumazenil unmasks midazolam-suppressed LAST convulsions.
+    last_eng = _ventilated(engine_factory)
+    last_eng.give_drug_bolus("lidocaine", 300.0)
+    advance_time(last_eng, 45.0, dt=1.0)
+    assert last_eng.state.convulsions
+    last_eng.give_drug_bolus("midazolam", 8.0)
+    advance_time(last_eng, 60.0, dt=1.0)
+    assert not last_eng.state.convulsions
+    last_eng.give_drug_bolus("flumazenil", 1.0)
+    advance_time(last_eng, 45.0, dt=1.0)
+    assert last_eng.state.convulsions and last_eng.state.seizure_activity > 0.5
+
+
+def test_hypermagnesemia_nmba_potentiation_paralysis_ecg_calcium_and_renal_accumulation(engine_factory, advance_time):
+    """MgSO4 potentiates rocuronium, causes presynaptic paralysis & conduction block antagonized by CaCl2, and accumulates in renal failure."""
+    from anasim.core.clinical_actions import check_drug_administration
+
+    # 1. Renal failure slows MgSO4 clearance and triggers clinical warning.
+    norm = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, renal_function=1.0)
+    ckd = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, renal_function=0.2)
+    fb = check_drug_administration(ckd, "magnesium_sulfate", amount=4.0)
+    assert fb is not None and fb.code == "magnesium_in_renal_impairment"
+    ph0 = norm.state.ph
+    for eng in (norm, ckd):
+        eng.give_magnesium_sulfate(4.0)
+        advance_time(eng, 3600.0, dt=2.0)
+    assert ckd.state.magnesium > norm.state.magnesium + 0.15
+    assert abs(norm.state.ph - ph0) < 0.02  # Electroneutral MgSO4 does not perturb SID/pH
+
+    # 2. Therapeutic Mg2+ potentiates rocuronium blockade.
+    no_mg = _ventilated(engine_factory)
+    with_mg = _ventilated(engine_factory)
+    with_mg.give_magnesium_sulfate(4.0)
+    advance_time(with_mg, 180.0, dt=1.0)
+    advance_time(no_mg, 180.0, dt=1.0)
+    assert with_mg.state.magnesium > 1.5
+    no_mg.give_drug_bolus("roc", 20.0)
+    with_mg.give_drug_bolus("roc", 20.0)
+    advance_time(no_mg, 180.0, dt=1.0)
+    advance_time(with_mg, 180.0, dt=1.0)
+    assert with_mg.state.tof < no_mg.state.tof - 10.0
+
+    # 3. Severe hypermagnesemia causes respiratory paralysis, hypotension, and wide-complex block relieved by CaCl2.
+    tox = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    tox.give_magnesium_sulfate(24.0)
+    advance_time(tox, 240.0, dt=1.0)
+    assert tox.state.magnesium > 6.5
+    assert tox.state.twitch < 40.0
+    assert tox.hemo.magnesium_block > 0.15
+    abg = tox.draw_blood_gas()
+    assert abg.magnesium == pytest.approx(tox.state.magnesium, abs=0.15)
+    block_pre = tox.hemo.magnesium_block
+    twitch_pre = tox.state.twitch
+    tox.give_calcium_chloride(2000.0)
+    advance_time(tox, 90.0, dt=1.0)
+    assert tox.hemo.magnesium_block < block_pre
+    assert tox.state.twitch > twitch_pre
+
+
+def test_methemoglobinemia_spo2_gap_and_methylene_blue_rescue_and_ceiling(engine_factory, advance_time):
+    """Benzocaine MetHb lowers ABG fractional SaO2 while SpO2 plateaus near 85%; methylene blue rescues up to 7 mg/kg."""
+    from anasim.core.clinical_actions import check_drug_administration
+
+    eng = _ventilated(engine_factory)
+    advance_time(eng, 180.0, dt=1.0)
+    assert eng.state.pao2 > 400.0 and eng.state.spo2 > 98.0
+
+    eng.trigger_methemoglobinemia("benzocaine", severity=1.1)
+    advance_time(eng, 1200.0, dt=2.0)
+    assert 25.0 < eng.state.methb_pct < 50.0
+    assert eng.state.pao2 > 350.0  # PaO2 remains high on 100% O2
+    # Fractional SaO2 drops roughly linearly with MetHb while 2-wavelength SpO2 plateaus near ~85%.
+    assert eng.state.sao2 < 75.0
+    assert 82.0 <= eng.state.spo2 <= 89.0
+    abg = eng.draw_blood_gas()
+    assert abg.methb_pct == pytest.approx(eng.state.methb_pct, abs=0.5)
+    assert abg.sao2 < 75.0 and abg.pao2 > 350.0
+
+    # Methylene blue 1.5 mg/kg causes brief optical SpO2 dip, then clears MetHb substantially over 60 min.
+    spo2_pre = eng.state.spo2
+    methb_pre = eng.state.methb_pct
+    eng.give_drug_bolus("methylene_blue", 1.5 * eng.patient.weight)
+    advance_time(eng, 15.0, dt=1.0)
+    assert eng.state.spo2 < spo2_pre - 1.5
+    advance_time(eng, 3600.0, dt=2.0)
+    assert eng.state.methb_pct < methb_pre * 0.45
+    assert eng.state.sao2 > 85.0
+
+    # Exceeding 7 mg/kg cumulative methylene blue triggers safety warning.
+    fb = check_drug_administration(eng, "methylene_blue", amount=6.0 * eng.patient.weight)
+    assert fb is not None and fb.code == "methylene_blue_max_dose"

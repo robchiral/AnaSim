@@ -29,7 +29,7 @@ from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.ecg import displayed_rhythm, st_analyzable_scale
 from anasim.patient import domain
 from anasim.patient.patient import Patient
-from anasim.physiology.coagulation import ACTResult
+from anasim.physiology.coagulation import ACTResult, CoagPanelResult
 from anasim.physiology.disturbances import list_disturbance_profiles
 from anasim.physiology.glucose import GlucoseResult
 from anasim.physiology.resuscitation import SHOCK_ENERGY_J, ShockResult
@@ -84,6 +84,9 @@ FLUIDS = {
     "d10w": ("give_d10w", "10% dextrose (D10W)"),
     "d50w": ("give_d50w", "50% dextrose (D50W)"),
     "blood": ("give_blood", "PRBC"),
+    "ffp": ("give_ffp", "FFP"),
+    "platelets": ("give_platelets", "platelets"),
+    "cryoprecipitate": ("give_cryoprecipitate", "cryoprecipitate"),
     "lipid": ("give_lipid_emulsion", "20% lipid emulsion over 2.5 min"),
 }
 
@@ -92,9 +95,10 @@ SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 EVENT_COMMANDS = frozenset({
     "hemorrhage", "anaphylaxis", "sepsis", "malignant_hyperthermia", "protamine_reaction",
     "difficult_airway", "esophageal_intubation", "pneumothorax", "pneumoperitoneum", "pulmonary_embolism",
-    "venous_air_embolism", "high_spinal", "neuraxial_clear",
+    "venous_air_embolism", "high_spinal", "neuraxial_clear", "last_crisis", "methemoglobinemia",
     "stop_events", "rhythm", "obstruction",
-    "bronchospasm", "auto_laryngospasm", "ards_shunt", "disturbance", "disturbance_profile", "oxygen_supply",
+    "bronchospasm", "auto_laryngospasm", "ards_shunt", "disturbance", "disturbance_profile",
+    "oxygen_supply", "gas_pipeline",
 })
 # Commands still accepted after a case ends.
 ENDED_CASE_COMMANDS = frozenset({"csht", "dismiss_feedback", "case_finish"})
@@ -145,6 +149,7 @@ def _blood_gas(result: BloodGasResult) -> dict:
         "lactate": _num(result.lactate, 2), "sao2": _num(result.sao2, 2), "hb": _num(result.hb, 2),
         "sodium": _num(result.sodium, 1), "potassium": _num(result.potassium, 2),
         "chloride": _num(result.chloride, 1), "ionized_calcium": _num(result.ionized_calcium, 2),
+        "magnesium": _num(result.magnesium, 2), "methb_pct": _num(result.methb_pct, 1),
         "glucose": _num(result.glucose, 0),
         "fio2": _num(result.fio2, 3), "site": result.site,
     }
@@ -155,6 +160,17 @@ def _act(result: ACTResult) -> dict:
         "drawn_at": _num(result.drawn_at, 3),
         "ready_at": _num(result.ready_at, 3),
         "act_s": _num(result.act_s, 0),
+    }
+
+
+def _coag_panel(result: CoagPanelResult) -> dict:
+    return {
+        "drawn_at": _num(result.drawn_at, 3),
+        "ready_at": _num(result.ready_at, 3),
+        "fibrinogen_g_l": _num(result.fibrinogen_g_l, 2),
+        "platelets_10e9_l": _num(result.platelets_10e9_l, 0),
+        "inr": _num(result.inr, 2),
+        "factor_activity_pct": _num(result.factor_activity_pct, 0),
     }
 
 
@@ -184,6 +200,8 @@ _DRUG_RATE_LIMITS: dict[str, float] = {
     "heparin": 10000.0,
     "protamine": 100.0,
     "insulin": 50.0,
+    "naloxone": 5.0,
+    "flumazenil": 2.0,
 }
 _UNIT_RATE_LIMITS: dict[str, float] = {
     "U/min": 1.0,
@@ -332,10 +350,12 @@ class WebSession:
                     "target_label": _target_label(spec) if engine.config.tci_enabled and spec.has_tci else None,
                 }
                 for spec in engine.get_controllable_drugs()
+                if spec.show_in_ui
             ],
             "medication_history": list(self._medication_history),
             "blood_gases": [_blood_gas(result) for result in engine.blood_gases],
             "acts": [_act(result) for result in engine.acts],
+            "coag_panels": [_coag_panel(result) for result in engine.coag_panels],
             "glucoses": [_glucose(result) for result in engine.glucoses],
             "trends": list(self._trend_history),
             "nmb_history": engine.nmb.trend_history(),
@@ -540,6 +560,7 @@ class WebSession:
             engine.hemo.coronary.energy_failure,
             engine.toxicity.conduction_block,
             engine.hemo.hyperkalemia_block,
+            engine.hemo.magnesium_block,
         )
         return {
             "hr": None if engine.hemo.state.rhythm_type == RhythmType.VFIB else _num(s.display_hr, 1),
@@ -767,21 +788,69 @@ class WebSession:
             "surface_cooling": engine.state.surface_cooling,
             "dantrolene_total_mg": engine.actions.total(ACTION_DRUG_BOLUS, "dantrolene"),
             "lipid": {"rate": engine.lipid_infusion_ml_min, "total_ml": engine.toxicity.total_lipid_ml},
+            "magnesium": {
+                "rate": engine.magnesium_infusion_g_hr,
+                "total_g": engine.actions.total(ACTION_DRUG_BOLUS, "magnesium_sulfate"),
+                "serum_mmol_l": _num(engine.state.magnesium, 2),
+            },
             "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
             "o2_connected": circuit.oxygen_supply_connected,
+            "gas_supply": {
+                "o2_pipeline": circuit.gas_supply.o2.pipeline_connected,
+                "o2_pipeline_psig": _num(circuit.gas_supply.o2.effective_pipeline_psig, 0),
+                "o2_cylinder_open": circuit.gas_supply.o2.cylinder_valve_open,
+                "o2_cylinder_psig": _num(circuit.gas_supply.o2.cylinder_pressure_psig, 0),
+                "o2_cylinder_l": _num(circuit.gas_supply.o2.cylinder_volume_l, 0),
+                "o2_source": circuit.gas_supply.o2.active_source,
+                "air_pipeline": circuit.gas_supply.air.pipeline_connected,
+                "air_pipeline_psig": _num(circuit.gas_supply.air.effective_pipeline_psig, 0),
+                "air_cylinder_open": circuit.gas_supply.air.cylinder_valve_open,
+                "air_cylinder_psig": _num(circuit.gas_supply.air.cylinder_pressure_psig, 0),
+                "air_cylinder_l": _num(circuit.gas_supply.air.cylinder_volume_l, 0),
+                "n2o_pipeline": circuit.gas_supply.n2o.pipeline_connected,
+                "n2o_pipeline_psig": _num(circuit.gas_supply.n2o.effective_pipeline_psig, 0),
+                "n2o_cylinder_open": circuit.gas_supply.n2o.cylinder_valve_open,
+                "n2o_cylinder_psig": _num(circuit.gas_supply.n2o.cylinder_pressure_psig, 0),
+                "n2o_cylinder_l": _num(circuit.gas_supply.n2o.cylinder_volume_l, 0),
+                "vent_drive_mode": circuit.gas_supply.drive_gas_mode,
+                "vent_drive_available": circuit.gas_supply.vent_drive_available,
+                "vent_drive_l_min": _num(circuit.gas_supply.last_drive_gas_l_min, 1),
+            },
             "o2_flush": engine._o2_flush_remaining_s > 0.0,
             "circuit_fio2": _num(circuit.composition.fio2, 4),
             "vaporizer": engine.vaporizer.state.setting,
             "vaporizer_level": round(engine.vaporizer.state.level, 1),
             "bag_mask": engine.bag_mask_active,
             "compressions": {"active": engine.hemo.compressions, "since": engine.compressions_started_at},
+            "cpr_quality": {
+                "rate": round(engine.hemo.cpr_rate),
+                "depth_cm": round(engine.hemo.cpr_depth_cm, 1),
+                "recoil": round(engine.hemo.cpr_recoil * 100.0),
+            },
             "defibrillator": {
                 "status": engine.defibrillator.status(engine.state.time),
                 "synchronized": engine.defibrillator.waiting_for_r,
+                "energy_j": round(engine.defibrillator.energy_j),
+                "charge_time_s": _num(engine.defibrillator.charge_time_s(engine.defibrillator.energy_j), 1),
                 "charge_remaining": max(0.0, engine.defibrillator.ready_at - engine.state.time)
                 if engine.defibrillator.ready_at is not None else 0.0,
                 "last_shock": self._shock_receipt(),
+            },
+            "pacemaker": {
+                "mode": engine.pacemaker.mode,
+                "route": engine.pacemaker.route,
+                "rate": round(engine.pacemaker.rate_bpm),
+                "output_ma": _num(engine.pacemaker.output_ma, 1),
+                "capture": bool(engine.state.pacing_capture),
+                "threshold_ma": _num(engine.pacemaker.status.threshold_ma, 1),
+                "inhibited": bool(engine.pacemaker.status.inhibited),
+                "async_competition": bool(engine.pacemaker.status.async_competition),
+            },
+            "hemostasis": {
+                "fibrinogen_g_l": _num(engine.state.fibrinogen_g_l, 2),
+                "platelets_10e9_l": _num(engine.state.platelets_10e9_l, 0),
+                "inr": _num(engine.state.inr, 2),
             },
             "bag": {
                 "rr": round(engine.bag_mask_rr),
@@ -803,7 +872,11 @@ class WebSession:
                 "p_max": round(vent.p_max),
                 "trigger": round(vent.trigger, 1),
             },
-            "drugs": {spec.key: engine._drug_state_for_spec(spec) for spec in engine.get_controllable_drugs()},
+            "drugs": {
+                spec.key: engine._drug_state_for_spec(spec)
+                for spec in engine.get_controllable_drugs()
+                if spec.show_in_ui
+            },
             "maintenance_ml_hr": engine.get_continuous_fluid_rate(),
             "disturbance": {"profile": engine.disturbance_profile, "active": bool(
                 engine.disturbance_active and engine.disturbance_profile
@@ -818,11 +891,23 @@ class WebSession:
             "sepsis": engine.sepsis.active,
             "malignant_hyperthermia": engine.malignant_hyperthermia.active,
             "protamine_reaction": engine.coagulation.reaction_active,
+            "last_crisis": {
+                "active": engine.toxicity.active,
+                "agent": engine.toxicity.dominant_agent,
+            },
+            "methemoglobinemia": {
+                "active": engine.methemoglobin.active,
+                "agent": engine.methemoglobin.trigger_agent,
+                "methb_pct": _num(engine.state.methb_pct, 1),
+            },
             "ecg_rhythm": displayed_rhythm(
                 engine.hemo.state.rhythm_type,
                 engine.hemo.coronary.energy_failure,
                 max(engine.toxicity.conduction_block, engine.hemo.hyperkalemia_block),
                 hr=engine.state.hr,
+                magnesium_block=engine.hemo.magnesium_block,
+                paced_mode=engine.state.pacing_mode,
+                paced_capture=engine.state.pacing_capture,
             ),
             "bair_hugger": engine.state.bair_hugger_target,
             "fluid_warmer": engine.state.fluid_warmer,
@@ -897,6 +982,19 @@ class WebSession:
             "reservoir_ml": _num(st.reservoir_volume_ml, 0),
             "reservoir_low": bool(st.reservoir_low_alarm),
             "pre_so2": _num(st.pre_oxy_so2, 1),
+            "arterial_fr": int(st.arterial_cannula_fr),
+            "venous_fr": int(st.venous_cannula_fr),
+            "arterial_line_pressure": _num(st.arterial_line_pressure_mmhg, 0),
+            "arterial_line_high": bool(st.arterial_line_high_alarm),
+            "cardioplegia_protocol": str(st.cardioplegia_protocol),
+            "cardioplegia_route": str(st.cardioplegia_route),
+            "cardioplegia_active": bool(st.cardioplegia_active_infusion),
+            "cardioplegia_protection": _num(st.cardioplegia_protection * 100.0, 0),
+            "cardioplegia_redose_due_s": _num(st.cardioplegia_redose_due_s, 0),
+            "cardioplegia_breakthrough": bool(st.cardioplegia_breakthrough),
+            "cs_pressure": _num(st.coronary_sinus_pressure_mmhg, 0),
+            "cs_high": bool(st.coronary_sinus_high_alarm),
+            "myocardial_temp_c": _num(st.myocardial_temp_c, 1),
         }
 
     # --- Scenario -------------------------------------------------------
@@ -1146,6 +1244,18 @@ class WebSession:
     def _cmd_oxygen_supply(self, connected: bool):
         self.engine.set_oxygen_supply_connected(connected)
 
+    def _cmd_gas_pipeline(self, gas: str, connected: bool, pressure_psig: float | None = None):
+        self.engine.set_pipeline_connected(gas, bool(connected), pressure_psig=pressure_psig)
+
+    def _cmd_gas_cylinder(self, gas: str, valve_open: bool | None = None, replace: bool = False):
+        if replace:
+            self.engine.replace_cylinder(gas)
+        if valve_open is not None:
+            self.engine.set_cylinder_valve(gas, bool(valve_open))
+
+    def _cmd_vent_drive(self, mode: str):
+        self.engine.set_ventilator_drive_gas(mode)
+
     def _cmd_vaporizer(self, percent: float):
         self.engine.set_vaporizer(percent)
 
@@ -1232,7 +1342,7 @@ class WebSession:
         amount = domain.bounded_number("bolus amount", amount, 0.0, spec.max_bolus)
         if amount <= 0:
             raise ValueError("Bolus amount must be positive and finite")
-        feedback = check_drug_administration(self.engine, spec.key)
+        feedback = check_drug_administration(self.engine, spec.key, amount=amount)
         self.engine.give_drug_bolus(key, amount)
         return self._clinical_result(
             feedback, self._medication_receipt(spec.key, f"{spec.generic_name} {amount:g} {spec.bolus_unit} given"),
@@ -1268,6 +1378,25 @@ class WebSession:
             self._medication_receipt("sodium_bicarbonate", f"Sodium bicarbonate {dose:g} mEq given"),
         )
 
+    def _cmd_magnesium_sulfate(self, grams: float):
+        dose = domain.bounded_number("magnesium sulfate dose", grams, 0.0, 30.0, unit="g")
+        if dose <= 0:
+            raise ValueError("Magnesium sulfate dose must be positive and finite")
+        feedback = check_drug_administration(self.engine, "magnesium_sulfate", amount=dose)
+        self.engine.give_magnesium_sulfate(dose)
+        return self._clinical_result(
+            feedback,
+            self._medication_receipt("magnesium_sulfate", f"Magnesium sulfate {dose:g} g given"),
+        )
+
+    def _cmd_magnesium_rate(self, g_hr: float):
+        previous = self.engine.magnesium_infusion_g_hr
+        self.engine.set_magnesium_infusion(g_hr)
+        applied = self.engine.magnesium_infusion_g_hr
+        feedback = check_drug_administration(self.engine, "magnesium_sulfate") if applied > previous else None
+        text = f"Magnesium sulfate infusion {applied:g} g/hr" if applied > 0 else "Magnesium sulfate infusion stopped"
+        return self._clinical_result(feedback, self._medication_receipt("magnesium_sulfate", text))
+
     def _medication_receipt(self, key: str, text: str) -> dict:
         """Acknowledge a completed action and retain it across local page reloads."""
         self._medication_sequence += 1
@@ -1275,7 +1404,7 @@ class WebSession:
         self._medication_history.append(entry)
         return {"medication": entry}
 
-    def _cmd_fluid(self, kind: str, volume_ml: float):
+    def _cmd_fluid(self, kind: str, volume_ml: float, storage_days: float | None = None):
         if kind not in FLUIDS:
             raise ValueError(f"Unknown fluid: {kind!r}")
         max_volumes = {"d50w": 500.0, "d10w": 2000.0, "lipid": 3000.0}
@@ -1284,13 +1413,17 @@ class WebSession:
         if volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
         method, label = FLUIDS[kind]
-        getattr(self.engine, method)(volume)
-        if kind == "d50w":
-            text = f"{volume:g} mL 50% dextrose (D50W, {volume * 0.5:g} g) started"
-        elif kind == "d10w":
-            text = f"{volume:g} mL 10% dextrose (D10W, {volume * 0.1:g} g) started"
+        if kind == "blood" and storage_days is not None:
+            self.engine.give_blood(volume, storage_days=storage_days)
+            text = f"{volume:g} mL {label} ({storage_days:g} d) started"
         else:
-            text = f"{volume:g} mL {label} started"
+            getattr(self.engine, method)(volume)
+            if kind == "d50w":
+                text = f"{volume:g} mL 50% dextrose (D50W, {volume * 0.5:g} g) started"
+            elif kind == "d10w":
+                text = f"{volume:g} mL 10% dextrose (D10W, {volume * 0.1:g} g) started"
+            else:
+                text = f"{volume:g} mL {label} started"
         receipt = {"time": self.engine.state.time, "text": text}
         if kind in ("lipid", "d50w", "d10w"):
             return self._clinical_result(None, {"fluid": receipt, **self._medication_receipt(kind, text)})
@@ -1305,8 +1438,34 @@ class WebSession:
     def _cmd_compressions(self, active: bool):
         self.engine.set_chest_compressions(bool(active))
 
-    def _cmd_charge_defibrillator(self):
-        self.engine.charge_defibrillator()
+    def _cmd_cpr_quality(
+        self,
+        rate: float | None = None,
+        depth_cm: float | None = None,
+        recoil_percent: float | None = None,
+        recoil: float | None = None,
+    ):
+        rec = (
+            domain.bounded_number("CPR recoil", recoil_percent, 0.0, 100.0, unit="%") / 100.0
+            if recoil_percent is not None
+            else recoil
+        )
+        self.engine.set_cpr_quality(rate=rate, depth_cm=depth_cm, recoil=rec)
+
+    def _cmd_pacing(
+        self,
+        mode: str | None = None,
+        route: str | None = None,
+        rate_bpm: float | None = None,
+        output_ma: float | None = None,
+    ):
+        self.engine.set_pacing(mode=mode, route=route, rate_bpm=rate_bpm, output_ma=output_ma)
+
+    def _cmd_defib_energy(self, energy_j: float):
+        self.engine.set_defibrillator_energy(energy_j)
+
+    def _cmd_charge_defibrillator(self, energy_j: float | None = None):
+        self.engine.charge_defibrillator(energy_j=energy_j)
 
     def _cmd_disarm_defibrillator(self):
         self.engine.disarm_defibrillator()
@@ -1317,7 +1476,8 @@ class WebSession:
             return None
         time, synchronized = event
         kind = "Synchronized shock" if synchronized else "Shock"
-        return {"time": time, "text": f"{kind} {SHOCK_ENERGY_J:g} J delivered"}
+        energy = self.engine.defibrillator.last_shock_energy_j or SHOCK_ENERGY_J
+        return {"time": time, "text": f"{kind} {energy:g} J delivered"}
 
     def _observe_shock(self) -> dict:
         event = self.engine.defibrillator.last_shock
@@ -1366,7 +1526,10 @@ class WebSession:
         self.engine.set_ards_shunt(domain.bounded_number("ARDS shunt", percent, 0.0, 90.0, unit="%") / 100.0)
 
     def _cmd_extracorporeal_start(self, mode: str, **kwargs):
-        common = {"blood_flow", "sweep_gas", "sweep_fio2", "fio2_percent", "membrane_type", "prime_volume_ml", "heater_cooler_on", "water_target_c"}
+        common = {
+            "blood_flow", "sweep_gas", "sweep_fio2", "fio2_percent", "membrane_type",
+            "prime_volume_ml", "heater_cooler_on", "water_target_c", "arterial_fr", "venous_fr",
+        }
         mode_specs = {
             "vv_ecmo": ("VV ECMO", common | {"cannulation"}),
             "va_ecmo": ("VA ECMO", common | {"cannulation", "lv_vent", "bypass_alarm_mode"}),
@@ -1386,6 +1549,8 @@ class WebSession:
             "sweep_gas": "sweep_gas_l_min",
             "lv_vent": "lv_vent_l_min",
             "sweep_sevo": "sweep_sevo_percent",
+            "arterial_fr": "arterial_cannula_fr",
+            "venous_fr": "venous_cannula_fr",
         }
         opts: dict = {}
         for key, value in kwargs.items():
@@ -1416,11 +1581,16 @@ class WebSession:
         allowed = {
             "blood_flow", "sweep_gas", "sweep_fio2", "fio2_percent", "sweep_fco2", "sweep_sevo",
             "heater_cooler_on", "water_target_c", "venous_clamp", "cross_clamp", "cardioplegia",
-            "lv_vent", "blood_gas_strategy", "bypass_alarm_mode",
+            "lv_vent", "blood_gas_strategy", "bypass_alarm_mode", "arterial_fr", "venous_fr",
         }
         unknown = set(fields) - allowed
         if unknown:
             raise ValueError(f"Unknown extracorporeal setting(s): {', '.join(sorted(unknown))}")
+        if "arterial_fr" in fields or "venous_fr" in fields:
+            self.engine.set_ecmo_cannulas(
+                arterial_fr=fields.get("arterial_fr"),
+                venous_fr=fields.get("venous_fr"),
+            )
         if "blood_flow" in fields:
             self.engine.set_ecmo_flow(fields["blood_flow"])
         if "sweep_gas" in fields:
@@ -1453,6 +1623,28 @@ class WebSession:
             self.engine.set_cpb_blood_gas_strategy(fields["blood_gas_strategy"])
         if "bypass_alarm_mode" in fields:
             self.engine.set_bypass_alarm_mode(bool(fields["bypass_alarm_mode"]))
+
+    def _cmd_cardioplegia_dose(
+        self,
+        protocol: str = "buckberg",
+        route: str = "antegrade",
+        phase: str = "induction",
+        volume_ml: float | None = None,
+        flow_ml_min: float | None = None,
+    ):
+        self.engine.give_cardioplegia(
+            protocol,
+            route=route,
+            phase=phase,
+            volume_ml=volume_ml,
+            flow_ml_min=flow_ml_min,
+        )
+        proto_label = "del Nido" if str(protocol).strip().lower() == "del_nido" else "Buckberg"
+        text = f"{proto_label} {phase} ({route}) cardioplegia started"
+        return {"fluid": {"time": self.engine.state.time, "text": text}}
+
+    def _cmd_cardioplegia_stop(self):
+        self.engine.stop_cardioplegia()
 
     def _cmd_cpb_reservoir_fluid(self, volume_ml: float, kind: str = "crystalloid"):
         if kind not in {"crystalloid", "saline", "albumin", "colloid", "blood"}:
@@ -1537,6 +1729,22 @@ class WebSession:
         else:
             self.engine.stop_neuraxial()
 
+    def _cmd_last_crisis(
+        self, active: bool = True, drug: str = "bupivacaine", dose_mg: float | None = None,
+    ):
+        if active:
+            self.engine.trigger_last_crisis(drug=drug, dose_mg=dose_mg)
+        else:
+            self.engine.stop_last_crisis()
+
+    def _cmd_methemoglobinemia(
+        self, active: bool = True, agent: str = "benzocaine", severity: float = 1.0,
+    ):
+        if active:
+            self.engine.trigger_methemoglobinemia(agent=agent, severity=severity)
+        else:
+            self.engine.stop_methemoglobinemia()
+
     def _cmd_surface_cooling(self, on: bool):
         self.engine.set_surface_cooling(on)
 
@@ -1602,6 +1810,9 @@ class WebSession:
 
     def _cmd_act(self):
         return {"act": _act(self.engine.measure_act())}
+
+    def _cmd_coag_panel(self):
+        return {"coag_panel": _coag_panel(self.engine.measure_coag_panel())}
 
     def _cmd_glucose(self):
         return {"glucose": _glucose(self.engine.measure_glucose())}

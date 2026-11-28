@@ -11,6 +11,7 @@ from anasim.patient.patient import Patient
 from anasim.patient.pk_models import (
     AmiodaronePK,
     AtropinePK,
+    BupivacainePK,
     DantrolenePK,
     DobutaminePK,
     EphedrinePK,
@@ -18,6 +19,7 @@ from anasim.patient.pk_models import (
     EsmololPK,
     EtomidatePK,
     FentanylPK,
+    FlumazenilPK,
     GlycopyrrolatePK,
     HeparinPK,
     HydromorphonePK,
@@ -26,9 +28,11 @@ from anasim.patient.pk_models import (
     LabetalolPK,
     LidocainePK,
     MammillaryPK,
+    MethyleneBluePK,
     MidazolamPK,
     MilrinonePK,
     MorphinePK,
+    NaloxonePK,
     NeostigminePK,
     NorepinephrinePK,
     PhenylephrinePK,
@@ -36,6 +40,7 @@ from anasim.patient.pk_models import (
     ProtaminePK,
     RemifentanilPKEleveld,
     RocuroniumPK,
+    RopivacainePK,
     SuccinylcholinePK,
     VasopressinPK,
 )
@@ -113,6 +118,7 @@ class DrugSpec:
     max_rate: MaxRatePolicy | None = None
     bolus_per_kg: bool = False  # default_bolus is per kg of body weight
     max_bolus: float = 1000.0
+    show_in_ui: bool = True
 
     def default_bolus_for(self, weight_kg: float) -> float:
         return round(self.default_bolus * weight_kg, 1) if self.bolus_per_kg else self.default_bolus
@@ -282,6 +288,30 @@ DRUG_REGISTRY = (
         ce_field="lidocaine_ce",
         generic_name="Lidocaine",
         max_bolus=2000.0,
+    ),
+    DrugSpec(
+        key="bupivacaine",
+        name="Bupivacaine 5 mg/mL",
+        bolus_unit="mg",
+        default_bolus=25.0,
+        bolus_model_scale=1.0,
+        pk_model=_from_patient(BupivacainePK),
+        ce_field="bupivacaine_ce",
+        generic_name="Bupivacaine",
+        max_bolus=500.0,
+        show_in_ui=False,
+    ),
+    DrugSpec(
+        key="ropivacaine",
+        name="Ropivacaine 5 mg/mL",
+        bolus_unit="mg",
+        default_bolus=25.0,
+        bolus_model_scale=1.0,
+        pk_model=_from_patient(RopivacainePK),
+        ce_field="ropivacaine_ce",
+        generic_name="Ropivacaine",
+        max_bolus=500.0,
+        show_in_ui=False,
     ),
     DrugSpec(
         key="amiodarone",
@@ -504,6 +534,44 @@ DRUG_REGISTRY = (
         default_bolus=5.0,
         bolus_model_scale=1000.0,
         max_bolus=100.0,
+    ),
+    DrugSpec(
+        key="naloxone",
+        name="Naloxone 0.4 mg/mL",
+        generic_name="Naloxone",
+        pk_model=_from_patient(NaloxonePK),
+        rate_unit="mg/hr",
+        internal_rate_unit="ug/sec",
+        bolus_unit="mg",
+        default_bolus=0.4,
+        bolus_model_scale=1000.0,
+        ce_field="naloxone_ce",
+        max_bolus=10.0,
+    ),
+    DrugSpec(
+        key="flumazenil",
+        name="Flumazenil 0.1 mg/mL",
+        generic_name="Flumazenil",
+        pk_model=_from_patient(FlumazenilPK),
+        rate_unit="mg/hr",
+        internal_rate_unit="ug/sec",
+        bolus_unit="mg",
+        default_bolus=0.2,
+        bolus_model_scale=1000.0,
+        ce_field="flumazenil_ce",
+        max_bolus=5.0,
+    ),
+    DrugSpec(
+        key="methylene_blue",
+        name="Methylene blue 10 mg/mL",
+        generic_name="Methylene blue",
+        pk_model=_from_patient(MethyleneBluePK),
+        bolus_unit="mg",
+        default_bolus=1.5,
+        bolus_per_kg=True,
+        bolus_model_scale=1.0,
+        ce_field="methylene_blue_ce",
+        max_bolus=700.0,
     ),
 )
 

@@ -1121,3 +1121,63 @@ def test_mechanics_thermoregulation_monitor_parity_and_validation_invariants(eng
         DataRecorder(output_dir=".", sample_interval_sec=float("nan"))
     with pytest.raises(ValueError):
         DataRecorder(output_dir=".", sample_interval_sec=-1.0)
+
+
+def test_extended_toxicity_reversals_magnesium_and_methb_invariants(engine_factory, advance_time):
+    """Verify zero-flow arrest isolation, step-size invariance, mass/electroneutrality conservation,
+    and clean stop_events teardown across bupivacaine LAST, MgSO4, opioid rigidity, and methemoglobinemia."""
+    from anasim.patient.pk_models import BupivacainePK
+    from anasim.physiology.methemoglobin import MethemoglobinModel
+
+    # 1. Zero-flow arrest halts epidural LA absorption and MetHb oxidizer conversion/dye clearance.
+    p = Patient()
+    b_pk = BupivacainePK(p)
+    b_pk.add_epidural_dose(100.0)
+    b_pk.circulation = 0.0
+    b_pk.step(120.0, 0.0)
+    assert b_pk.state.c1 == 0.0 and b_pk.epidural_depot_mg == pytest.approx(94.0, abs=0.5)
+
+    mh_m = MethemoglobinModel(70.0)
+    mh_m.trigger("benzocaine", severity=1.0)
+    mh_m.record_methylene_blue_dose(105.0)
+    dip0 = mh_m.mb_optical_dip
+    ox0 = mh_m.oxidizer_load
+    mh_m.step(120.0, methylene_blue_ce=1.0, circulation=0.0)
+    assert mh_m.oxidizer_load == pytest.approx(ox0)
+    assert mh_m.mb_optical_dip == pytest.approx(dip0)
+
+    # 2. Step-size invariance (dt=0.2 vs dt=2.0) for bupivacaine LAST + lipid rescue + MgSO4 + MetHb.
+    results = []
+    for dt in (0.2, 2.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=dt, rng_seed=13, maintenance_fluid_ml_hr=0.0),
+            start=True,
+        )
+        eng.set_airway_mode("ETT")
+        eng.set_fgf(10.0, 0.0, 0.0)
+        eng.set_vent_power(True)
+        eng.trigger_last_crisis("bupivacaine", 80.0)
+        eng.give_magnesium_sulfate(4.0)
+        eng.trigger_methemoglobinemia("benzocaine", severity=0.8)
+        advance_time(eng, 60.0, dt=dt)
+        eng.give_drug_bolus("midazolam", 5.0)
+        eng.give_lipid_emulsion(100.0)
+        eng.set_lipid_infusion(15.0)
+        eng.give_drug_bolus("methylene_blue", 105.0)
+        advance_time(eng, 180.0, dt=dt)
+        results.append(eng)
+
+    fine, coarse = results
+    assert abs(coarse.state.bupivacaine_ce - fine.state.bupivacaine_ce) < 0.25
+    assert abs(coarse.toxicity.conduction_block - fine.toxicity.conduction_block) < 0.06
+    assert abs(coarse.state.magnesium - fine.state.magnesium) < 0.05
+    assert abs(coarse.state.methb_pct - fine.state.methb_pct) < 0.8
+
+    # 3. stop_events clears LAST, methemoglobinemia, opioid rigidity, and magnesium infusion cleanly.
+    coarse.give_drug_bolus("fentanyl", 700.0)
+    coarse.set_magnesium_infusion(2.0)
+    advance_time(coarse, 30.0, dt=1.0)
+    coarse.stop_events()
+    assert not coarse.toxicity.active and coarse.state.bupivacaine_ce == 0.0
+    assert not coarse.methemoglobin.active and coarse.state.methb_pct == 0.0
+    assert coarse.state.opioid_rigidity == 0.0 and coarse.magnesium_infusion_g_hr == 0.0

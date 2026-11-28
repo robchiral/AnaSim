@@ -191,15 +191,15 @@ def require_fgf_set_for_preox(engine) -> tuple[bool, str]:
 
 
 def require_preoxygenation(engine) -> tuple[bool, str]:
-    """Require oxygen by mask until the gas monitor shows end-tidal O₂ ≥ 90%."""
+    """Require oxygen by mask until the gas monitor shows end-tidal O₂ ≥ 85%."""
     flow_ok, message = _fgf_preox_state(engine, min_o2=6.0)
     if not flow_ok:
         return False, message
     if engine.state.airway_mode != AirwayType.MASK:
         return False, "Apply the facemask"
-    ready = engine.state.etco2_signal_valid and engine.state.et_o2 >= 90.0
-    shown_eto2 = format_unmet_int(engine.state.et_o2, low=90.0)
-    return ready, "" if ready else f"Continue preoxygenation (EtO₂ {shown_eto2}%/90%+)"
+    ready = engine.state.etco2_signal_valid and engine.state.et_o2 >= 85.0
+    shown_eto2 = format_unmet_int(engine.state.et_o2, low=85.0)
+    return ready, "" if ready else f"Continue preoxygenation (EtO₂ {shown_eto2}%/85%+)"
 
 
 def monitor_value(engine, attr: str):

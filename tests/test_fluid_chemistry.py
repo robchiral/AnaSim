@@ -859,3 +859,79 @@ def test_drobin_hemorrhage_retention_ludbrook_citrate_lactic_k_and_lean_mass_sca
     obese = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), weight=200.0, height=185.0)
     assert obese.lactate.volume_l < lean.lactate.volume_l * 2.3
     assert obese.hemo.fluids.citrate_volume_l < lean.hemo.fluids.citrate_volume_l * 2.3
+
+
+def test_prbc_storage_age_and_plasma_blood_product_citrate_loads(engine_factory, advance_time):
+    """Rabcuka 2025 / Bennett-Guerrero 2007: older stored PRBCs (42 d vs 2 d) deliver higher K+
+    and lactate, lower pH/BE, and deplete 2,3-DPG to left-shift hemoglobin P50.
+    Ewalenko 1986 / Dzik & Kirkley 1988: FFP and platelets carry substantially more citrate per mL
+    than SAGM PRBCs and drop ionized calcium deeper at matched infusion volume.
+    """
+    # 1. PRBC storage age comparison: 2 d (fresh) vs 21 d (default) vs 42 d (old)
+    base = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True, weight=70.0, height=170.0, sex="male", baseline_hb=10.5,
+    )
+    outcomes = {}
+    for label, days in (("fresh", 2.0), ("default", None), ("standard", 21.0), ("old", 42.0)):
+        eng = copy.deepcopy(base)
+        eng.blood_infusion_rate_ml_min = 300.0
+        if days is None:
+            eng.give_blood(1200.0)
+        else:
+            eng.give_blood(1200.0, storage_days=days)
+        advance_time(eng, 300.0, dt=2.0)
+        p50_37 = eng.resp._acid_base_p50(7.40, 40.0, at_37=True)
+        outcomes[label] = {
+            "k": eng.state.potassium,
+            "lac": eng.state.lactate,
+            "be": eng.state.base_excess,
+            "dpg": eng.state.rbc_23dpg_fraction,
+            "p50": p50_37,
+        }
+
+    # Default storage age matches 21 days exactly.
+    assert outcomes["default"]["k"] == pytest.approx(outcomes["standard"]["k"], abs=1e-9)
+    assert outcomes["default"]["dpg"] == pytest.approx(outcomes["standard"]["dpg"], abs=1e-9)
+    # 42-day PRBCs deliver more K+ and lactate and lower BE than fresh 2-day PRBCs.
+    assert outcomes["old"]["k"] > outcomes["standard"]["k"] > outcomes["fresh"]["k"] + 0.12
+    assert outcomes["old"]["lac"] > outcomes["standard"]["lac"] > outcomes["fresh"]["lac"] + 0.20
+    assert outcomes["old"]["be"] < outcomes["fresh"]["be"] - 0.5
+    # 2,3-DPG depletion in older PRBCs left-shifts hemoglobin P50 (Bennett-Guerrero 2007).
+    assert outcomes["old"]["dpg"] < outcomes["standard"]["dpg"] < outcomes["fresh"]["dpg"] - 0.15
+    assert outcomes["old"]["p50"] < outcomes["fresh"]["p50"] - 1.0
+
+    # Verify in-vivo 2,3-DPG slowly regenerates toward 1.0 over hours.
+    regen = copy.deepcopy(base)
+    regen.blood_infusion_rate_ml_min = 300.0
+    regen.give_blood(1500.0, storage_days=42.0)
+    advance_time(regen, 360.0, dt=2.0)
+    dpg_post = regen.state.rbc_23dpg_fraction
+    advance_time(regen, 7200.0, dt=10.0)
+    assert regen.state.rbc_23dpg_fraction > dpg_post + 0.03
+
+    # 2. FFP / Platelets vs PRBC vs Cryoprecipitate citrate-induced hypocalcemia
+    # (Ewalenko 1986; Dzik & Kirkley 1988).
+    ica_drop = {}
+    for product, vol in (("blood", 750.0), ("ffp", 750.0), ("platelets", 750.0), ("cryoprecipitate", 100.0)):
+        eng = copy.deepcopy(base)
+        eng.blood_infusion_rate_ml_min = 250.0
+        ica0 = eng.state.ionized_calcium
+        if product == "blood":
+            eng.give_blood(vol)
+        elif product == "ffp":
+            eng.give_ffp(vol)
+        elif product == "platelets":
+            eng.give_platelets(vol)
+        else:
+            eng.give_cryoprecipitate(vol)
+        min_ica = ica0
+        for _ in range(150):
+            eng.step(2.0)
+            min_ica = min(min_ica, eng.state.ionized_calcium)
+        ica_drop[product] = ica0 - min_ica
+
+    assert ica_drop["ffp"] > ica_drop["blood"] * 1.8
+    assert ica_drop["platelets"] > ica_drop["blood"] * 1.8
+    assert ica_drop["ffp"] > 0.15
+    assert ica_drop["cryoprecipitate"] < ica_drop["ffp"] * 0.35

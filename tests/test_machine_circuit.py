@@ -424,3 +424,73 @@ def test_loose_mask_low_va_preserves_inspired_agents_and_equilibrate_oxygen_sums
     fi_sevo, fi_n2o = step_machine(eng, 0.05)
     assert fi_sevo == pytest.approx(0.025, abs=1e-6)
     assert fi_n2o == pytest.approx(0.25, abs=1e-6)
+
+
+def test_gas_supply_regulator_switchover_n2o_vapor_plateau_and_szpisjak_drive_gas(engine_factory, advance_time):
+    """Pipeline > 45 psig keeps an open backup cylinder idle, N2O stays at 745 psig until liquid
+    exhausts (~400 L), Szpisjak 2008 ventilator drive gas drains the O2 E-cylinder faster than
+    manual bagging or Air drive, and strict O2 drive stalls on O2 loss.
+    """
+    from anasim.machine.gas_supply import (
+        N2O_CYLINDER_FULL_PSIG,
+        N2O_LIQUID_EXHAUSTION_L,
+        O2_CYLINDER_CAPACITY_L,
+        GasSupplySystem,
+    )
+
+    gs = GasSupplySystem()
+    # Szpisjak 2008 bench check: RR 10, I:E 1:2 (t_I = 2 s), FGF 1 L/min, VT 500/1000 mL.
+    dg_hc_500 = gs.ventilator_drive_gas_demand_l_min(
+        vent_is_on=True, mode="VCV", rr=10.0, vt_l=0.5, ie_ratio=0.5, t_insp=1.0, pip_cmh2o=6.0, fgf_l_min=1.0,
+    )
+    dg_lc_1000 = gs.ventilator_drive_gas_demand_l_min(
+        vent_is_on=True, mode="VCV", rr=10.0, vt_l=1.0, ie_ratio=0.5, t_insp=1.0, pip_cmh2o=50.0, fgf_l_min=1.0,
+    )
+    assert 4.4 <= dg_hc_500 <= 5.2
+    assert 11.2 <= dg_lc_1000 <= 12.6
+
+    # An open backup E-cylinder stays untouched while wall pipeline (50 psig) > regulator (45 psig).
+    gs.o2.set_cylinder_valve(True)
+    assert gs.o2.active_source == "pipeline"
+    gs.step(60.0, o2_fgf=4.0, o2_flush=0.0, air_fgf=0.0, n2o_fgf=0.0, drive_demand_l_min=6.0)
+    assert gs.o2.cylinder_volume_l == pytest.approx(O2_CYLINDER_CAPACITY_L)
+
+    # Dropping pipeline below 45 psig automatically switches to cylinder and depletes it.
+    gs.o2.set_pipeline_pressure(30.0)
+    assert gs.o2.active_source == "cylinder"
+    gs.step(60.0, o2_fgf=4.0, o2_flush=0.0, air_fgf=0.0, n2o_fgf=0.0, drive_demand_l_min=6.0)
+    assert gs.o2.cylinder_volume_l == pytest.approx(O2_CYLINDER_CAPACITY_L - 10.0)
+
+    # Liquefied N2O holds 745 psig until ~400 L liquid exhaustion, then drops linearly.
+    gs.n2o.set_pipeline(False)
+    gs.n2o.set_cylinder_valve(True)
+    gs.n2o.cylinder_volume_l = 800.0
+    assert gs.n2o.cylinder_pressure_psig == pytest.approx(N2O_CYLINDER_FULL_PSIG)
+    gs.n2o.cylinder_volume_l = 0.5 * N2O_LIQUID_EXHAUSTION_L
+    assert gs.n2o.cylinder_pressure_psig == pytest.approx(0.5 * N2O_CYLINDER_FULL_PSIG)
+
+    # Integrated engine: O2-driven bellows drains E-cylinder much faster than Air-driven or manual bag.
+    vent_o2 = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
+    vent_o2.set_fgf(2.0, 0.0, 0.0)
+    vent_o2.set_pipeline_connected("o2", False)
+    vent_o2.set_cylinder_valve("o2", True)
+    vent_air = copy.deepcopy(vent_o2)
+    vent_air.set_ventilator_drive_gas("air")
+    advance_time(vent_o2, 600.0, dt=1.0)
+    advance_time(vent_air, 600.0, dt=1.0)
+    o2_used_bellows = O2_CYLINDER_CAPACITY_L - vent_o2.state.o2_cylinder_l
+    o2_used_air_drive = O2_CYLINDER_CAPACITY_L - vent_air.state.o2_cylinder_l
+    assert o2_used_air_drive == pytest.approx(20.0, abs=1.0)
+    assert o2_used_bellows > o2_used_air_drive + 45.0
+    assert vent_o2.state.o2_cylinder_psig < vent_air.state.o2_cylinder_psig - 100.0
+
+    # Strict O2-only pneumatic bellows stalls when O2 fails, while manual bagging still ventilates.
+    strict = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    strict.set_ventilator_drive_gas("o2_only")
+    strict.set_oxygen_supply_connected(False)
+    advance_time(strict, 20.0, dt=0.5)
+    assert strict.state.alarms.get("VentDrive", {}).get("low") is True
+    assert strict.state.mv < 0.5
+    strict.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
+    advance_time(strict, 15.0, dt=0.5)
+    assert strict.state.mv > 4.0

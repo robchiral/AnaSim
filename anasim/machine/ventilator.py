@@ -19,7 +19,10 @@ from anasim.physiology.resuscitation import (
     COMPRESSION_BAG_OUT_R,
     COMPRESSION_CLOSURE_OFFSET_CMH2O,
     COMPRESSION_CLOSURE_WIDTH_CMH2O,
+    COMPRESSION_DEPTH_CM,
     COMPRESSION_PERIOD_S,
+    COMPRESSION_RATE,
+    COMPRESSION_RECOIL,
     COMPRESSION_SUB_FRC_COMPLIANCE_FRAC,
     COMPRESSION_SUB_FRC_KNEE_L,
     COMPRESSION_VALVE_EXP_IN_R,
@@ -239,6 +242,9 @@ class AnesthesiaVentilator:
         self._cpr_active = False
         self._cpr_clock = 0.0
         self._cpr_elapsed = 0.0
+        self._cpr_rate = COMPRESSION_RATE
+        self._cpr_depth_cm = COMPRESSION_DEPTH_CM
+        self._cpr_recoil = COMPRESSION_RECOIL
 
     def alveolar_ventilation(
         self,
@@ -459,7 +465,10 @@ class AnesthesiaVentilator:
              reservoir_volume: float | None = None, volume_delivery: float = 1.0,
              effort_cap: float = 20.0, fresh_flow_l_s: float = 0.0,
              mask_leak_gap: float = 0.0, trigger_manual_breath: bool = False,
-             cpr_active: bool = False) -> None:
+             cpr_active: bool = False,
+             cpr_rate: float = COMPRESSION_RATE,
+             cpr_depth_cm: float = COMPRESSION_DEPTH_CM,
+             cpr_recoil: float = COMPRESSION_RECOIL) -> None:
         """Advance dt seconds.
 
         source is "vent", "bag", "spontaneous" (breathing through the circuit),
@@ -478,11 +487,22 @@ class AnesthesiaVentilator:
         self._effort_cap = max(0.0, float(effort_cap))
         self._collect_samples = collect_samples
         new_cpr = bool(cpr_active)
-        if new_cpr != self._cpr_active:
-            self._cpr_active = new_cpr
-            if new_cpr:
+        new_cpr_rate = float(cpr_rate)
+        new_cpr_depth = float(cpr_depth_cm)
+        new_cpr_recoil = float(cpr_recoil)
+        cpr_params_changed = (
+            new_cpr_rate != self._cpr_rate
+            or new_cpr_depth != self._cpr_depth_cm
+            or new_cpr_recoil != self._cpr_recoil
+        )
+        if new_cpr != self._cpr_active or cpr_params_changed:
+            if new_cpr != self._cpr_active and new_cpr:
                 self._cpr_clock = 0.0
                 self._cpr_elapsed = 0.0
+            self._cpr_active = new_cpr
+            self._cpr_rate = new_cpr_rate
+            self._cpr_depth_cm = new_cpr_depth
+            self._cpr_recoil = new_cpr_recoil
             self._current = self._valve = self._expiration = None
         self._bag = bag
         prev_bag_p_max = self._bag_p_max
@@ -935,7 +955,9 @@ class AnesthesiaVentilator:
         self, lung: RespiratoryMechanics, *, inspiring_positive: bool,
     ) -> tuple[tuple[float, float], float, float, float, float]:
         """Return (cpr_pressure, elastance, recoil_offset, r_close, static_recoil) during CPR."""
-        cpr_p, cpr_slope, _ = compression_pressure_drive(self._cpr_clock)
+        cpr_p, cpr_slope, _ = compression_pressure_drive(
+            self._cpr_clock, rate=self._cpr_rate, depth_cm=self._cpr_depth_cm, recoil=self._cpr_recoil,
+        )
         e_base = 1.0 / lung.compliance
         if lung.volume < 0.0:
             x = -lung.volume
@@ -1227,7 +1249,9 @@ class AnesthesiaVentilator:
         h = min(available, effort_break, boundary)
         cpr_break = math.inf
         if self._cpr_active:
-            _, _, cpr_knot_dt = compression_pressure_drive(self._cpr_clock)
+            _, _, cpr_knot_dt = compression_pressure_drive(
+                self._cpr_clock, rate=self._cpr_rate, depth_cm=self._cpr_depth_cm, recoil=self._cpr_recoil,
+            )
             cpr_interval = lung.EXPIRATORY_INTERVAL
             cpr_tick = math.floor((self._cpr_elapsed + 1e-12) / cpr_interval)
             cpr_break = min(cpr_knot_dt, (cpr_tick + 1) * cpr_interval - self._cpr_elapsed)
@@ -1678,7 +1702,13 @@ class AnesthesiaVentilator:
             if b.vg_test:
                 goal = self.settings.tv / 1000.0
                 ceiling = self._vg_ceiling(b.peep)
-                cpr_end_p = compression_pressure_drive(self._cpr_clock)[0] if self._cpr_active else 0.0
+                cpr_end_p = (
+                    compression_pressure_drive(
+                        self._cpr_clock, rate=self._cpr_rate, depth_cm=self._cpr_depth_cm, recoil=self._cpr_recoil,
+                    )[0]
+                    if self._cpr_active
+                    else 0.0
+                )
                 est_end_paw = max(b.peep, end_paw - cpr_end_p)
                 if not b.depleted and delivered_volume >= 0.9 * goal:
                     self._vg_pressure = min(max(est_end_paw - b.peep, VG_MIN), ceiling)

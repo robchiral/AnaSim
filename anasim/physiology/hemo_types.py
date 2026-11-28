@@ -46,3 +46,5 @@ class HemoState:
     pulmonary_flow: float = 5.25
     pump_flow: float = 0.0
     nonpulsatile_map: float = 0.0
+    paced_capture: bool = False
+    paced_mode: str = "off"

@@ -25,6 +25,8 @@ class BloodGasResult:
     fio2: float  # Inspired O2 fraction at the draw.
     site: str = "arterial"  # Sample site: arterial/right_radial, femoral, pre_oxy, post_oxy.
     glucose: float = 90.0  # Blood glucose, mg/dL.
+    magnesium: float = 0.8  # Serum magnesium, mmol/L.
+    methb_pct: float = 0.0  # Co-oximetry methemoglobin percentage, %.
 
     @property
     def ready_at(self) -> float:

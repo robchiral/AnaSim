@@ -1289,7 +1289,9 @@ def test_cronnelly_1979_kirkegaard_2002_kaufhold_2016_and_mirakhur_1977_neostigm
             config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=1.0, rng_seed=1),
             start=True, age=53.0, weight=65.0, height=168.0, sex="female", baseline_hr=87.0,
         )
-        for _ in range(120):
+        # Seed baseline opioid vagal tone so atropine's early vagolytic spike reflects Mirakhur 1977.
+        eng.set_drug_rate("remi", 0.06)
+        for _ in range(180):
             step_simulation(eng, 1.0, update_monitors=False)
             eng.state.time += 1.0
         hr0 = eng.state.hr
@@ -1624,3 +1626,106 @@ def test_jardin_1985b_ghignone_1984_staals_2010_favie_2019_rv_pk_and_dextrose(en
     assert d5w.hemo.fluids.icf_l > icf0 + 0.35
     assert d5w.hemo.blood_volume < lr.hemo.blood_volume
     assert d5w.hemo.blood_volume >= bv0 - 250.0
+
+
+def test_knudsen_1997_feldman_1989_mazoit_2009_hiller_2009_di_gregorio_2009_last_pharmacology(engine_factory):
+    """Knudsen 1997 (human IV bupivacaine vs ropivacaine), Feldman 1989 (beagle CC/CNS),
+    Clarkson 1985 (rate-dependent block), Mazoit 2009 & Zausig 2009 (lipophilicity- and pH-dependent
+    lipid rescue), Hiller 2009 (high-dose epinephrine >= 10 mcg/kg impairment), and Di Gregorio 2009
+    (vasopressin pulmonary edema and lactic acidosis in LAST)."""
+    from anasim.core.runtime import step_simulation
+    from anasim.patient.pk_models import BupivacainePK, RopivacainePK
+    from anasim.physiology.toxicity import LocalAnestheticToxicity
+
+    # Knudsen 1997: 10 mg/min IV infusion in healthy volunteers; bupivacaine produces earlier
+    # CNS and cardiac conduction toxicity than ropivacaine at equal infusion rate.
+    p = Patient(age=30.0, weight=75.0, height=178.0, sex="male")
+    b_pk, r_pk = BupivacainePK(p), RopivacainePK(p)
+    b_tox, r_tox = LocalAnestheticToxicity(75.0), LocalAnestheticToxicity(75.0)
+    b_cns_t = r_cns_t = None
+    for sec in range(1, 900):
+        rate = 10.0 / 60.0  # 10 mg/min
+        b_pk.step(1.0, rate)
+        r_pk.step(1.0, rate)
+        b_tox.step(
+            1.0, neural_ce=0.0, cardiac_ce=0.0, ph=7.4, propofol_ce=0.0, midazolam_ce=0.0,
+            mac_sevo=0.0, motor_strength=1.0, cortical_function=1.0,
+            bupivacaine_neuro_ce=b_pk.state.ce_neuro, bupivacaine_cv_ce=b_pk.state.ce_cv, hr=75.0,
+        )
+        r_tox.step(
+            1.0, neural_ce=0.0, cardiac_ce=0.0, ph=7.4, propofol_ce=0.0, midazolam_ce=0.0,
+            mac_sevo=0.0, motor_strength=1.0, cortical_function=1.0,
+            ropivacaine_neuro_ce=r_pk.state.ce_neuro, ropivacaine_cv_ce=r_pk.state.ce_cv, hr=75.0,
+        )
+        if b_cns_t is None and b_tox.seizure_activity > 0.25:
+            b_cns_t = sec
+        if r_cns_t is None and r_tox.seizure_activity > 0.25:
+            r_cns_t = sec
+    assert b_cns_t is not None and r_cns_t is not None
+    assert b_cns_t < r_cns_t
+    assert b_tox.conduction_block > r_tox.conduction_block + 0.20
+
+    # Zausig 2009 & Dureau 2016: lipid emulsion improves bupivacaine recovery more strongly than ropivacaine.
+    def _lipid_gain(drug: str, dose_mg: float) -> float:
+        eng_ctrl = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+        eng_ctrl.set_airway_mode("ETT")
+        eng_ctrl.set_fgf(10.0, 0.0, 0.0)
+        eng_ctrl.set_vent_power(True)
+        eng_ctrl.trigger_last_crisis(drug, dose_mg)
+        for _ in range(30):
+            step_simulation(eng_ctrl, 1.0, update_monitors=False)
+            eng_ctrl.state.time += 1.0
+        eng_lip = copy.deepcopy(eng_ctrl)
+        eng_ctrl.give_drug_bolus("midazolam", 5.0)
+        eng_lip.give_drug_bolus("midazolam", 5.0)
+        eng_lip.give_lipid_emulsion(100.0)
+        eng_lip.set_lipid_infusion(17.5)
+        for eng in (eng_ctrl, eng_lip):
+            for _ in range(180):
+                step_simulation(eng, 1.0, update_monitors=False)
+                eng.state.time += 1.0
+        return eng_ctrl.toxicity.conduction_block - eng_lip.toxicity.conduction_block
+
+    assert _lipid_gain("bupivacaine", 90.0) > _lipid_gain("ropivacaine", 145.0)
+
+
+def test_yassen_2007b_klotz_1988_lu_2000_barker_1989_guay_2009_reversals_magnesium_and_methb(engine_factory):
+    """Yassen 2007b and Ngai 1976 (naloxone PK/PD and renarcotization), Klotz and Kanto 1988 (flumazenil
+    rapid midazolam reversal), Lu and Nightingale 2000 (MgSO4 renal clearance and concentration thresholds),
+    Barker 1989 (pulse-ox SpO2 ~85% plateau under MetHb), and Guay 2009 (benzocaine MetHb + methylene blue)."""
+    from anasim.core.runtime import step_simulation
+    from anasim.monitors.spo2 import pulse_ox_methemoglobin_spo2
+    from anasim.patient.pk_models import FlumazenilPK, NaloxonePK
+
+    p = Patient(age=35.0, weight=70.0, height=175.0, sex="male")
+    nal = NaloxonePK(p)
+    assert nal.v1 == pytest.approx(12.1, rel=0.08)
+    assert nal.cl1 == pytest.approx(3.45, rel=0.08)
+    flum = FlumazenilPK(p)
+    assert flum.cl1 == pytest.approx(1.085, rel=0.08)
+
+    # Barker 1989: at 35% MetHb, two-wavelength SpO2 plateaus near 85% despite 100% functional SaO2,
+    # and sensitivity to hypoxemia (60% vs 100% functional SaO2) is strongly compressed.
+    spo2_normox = pulse_ox_methemoglobin_spo2(100.0, 0.35)
+    spo2_hypox = pulse_ox_methemoglobin_spo2(60.0, 0.35)
+    assert 83.0 <= spo2_normox <= 87.5
+    assert (spo2_normox - spo2_hypox) < 12.0
+
+    # Lu and Nightingale 2000: 4 g IV loading dose raises serum Mg2+ into therapeutic 1.7-2.6 mmol/L
+    # without causing respiratory paralysis (which begins > 5 mmol/L).
+    eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    eng.give_magnesium_sulfate(4.0)
+    for _ in range(300):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    assert 1.5 <= eng.state.magnesium <= 2.8
+    assert eng.state.twitch > 95.0 and eng.state.rr >= 10.0
+
+    # Guay 2009: benzocaine MetHb drops >= 50% within 90 min of 1.5 mg/kg IV methylene blue.
+    mb_eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    mb_eng.trigger_methemoglobinemia("benzocaine", initial_fraction=0.35)
+    mb_eng.give_drug_bolus("methylene_blue", 1.5 * 70.0)
+    for _ in range(2700):
+        step_simulation(mb_eng, 2.0, update_monitors=False)
+        mb_eng.state.time += 2.0
+    assert mb_eng.state.methb_pct < 12.0

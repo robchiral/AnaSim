@@ -23,6 +23,7 @@ def add_volume(
     label: str = "crystalloid",
     *,
     suppress_tde: bool = False,
+    storage_days: float = 21.0,
 ) -> None:
     """Add fluid or blood (positive) or remove blood (negative).
 
@@ -72,7 +73,7 @@ def add_volume(
             if supernatant_ml > 0.0:
                 model.crystalloid.infuse(supernatant_ml, saline=False)
         else:
-            is_colloid = label in ("colloid", "lipid")
+            is_colloid = label in ("colloid", "lipid", "ffp", "platelets", "cryoprecipitate")
             if is_colloid:
                 model.total_colloid_in_ml += amount_ml
                 retention = 0.25 if label == "lipid" else cfg.colloid_retention_fraction
@@ -91,7 +92,7 @@ def add_volume(
                 ecf_input_ml = amount_ml
             third_space_gain_ml = max(0.0, ecf_input_ml - retained_ml)
             model.total_third_space_ml += third_space_gain_ml
-            if label == "colloid":
+            if label in ("colloid", "ffp", "platelets", "cryoprecipitate"):
                 model._protein_third_space_ml += third_space_gain_ml
             if not is_colloid:
                 model.crystalloid.infuse(
@@ -101,7 +102,7 @@ def add_volume(
                 )
 
         model.blood_volume += retained_ml
-        model.fluids.infuse(amount_ml, retained_ml, hematocrit, label)
+        model.fluids.infuse(amount_ml, retained_ml, hematocrit, label, storage_days=storage_days)
         if label == "bicarbonate" and amount_ml > 0.0:
             # 8.4% NaHCO3 (2000 mOsm/L) causes brief rate-dependent hyperosmolar
             # arteriolar vasodilation when pushed rapidly (canine Huseby and Gumprecht 1981;
@@ -134,6 +135,7 @@ def step_intravascular_volume(
     *,
     pulmonary_flow_prev: float | None = None,
     osmotic_diuresis_ml_min: float = 0.0,
+    toxic_lung_water_ml_min: float = 0.0,
 ) -> None:
     """Advance crystalloid kinetics, urine, capillary leak, refill, and lung water."""
     cfg = model.config
@@ -250,9 +252,15 @@ def step_intravascular_volume(
     pulm_flow = co_prev if pulmonary_flow_prev is None else pulmonary_flow_prev
     pulm_flow_gate = clamp01(pulm_flow / max(0.3, 0.20 * base_co))
     perm_filtration_rate = 0.004 * model._pbw * inflam * max(0.0, eff_lap - 8.0) * pulm_flow_gate
+    toxic_filtration_rate = max(0.0, toxic_lung_water_ml_min) * pulm_flow_gate
     max_lung_water_ml = 28.0 * model._pbw
     filtration_ml = min(
-        (cfg.lung_water_filtration * model._pbw * eff_lap_excess * pulm_flow_gate + perm_filtration_rate) * dt_min,
+        (
+            cfg.lung_water_filtration * model._pbw * eff_lap_excess * pulm_flow_gate
+            + perm_filtration_rate
+            + toxic_filtration_rate
+        )
+        * dt_min,
         max(0.0, blood_volume - minimum_blood_volume),
         max(0.0, max_lung_water_ml - model.lung_water_ml),
     )

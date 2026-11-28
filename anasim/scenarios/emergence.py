@@ -54,18 +54,15 @@ def _prepare_emergence(maint_type: Literal["balanced", "tiva"], minutes: int):
         if maint_type == "balanced":
             engine.set_fgf(1.0, 1.0, 0.0)
             engine.set_vaporizer(round(engine.vaporizer.state.setting * 0.62, 2))
-            if engine.config.tci_enabled and engine.get_drug_state("remi")["target"] > 0:
-                engine.set_drug_target("remi", round(engine.get_drug_state("remi")["target"] * 0.70, 2))
-            else:
-                engine.infusion_rates["remi"] *= 0.70
             preroll_scenario(engine, 480.0, dt=5.0, settle_s=15.0, sample_interval_s=10.0)
         else:
+            engine.set_fgf(1.0, 1.0, 0.0)
             if engine.config.tci_enabled:
-                engine.set_drug_target("propofol", round(engine.get_drug_state("propofol")["target"] * 0.84, 2))
-                engine.set_drug_target("remi", round(engine.get_drug_state("remi")["target"] * 0.65, 2))
+                engine.set_drug_target("propofol", round(engine.get_drug_state("propofol")["target"] * 0.78, 2))
+                engine.set_drug_target("remi", round(engine.get_drug_state("remi")["target"] * 0.60, 2))
             else:
-                engine.infusion_rates["propofol"] *= 0.64
-                engine.infusion_rates["remi"] *= 0.65
+                engine.infusion_rates["propofol"] *= 0.58
+                engine.infusion_rates["remi"] *= 0.60
             preroll_scenario(engine, 480.0, dt=5.0, settle_s=15.0, sample_interval_s=10.0)
 
         roc, tof = engine.pk["roc"], engine.tof_pd
@@ -78,14 +75,24 @@ def _prepare_emergence(maint_type: Literal["balanced", "tiva"], minutes: int):
     return prepare
 
 
-def _assess_instruction(engine) -> str:
-    low, high = normocapnia_bounds(engine)
-    return (
-        f"Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and <b>EtCO₂ {low}-{high} mmHg</b>; "
-        "adjust vasopressors and ventilation as needed.<br><br>"
-        "<i>Before stopping remifentanil, confirm surgery is finished, keep the patient warm, "
-        "and give longer-acting analgesia because remifentanil wears off quickly.</i>"
-    )
+def _assess_instruction_for(is_balanced: bool):
+    def instruction(engine) -> str:
+        low, high = normocapnia_bounds(engine)
+        if is_balanced:
+            analgesia_note = (
+                "Confirm surgery is finished, keep the patient warm, and verify adequate "
+                "multimodal or opioid analgesia (such as fentanyl or hydromorphone) before emergence."
+            )
+        else:
+            analgesia_note = (
+                "Before stopping remifentanil, confirm surgery is finished, keep the patient warm, "
+                "and give longer-acting analgesia because remifentanil wears off quickly."
+            )
+        return (
+            f"Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and <b>EtCO₂ {low}-{high} mmHg</b>; "
+            f"adjust vasopressors and ventilation as needed.<br><br><i>{analgesia_note}</i>"
+        )
+    return instruction
 
 
 def _require_normocapnia(engine) -> tuple[bool, str]:
@@ -93,11 +100,7 @@ def _require_normocapnia(engine) -> tuple[bool, str]:
 
 
 def _require_agents_stopped_balanced() -> Requirement:
-    """Check that the volatile agent and remifentanil are stopped and fresh gas flow is high."""
-    opioid_check = require_infusions_stopped(
-        "remi", fail_message="Stop remifentanil"
-    )
-
+    """Check that the volatile agent is stopped and fresh gas flow is high 100% O₂."""
     def check(engine) -> tuple[bool, str]:
         gas_off = not engine.circuit.vaporizer_on or engine.circuit.vaporizer_setting < 0.1
         high_o2_flow = (
@@ -108,16 +111,13 @@ def _require_agents_stopped_balanced() -> Requirement:
         vaporizer_records = engine.actions.since_case(ACTION_VAPORIZER)
         vaporizer_stopped = any(record.amount < 0.1 for record in vaporizer_records)
         flow_changed = action_taken_in_case(engine, ACTION_FGF)
-        opioid_stopped, opioid_message = opioid_check(engine)
-        if gas_off and high_o2_flow and vaporizer_stopped and flow_changed and opioid_stopped:
+        if gas_off and high_o2_flow and vaporizer_stopped and flow_changed:
             return True, ""
         msgs = []
         if not gas_off or not vaporizer_stopped:
             msgs.append("Turn off sevoflurane")
         if not high_o2_flow or not flow_changed:
             msgs.append("Set high O₂ flow (> 6 L/min, N₂O off)")
-        if not opioid_stopped:
-            msgs.append(opioid_message)
         return False, join_messages(msgs)
     return check
 
@@ -189,7 +189,7 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
     volume_ok = engine.state.vt > minimum_vt
     block_recovered, block_message = _require_confirmed_block_recovery(engine)
     spo2 = monitor_value(engine, "spo2")
-    oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
+    oxygenated = engine.state.spo2_signal_valid and spo2 >= 94.0
     bis = monitor_value(engine, "bis")
     awake = bis > 80 and engine.state.loc < 0.20
     msgs = []
@@ -208,7 +208,7 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
         msgs.append(block_message)
     if not oxygenated:
         msgs.append(
-            f"SpO₂: {format_unmet_int(spo2, low=95.0)}%/95%+"
+            f"SpO₂: {format_unmet_int(spo2, low=94.0)}%/94%+"
             if engine.state.spo2_signal_valid
             else "Awaiting valid SpO₂"
         )
@@ -261,14 +261,16 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
 
     if is_balanced:
         stop_agents_instruction = (
-            "Turn off <b>sevoflurane</b>, stop remifentanil in Drugs, and increase FGF to <b>8-10 L/min</b>.<br><br>"
-            "<i>High flow speeds up volatile washout.</i>"
+            "Turn off <b>sevoflurane</b> and increase fresh gas flow to <b>8-10 L/min of 100% O₂</b> "
+            "(air and N₂O 0 L/min).<br><br>"
+            "<i>High oxygen flow speeds volatile washout and preoxygenates the patient before extubation.</i>"
         )
         stop_agents_check = _require_agents_stopped_balanced()
         stop_agents_tab: ControlTab = "Machine"
     else:
         stop_agents_instruction = (
-            "Stop the <b>propofol and remifentanil</b> infusions.<br><br>"
+            "Stop the <b>propofol and remifentanil</b> infusions in Drugs, and switch to "
+            "<b>100% O₂</b> in Machine to preoxygenate before extubation.<br><br>"
             "<i>Watch for spontaneous breathing as drug levels fall.</i>"
         )
         stop_agents_check = require_infusions_stopped(
@@ -280,7 +282,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
         ScenarioStep(
             id="ASSESS",
             title="Assess hemodynamic stability",
-            instruction=_assess_instruction,
+            instruction=_assess_instruction_for(is_balanced),
             check_requirements=require_all(
                 require_maintenance_depth, require_map_at_least(), _require_normocapnia,
             ),
@@ -290,10 +292,10 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             title="Assess block and reversal",
             instruction=(
                 f"Rocuronium {ROCURONIUM_DOSE_MG_KG:g} mg/kg was given {rocuronium_minutes} minutes ago. "
-                "Check <b>TOF</b> and confirm a <b>TOF ratio ≥ 90%</b> before stopping anesthesia. "
-                "With residual block and ≥ 2 twitches, give <b>sugammadex 2 mg/kg</b> actual body weight "
-                "(4 mg/kg for deeper block of 0-1 twitches).<br><br>"
-                "<i>Keep anesthesia and ventilation running until neuromuscular recovery is confirmed.</i>"
+                "Check <b>TOF</b> and confirm a <b>TOF ratio ≥ 90%</b> before stopping anesthesia: give "
+                "<b>sugammadex 2 mg/kg</b> actual body weight for moderate block (TOF ≥ 2), or <b>4 mg/kg</b> "
+                "for deep block (TOF 0-1 with PTC ≥ 1-2; 16 mg/kg for immediate reversal at PTC 0).<br><br>"
+                "<i>Keep anesthesia and ventilation running until recovery is confirmed.</i>"
             ),
             check_requirements=_require_block_recovery,
             target_tab="Medications",
@@ -309,8 +311,10 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             id="AWAIT_EMERGENCE",
             title="Await emergence",
             instruction=(
-                "Wait for <b>BIS > 70</b> and <b>spontaneous RR > 6/min</b>.<br><br>"
-                "<i>Ventilator-delivered breaths do not count as spontaneous breathing.</i>"
+                "Wait for <b>BIS > 70</b> and <b>spontaneous RR > 6/min</b>. "
+                "You can bridge through <b>PSV</b> or lower the ventilator rate to let CO₂ rise gently "
+                "and trigger spontaneous breathing.<br><br>"
+                "<i>Ventilator-delivered mandatory breaths do not count as spontaneous breathing.</i>"
             ),
             check_requirements=_require_awakening,
         ),
@@ -320,7 +324,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             instruction=(
                 "Stop the ventilator (or switch to <b>CPAP</b>) while keeping the tracheal tube in place, "
                 "and be ready to assist breathing. Confirm <b>BIS > 80</b>, spontaneous <b>RR > 8/min</b>, exhaled "
-                "<b>VT > 5 mL/kg predicted body weight</b>, <b>TOF ratio ≥ 90%</b>, and <b>SpO₂ > 95%</b>.<br><br>"
+                "<b>VT > 5 mL/kg predicted body weight</b>, <b>TOF ratio ≥ 90%</b>, and <b>SpO₂ ≥ 94%</b>.<br><br>"
                 "<i>At the bedside, also confirm command following, airway reflexes, and the extubation plan; "
                 "BIS alone does not establish readiness.</i>"
             ),
@@ -337,8 +341,9 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             id="EXTUBATE",
             title="Extubate",
             instruction=(
-                "With readiness confirmed, select <b>Facemask</b> "
-                "to extubate and give oxygen. Reassess breathing and airway patency immediately."
+                "With readiness confirmed, suction the oropharynx, deflate the cuff at peak inspiration, "
+                "and select <b>Facemask</b> to extubate and give oxygen. Reassess breathing and airway "
+                "patency immediately."
             ),
             check_requirements=require_all(_require_extubation_readiness, _require_tube_removed),
             target_tab="Machine",
@@ -348,8 +353,9 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             title="Begin recovery care",
             instruction=(
                 "Keep <b>Facemask</b> selected with <b>O₂ 5 L/min</b> (air and N₂O 0 L/min) for supplemental oxygen. "
-                "Confirm spontaneous breathing, <b>SpO₂ > 95%</b>, and <b>MAP ≥ 65 mmHg</b>.<br><br>"
-                "<i>Include the procedure, anesthetics, analgesia, airway, blood loss, and active concerns in PACU handoff.</i>"
+                "Confirm spontaneous breathing, <b>SpO₂ ≥ 94%</b>, and <b>MAP ≥ 65 mmHg</b>.<br><br>"
+                "<i>Transition to transport oxygen and include the procedure, anesthetics, analgesia, airway, "
+                "blood loss, and active concerns in PACU handoff.</i>"
             ),
             check_requirements=require_all(
                 _require_extubation_readiness,
